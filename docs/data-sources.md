@@ -25,8 +25,13 @@ The sample is a trimmed slice of the responses above for the showcase entities (
 | GE Vernova | GEV | 0001996810 |
 | Fallback: 3M / Solventum | MMM / SOLV | 0000066740 / 0001964738 |
 
+## Redistribution
+
+The Zetaris recipes note that EDGAR's licence is ambiguous, because filings are written by the filers, and advise against bulk redistribution of extracted data. The committed offline sample is therefore limited to the few concepts and entities the cases need, with source URLs. It is not a bulk copy.
+
 ## Known data caveats
 
 - `companyfacts` has **no segment dimensions**, so "which business line" can't be answered from it alone.
 - The same concept can appear under different names over time (`Revenues` vs `RevenueFromContractWithCustomerExcludingAssessedTax`). The analyst must handle this mapping.
+- On 2026-10-22 the `companyconcept` endpoint returned empty `units` for GE HealthCare's revenue concept while `companyfacts` held 41 values. `companyfacts` is the primary path.
 - Restated values appear as several values for the same (concept, period), told apart by accession number and filing date.

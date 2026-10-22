@@ -12,9 +12,8 @@ Decision: Zetaris is the only path to evidence in live mode.
 
 Rationale: turns a requirement into the product's audit trail and makes source discovery visible.
 
-Open measurements (day 1–2):
-- query latency;
-- time to register a REST table while the agent runs;
-- whether the nested `companyfacts` maps can be exploded.
-
-If registration is slow, pre-register the case entities and keep live registration for the single discovered entity.
+Measured on 2026-10-22 ([measurements/zetaris-local.md](../measurements/zetaris-local.md)):
+- Registering a REST table takes 0.6–2.0 s; one full Loop B hop takes about 10–15 s. **Loop B registers the discovered entity live.**
+- Use `companyfacts` with struct-path views per concept. SEC's `companyconcept` endpoint returned empty values for GE HealthCare, so `companyconcept` stays a fast path with automatic fallback.
+- `CACHE TABLE` after registration.
+- The GE vs GE HealthCare reconciliation join runs in 3.3 s and returns a $114M residual.
