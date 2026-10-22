@@ -28,7 +28,7 @@ This maps each scored criterion and each required component of the Open Agent Ha
 | Requirement | How it's met | Status |
 |---|---|---|
 | Zetaris integrated and load-bearing | Every piece of evidence is a Zetaris SQL query (`services/agent` Zetaris adapter) | planned |
-| Meterless: ≥1 engine in a working feature, with test evidence | H-MEM in `services/cognition`, passing the official conformance runner | planned |
+| Meterless: ≥1 engine in a working feature, with test evidence | H-MEM in `services/cognition`; official conformance runner 13/13 (`npm run conformance`). The user-facing feature (cold vs warm runs) needs the agent. | in progress |
 | Meterless Nightshift as primary model provider | `services/agent` model client → Nightshift Runtime (OpenAI-compatible) | planned |
 | Developed in Cursor | See [sponsor-technology.md](sponsor-technology.md#cursor) | in progress |
 | No hardcoded outputs | Outputs are generated from inputs. `output_examples/` is never read at runtime. Sample mode runs real logic on cached data. | planned |

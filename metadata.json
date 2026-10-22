@@ -10,34 +10,67 @@
   "team": {
     "name": "Palmlore",
     "solo": true,
-    "builders": [{ "name": "Hao Li", "role": "builder" }]
+    "builders": [
+      {
+        "name": "Hao Li",
+        "role": "builder"
+      }
+    ]
   },
   "repository": "https://github.com/Palmlore/Tiresias",
-  "submission": { "demo_video": null, "slide_deck": null },
+  "submission": {
+    "demo_video": null,
+    "slide_deck": null
+  },
   "sponsors": {
     "zetaris": {
       "status": "planned",
       "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned; in Loop B the agent registers a newly discovered entity's SEC filings as a Lightning REST table at runtime, and the critic re-queries counterfactually.",
       "interface": "rest",
       "deployment": "local-docker",
-      "data_sources": ["SEC EDGAR XBRL companyfacts", "SEC EDGAR submissions", "SEC company_tickers", "company_dns SIC"],
-      "where": ["zetaris/", "catalog/sources.yaml"],
+      "data_sources": [
+        "SEC EDGAR XBRL companyfacts",
+        "SEC EDGAR submissions",
+        "SEC company_tickers",
+        "company_dns SIC"
+      ],
+      "where": [
+        "zetaris/",
+        "catalog/sources.yaml"
+      ],
       "evidence": [],
-      "decisions": ["docs/decisions/ADR-0003-zetaris-evidence-layer.md"]
+      "decisions": [
+        "docs/decisions/ADR-0003-zetaris-evidence-layer.md"
+      ]
     },
     "meterless": {
-      "status": "planned",
-      "how": "H-MEM (reference engine behind the cognition service) stores lessons from past investigations, never answers, and is purgeable to show its effect; Nightshift is the primary model provider for all agent model calls.",
-      "engines": ["H-MEM"],
+      "status": "in-progress",
+      "how": "H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service) stores lessons from past investigations, never answers, with a memory gate and an audited purge so judges can compare cold and warm runs; Nightshift is the primary model provider for all agent model calls (planned).",
+      "engines": [
+        "H-MEM"
+      ],
       "provider": "nightshift",
-      "where": ["services/cognition/", "contracts/openapi/cognition.yaml"],
-      "evidence": [],
-      "decisions": ["docs/decisions/ADR-0002-split-services-rest.md", "docs/decisions/ADR-0005-memory-lessons-purgeable.md"]
+      "where": [
+        "services/cognition/src/engine.ts",
+        "services/cognition/src/server.ts",
+        "services/cognition/engine/hmem/",
+        "contracts/openapi/cognition.yaml"
+      ],
+      "evidence": [
+        "services/cognition: `npm run conformance` passes the official H-MEM conformance suite 13/13 against the module the service loads",
+        "services/cognition: `npm test` (remember, recall threshold, namespaces, gate reject, purge survives restart, REST)"
+      ],
+      "decisions": [
+        "docs/decisions/ADR-0002-split-services-rest.md",
+        "docs/decisions/ADR-0005-memory-lessons-purgeable.md"
+      ]
     },
     "cursor": {
       "status": "in-progress",
       "how": "Development environment: editor, terminal and extensions hosting the AI coding assistants; Cursor's agent where plan credit allows.",
-      "surfaces": ["ide"],
+      "surfaces": [
+        "ide"
+      ],
       "where": [],
       "evidence": [],
       "decisions": []
@@ -55,7 +88,10 @@
   "run": {
     "setup": "README.md#quickstart-judges",
     "sample_mode": true,
-    "secrets": ["ZETARIS_API_KEY", "METERLESS_RUNTIME_TOKEN"]
+    "secrets": [
+      "ZETARIS_API_KEY",
+      "METERLESS_RUNTIME_TOKEN"
+    ]
   },
   "evidence_logs": "logs/"
 }

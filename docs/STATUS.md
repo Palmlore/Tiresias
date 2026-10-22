@@ -10,7 +10,7 @@ Updated: 2026-10-22, build day 1. Submission deadline: **27 Oct 2026 23:45 UTC**
 ## Next
 1. ~~Verify and measure Zetaris~~ done: [measurements/zetaris-local.md](measurements/zetaris-local.md)
 2. Register the GE family sources in Zetaris (`zetaris/sql/`).
-3. `cognition`: mount the H-MEM reference behind REST and pass the conformance runner.
+3. ~~`cognition`: H-MEM behind REST~~ done: official conformance 13/13 on the loaded module, 6 tests, Docker persistence verified
 4. `agent`: Zetaris adapter, Nightshift client, tracing, Loop A on case 1.
 5. Loop B (onboard GE HealthCare), the critic rulebook, end states.
 6. Sample mode, 3 examples end to end, Docker clean-clone test.
