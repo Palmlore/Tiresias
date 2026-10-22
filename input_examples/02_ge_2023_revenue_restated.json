@@ -1,0 +1,9 @@
+{
+  "question": "Why did GE's reported 2023 revenue fall between its 2024 and 2025 annual reports?",
+  "entity": {"ticker": "GE", "cik": "0000040545"},
+  "metric": "Revenues",
+  "period": {"start": "2023-01-01", "end": "2023-12-31"},
+  "compare": {"filing_a": "10-K filed 2024-02-02", "filing_b": "10-K filed 2025-02-03"},
+  "asker": {"role": "auditor", "levers": ["testing scope", "follow-up requests", "sign-off"], "horizon": "current audit"},
+  "options": {"hitl_mode": "auto", "memory": "warm"}
+}

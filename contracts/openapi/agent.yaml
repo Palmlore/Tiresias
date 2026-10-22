@@ -1,0 +1,98 @@
+openapi: 3.1.0
+info:
+  title: Tiresias agent API
+  version: 0.1.0-draft
+  description: Draft contract (ADR-0002). Endpoints are marked with their implementation status.
+servers: [{url: http://localhost:8000}]
+paths:
+  /health:
+    get:
+      summary: Liveness, with mode and dependency reachability (implemented)
+      responses: {"200": {description: OK}}
+  /run:
+    post:
+      summary: Run an investigation (planned)
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/RunRequest"}}}
+      responses:
+        "200": {description: Completed, content: {application/json: {schema: {$ref: "#/components/schemas/RunResult"}}}}
+        "4XX": {description: Invalid input, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "5XX": {description: Structured failure (recoverable flag), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs/{run_id}/branch:
+    post:
+      summary: Branch from a node of a finished run with a new question or asker (planned)
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [node_id]
+              properties:
+                node_id: {type: string}
+                question: {type: string}
+                asker: {$ref: "#/components/schemas/Asker"}
+      responses: {"200": {description: New run, content: {application/json: {schema: {$ref: "#/components/schemas/RunResult"}}}}}
+  /memory/purge:
+    post:
+      summary: Purge H-MEM lessons (proxied to cognition; recorded in the ledger) (planned)
+      parameters: [{name: namespace, in: query, schema: {type: string}}]
+      responses: {"200": {description: Purged}}
+components:
+  schemas:
+    Asker:
+      type: object
+      required: [role]
+      properties:
+        role: {type: string, enum: [analyst, auditor, board]}
+        levers: {type: array, items: {type: string}}
+        horizon: {type: string}
+    RunRequest:
+      type: object
+      required: [question, entity, metric, period, asker]
+      properties:
+        question: {type: string}
+        entity: {type: object, properties: {ticker: {type: string}, cik: {type: string}}}
+        metric: {type: string}
+        period: {type: object, properties: {start: {type: string, format: date}, end: {type: string, format: date}}}
+        compare: {type: object}
+        asker: {$ref: "#/components/schemas/Asker"}
+        options:
+          type: object
+          properties:
+            hitl_mode: {type: string, enum: [auto, interactive, scripted]}
+            memory: {type: string, enum: [warm, cold]}
+            sample_mode: {type: boolean}
+            decisions: {type: object, description: Scripted gate decisions}
+    Link:
+      type: object
+      properties:
+        node_id: {type: string}
+        parent_id: {type: string}
+        claim: {type: string}
+        label: {type: string, enum: [breakdown, causal, leverage, background]}
+        evidence_status: {type: string, enum: [evidenced, partially-evidenced, hypothesis]}
+        share_explained: {type: number}
+        residual: {type: number}
+        sql: {type: string}
+        rows_ref: {type: string}
+    RunResult:
+      type: object
+      properties:
+        run_id: {type: string}
+        parent_run_id: {type: [string, "null"]}
+        status: {type: string, enum: [success, partial, error]}
+        end_state: {type: string, enum: [actionable, branched, cyclic, evidence-frontier, external-driver, budget]}
+        root_cause: {type: string}
+        action: {type: string}
+        why_tree: {type: array, items: {$ref: "#/components/schemas/Link"}}
+        stats: {type: object, description: hops, queries, sources_onboarded, model_calls, tokens, seconds}
+        trace_file: {type: string}
+        sample_mode: {type: boolean}
+    Error:
+      type: object
+      properties:
+        run_id: {type: string}
+        status: {const: error}
+        error: {type: object, properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}}

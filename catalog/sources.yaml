@@ -1,0 +1,33 @@
+# Bounded source catalog. The source scout may only instantiate these templates (ADR-0003, ADR-0004).
+# Each template becomes one Lightning REST table in Zetaris when onboarded.
+version: 1
+user_agent_env: SEC_USER_AGENT
+sources:
+  - id: sec_companyfacts
+    description: All XBRL facts for one company; restated values appear as several values per (concept, period).
+    endpoint: https://data.sec.gov/api/xbrl/companyfacts/CIK{cik10}.json
+    params: [cik10]
+    joins_on: [cik]
+    rate_limit_per_second: 10
+  - id: sec_companyconcept
+    description: One us-gaap concept for one company (the pattern of the Zetaris recipes).
+    endpoint: https://data.sec.gov/api/xbrl/companyconcept/CIK{cik10}/us-gaap/{concept}.json
+    params: [cik10, concept]
+    joins_on: [cik, concept, period]
+    rate_limit_per_second: 10
+  - id: sec_submissions
+    description: Company profile and filing history, including 8-K item codes (2.01 = completion of acquisition or disposition).
+    endpoint: https://data.sec.gov/submissions/CIK{cik10}.json
+    params: [cik10]
+    joins_on: [cik]
+    rate_limit_per_second: 10
+  - id: sec_tickers
+    description: Ticker to CIK to name map, used to resolve a discovered entity.
+    endpoint: https://www.sec.gov/files/company_tickers.json
+    params: []
+    joins_on: [ticker, cik]
+  - id: company_dns_sic
+    description: SIC industry hierarchy (V4).
+    endpoint: https://company-dns.mediumroast.io/V4.0/na/sic/code/%25
+    params: []
+    joins_on: [sic_code]

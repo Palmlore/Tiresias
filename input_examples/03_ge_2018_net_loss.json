@@ -1,0 +1,9 @@
+{
+  "question": "Why did GE report a net loss of about $22 billion in 2018?",
+  "entity": {"ticker": "GE", "cik": "0000040545"},
+  "metric": "NetIncomeLoss",
+  "period": {"start": "2018-01-01", "end": "2018-12-31"},
+  "compare": {"baseline": "2017 and prior-year 10-K values"},
+  "asker": {"role": "board", "levers": ["portfolio strategy", "capital allocation"], "horizon": "3 years"},
+  "options": {"hitl_mode": "auto", "memory": "warm"}
+}

@@ -1,0 +1,19 @@
+# Local-first stack (ADR-0008). Zetaris and Nightshift run outside this file (see deploy/README.md).
+services:
+  agent:
+    build: ./services/agent
+    ports: ["${AGENT_PORT:-8000}:8000"]
+    env_file: [{path: .env, required: false}]
+    environment:
+      COGNITION_URL: http://cognition:8100
+    volumes: ["./logs:/app/logs"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    depends_on:
+      cognition: {condition: service_started}
+  cognition:
+    build: ./services/cognition
+    ports: ["${COGNITION_PORT:-8100}:8100"]
+    env_file: [{path: .env, required: false}]
+    volumes: ["./logs:/app/logs", "memory:/app/.memory"]
+volumes:
+  memory:

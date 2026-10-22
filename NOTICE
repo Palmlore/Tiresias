@@ -1,0 +1,16 @@
+Tiresias
+Copyright 2026 Palmlore
+
+This product includes or is designed to include third-party open-source software:
+
+- Meterless H-MEM engine reference implementation and conformance suite
+  (https://github.com/Meterless/Meterless, engines/hmem), Apache License 2.0.
+  Copyright 2026 Meterless.
+
+Data: SEC EDGAR public data (https://www.sec.gov/os/accessing-edgar-data);
+company_dns industry classification data (Apache-2.0).
+
+Third-party components are added to this file as they are introduced.
+
+- Community metadata.json schema draft (scripts/metadata.schema.json),
+  https://github.com/saphan-ai/proven, Apache License 2.0.

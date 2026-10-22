@@ -1,0 +1,31 @@
+openapi: 3.1.0
+info:
+  title: Tiresias cognition API (Meterless H-MEM)
+  version: 0.1.0-draft
+  description: Draft contract (ADR-0002, ADR-0005). It wraps the Meterless H-MEM reference engine.
+servers: [{url: http://localhost:8100}]
+paths:
+  /health:
+    get: {summary: Liveness and engine source (implemented), responses: {"200": {description: OK}}}
+  /memory/recall:
+    post:
+      summary: Ranked lessons for a task, with a reinjection trace (planned)
+      requestBody: {content: {application/json: {schema: {type: object, properties: {query: {type: string}, namespace: {type: string}, top_n: {type: integer}}}}}}
+      responses: {"200": {description: Structured reinjection payload}}
+  /memory/remember:
+    post:
+      summary: Store a lesson after the memory gate (planned)
+      requestBody: {content: {application/json: {schema: {type: object, properties: {content: {type: string}, type: {type: string}, namespace: {type: string}, run_id: {type: string}, agent_id: {type: string}, gate: {type: object}}}}}}
+      responses: {"200": {description: Memory id}}
+  /memory/feedback:
+    post:
+      summary: Critic feedback on a recalled lesson (helpful, not_helpful, wrong) (planned)
+      responses: {"200": {description: OK}}
+  /memory/purge:
+    post:
+      summary: Clear lessons (all or by namespace); the ledger keeps the purge event (planned)
+      responses: {"200": {description: Purged count}}
+  /ledger:
+    get:
+      summary: Append-only trust ledger, as JSONL (planned)
+      responses: {"200": {description: Ledger entries}}

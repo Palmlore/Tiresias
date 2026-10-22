@@ -1,0 +1,31 @@
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials/
+
+# Runtime output (committed examples live in logs/samples/)
+logs/*
+!logs/README.md
+!logs/samples/
+.memory/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+vendor/
+
+# OS / editors
+.DS_Store
+.idea/

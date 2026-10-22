@@ -1,0 +1,61 @@
+{
+  "$schema": "./scripts/metadata.schema.json",
+  "schema_version": "0.1-community",
+  "project": {
+    "name": "Tiresias",
+    "summary": "An evidence-backed 5 Whys root-cause agent for financial analysts: it explains why a company's reported figures changed between SEC filings, discovers the missing evidence, and stops at the first cause the asker can act on.",
+    "licence": "Apache-2.0"
+  },
+  "track": "The Agent That Can Explain Why",
+  "team": {
+    "name": "Palmlore",
+    "solo": true,
+    "builders": [{ "name": "Hao Li", "role": "builder" }]
+  },
+  "repository": "https://github.com/Palmlore/Tiresias",
+  "submission": { "demo_video": null, "slide_deck": null },
+  "sponsors": {
+    "zetaris": {
+      "status": "planned",
+      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned; in Loop B the agent registers a newly discovered entity's SEC filings as a Lightning REST table at runtime, and the critic re-queries counterfactually.",
+      "interface": "rest",
+      "deployment": "local-docker",
+      "data_sources": ["SEC EDGAR XBRL companyfacts", "SEC EDGAR submissions", "SEC company_tickers", "company_dns SIC"],
+      "where": ["zetaris/", "catalog/sources.yaml"],
+      "evidence": [],
+      "decisions": ["docs/decisions/ADR-0003-zetaris-evidence-layer.md"]
+    },
+    "meterless": {
+      "status": "planned",
+      "how": "H-MEM (reference engine behind the cognition service) stores lessons from past investigations, never answers, and is purgeable to show its effect; Nightshift is the primary model provider for all agent model calls.",
+      "engines": ["H-MEM"],
+      "provider": "nightshift",
+      "where": ["services/cognition/", "contracts/openapi/cognition.yaml"],
+      "evidence": [],
+      "decisions": ["docs/decisions/ADR-0002-split-services-rest.md", "docs/decisions/ADR-0005-memory-lessons-purgeable.md"]
+    },
+    "cursor": {
+      "status": "in-progress",
+      "how": "Development environment: editor, terminal and extensions hosting the AI coding assistants; Cursor's agent where plan credit allows.",
+      "surfaces": ["ide"],
+      "where": [],
+      "evidence": [],
+      "decisions": []
+    },
+    "nvidia": {
+      "status": "planned",
+      "how": "Nemotron models served through Nightshift lanes: a fast lane for the hypothesiser and a deep lane for the critic.",
+      "route": "via-meterless",
+      "where": [],
+      "evidence": [],
+      "decisions": []
+    }
+  },
+  "pre_existing": [],
+  "run": {
+    "setup": "README.md#quickstart-judges",
+    "sample_mode": true,
+    "secrets": ["ZETARIS_API_KEY", "METERLESS_RUNTIME_TOKEN"]
+  },
+  "evidence_logs": "logs/"
+}
