@@ -9,7 +9,7 @@
 | **Event** | Open Agent Hackathon 2026 (GenAI Works), 22–27 October 2026 |
 | **Track** | The Agent That Can Explain Why |
 | **Team** | Palmlore (solo) |
-| **Status** | 🚧 **In development during the build window.** Each section says what works today. See [docs/STATUS.md](docs/STATUS.md). |
+| **Status** | 🚧 **In development during the build window.** Each section says what works today. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
 | **Licence** | Apache-2.0 |
 
 ---
@@ -32,7 +32,7 @@ Every step (query, hypothesis, critique, human-in-the-loop gate, memory recall) 
 
 ## Quickstart (judges)
 
-> ⚠️ **Not runnable yet.** The commands below are the target interface, and [docs/STATUS.md](docs/STATUS.md) tracks progress. Planned: **local first, offline, no API keys needed** (`SAMPLE_MODE=true`).
+> ⚠️ **Not runnable yet.** The commands below are the target interface, and [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks progress. Planned: **local first, offline, no API keys needed** (`SAMPLE_MODE=true`).
 
 ```bash
 git clone https://github.com/Palmlore/Tiresias && cd Tiresias
@@ -71,7 +71,8 @@ input_examples/       Sample questions (≥3)
 output_examples/      Real outputs from real runs (never read at runtime)
 logs/                 Run traces (logs/samples/ holds committed example traces)
 deploy/               Local (Docker Compose) and cloud notes (GCP, AWS)
-docs/                 Architecture, decisions (ADRs), criteria, sponsor tech, data sources, status
+docs/                 Checklist, architecture, decisions (ADRs), criteria, sponsor tech, data sources, status
+AGENTS.md             Handover for coding agents (CLAUDE.md imports it)
 scripts/              Checks: secrets scan, metadata validation
 metadata.json         Sponsor and submission metadata (community schema 0.1)
 ```
@@ -81,7 +82,7 @@ metadata.json         Sponsor and submission metadata (community schema 0.1)
 | Sponsor | Role in Tiresias | Status |
 |---|---|---|
 | **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | planned |
-| **Meterless** | **H-MEM** stores lessons from past investigations (purgeable). **Nightshift** is the primary model provider. | planned |
+| **Meterless** | **H-MEM** stores lessons from past investigations (purgeable). **Nightshift** is the primary model provider. | in progress: H-MEM service working (conformance 13/13); Nightshift planned |
 | **Cursor** | Development environment | in progress |
 | **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser, deep critic) | planned |
 

@@ -1,21 +1,8 @@
 # Status and open questions
 
-Updated: 2026-10-22, build day 1. Submission deadline: **27 Oct 2026 23:45 UTC**.
+Updated: 2026-10-22 (build day 1). Submission deadline: **27 Oct 2026 23:45 UTC**.
 
-## Done
-- Problem, user, cases, architecture and the critic rulebook decided ([decisions/](decisions/))
-- Repository layout mapped to the judging criteria ([RUBRIC.md](RUBRIC.md))
-- Zetaris local stack running (verify.sh 9/9) and measured; GE vs GE HealthCare reconciliation runs inside Zetaris (residual $114M)
-
-## Next
-1. ~~Verify and measure Zetaris~~ done: [measurements/zetaris-local.md](measurements/zetaris-local.md)
-2. Register the GE family sources in Zetaris (`zetaris/sql/`).
-3. ~~`cognition`: H-MEM behind REST~~ done: official conformance 13/13 on the loaded module, 6 tests, Docker persistence verified
-4. `agent`: Zetaris adapter, Nightshift client, tracing, Loop A on case 1.
-5. Loop B (onboard GE HealthCare), the critic rulebook, end states.
-6. Sample mode, 3 examples end to end, Docker clean-clone test.
-7. Memory demo (cold, warm, purge), asker profiles, branching.
-8. README, deck and video.
+Progress is tracked in **[CHECKLIST.md](CHECKLIST.md)**. This file holds only the open questions.
 
 ## Open questions and information needed
 
