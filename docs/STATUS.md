@@ -23,8 +23,8 @@ Updated: 2026-10-22, build day 1. Submission deadline: **27 Oct 2026 23:45 UTC**
 |---|---|---|---|
 | 1 | Is Cursor still on the judging rubric now that the event credit is used up? | Organizers (Help Cursor) | Sponsor Tech wording |
 | 2 | Official `metadata.json` format? A community draft is used until then. | Organizers | Submission completeness |
-| 3 | Judge list, to check neutrality of the case companies | Organizers / HackOS | Case selection |
+| 3 | Judge list: 5 of 6 published on 22 Oct: Michael Hay (CTO, Zetaris), Michael Armentano (Head of Technical Partnerships, SpaceXAI), Sam Cummings (Director of Education, GenAI Works), Shestakov Vladyslav (Head of Engineering, GenAI Works), Remus Ranca (Education Operations Lead, GenAI Works). The sixth is pending. Prior employment isn't on the page, so it needs checking. | Us / HackOS | Case neutrality |
 | 4 | NVIDIA credit claim process ("TBC" in the sponsor folder) | NVIDIA help | Nemotron lanes |
-| 5 | Nightshift on macOS 27 (the edition card lists Tahoe) | Meterless help | Power rule |
+| 5 | Nightshift 1.2.1 for Mac is ad-hoc signed and not notarized (no Team ID; Gatekeeper rejects it). It bundles llama.cpp, whisper and sd servers plus a `meterlessd` daemon. Plan: run it in an isolated macOS VM with cloud-only (NVIDIA) lanes and reach it over hotspot mode. Ask Help Meterless for a notarized build or a container/Linux option. | Us / Meterless help | Power rule, host safety |
 | 6 | Runtime table registration latency in local Zetaris | Us (measure) | Loop B design (ADR-0003) |
 | 7 | Zetaris reachability from Cloud Run, and GCE sizing | Us | Cloud overlay (ADR-0008) |
