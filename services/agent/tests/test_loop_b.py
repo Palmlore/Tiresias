@@ -220,6 +220,21 @@ def test_scout_assessment_rules_on_synthetic_registrants():
     assert "annual report" in reasons["0000000005"] and "not a registrant" in reasons["0000000006"]
 
 
+def test_scout_never_uses_a_generic_first_word_as_the_brand():
+    tickers = [
+        TickerRow("AAA", "0000000001", "International Alpha Corp"),
+        TickerRow("IMAQ", "0000000009", "International Media Acquisition Corp."),  # coincidence
+        TickerRow("AAAS", "0000000007", "AAA Spin Inc"),  # carries the ticker: a candidate
+    ]
+    near = [("8-K", "2030-06-02", "5.01")]
+    profiles = {c: _profile(c, "2030-01-15", near) for c in ("0000000009", "0000000007")}
+    scout = source_scout.resolve(
+        _hint_need(), discovery=FakeDiscovery(tickers, profiles), tracer=RecordingTracer()
+    )
+    assert scout.resolved and scout.entity.cik == "0000000007"
+    assert {c.cik10 for c in scout.candidates} == {"0000000007"}
+
+
 def test_scout_refuses_a_tie_and_an_unmatched_disposal():
     tickers = [TickerRow("AAA", "0000000001", "Alpha Corp")] + [
         TickerRow(f"AAA{c}", f"000000000{c}", f"Alpha {c}") for c in (2, 3)

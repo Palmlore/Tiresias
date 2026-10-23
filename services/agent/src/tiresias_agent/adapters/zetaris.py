@@ -38,8 +38,14 @@ CONCEPT_SLUGS: dict[str, str] = {
     "GoodwillImpairmentLoss": "goodwill_impairment",
 }
 # Concepts that filers use interchangeably over time. Queried together; the asked one first.
+# IncludingAssessedTax (e.g. excise taxes kept in revenue, as energy filers report it) is not a
+# showcase concept (no view for GE/GEHC/GEV); it is registered for an asked entity on demand.
 CONCEPT_ALIASES: tuple[tuple[str, ...], ...] = (
-    ("Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax"),
+    (
+        "Revenues",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+    ),
 )
 DEFAULT_FORMS = ("10-K", "10-K/A", "8-K", "8-K/A")
 

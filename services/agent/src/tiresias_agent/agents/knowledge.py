@@ -11,7 +11,12 @@ from dataclasses import dataclass
 
 # Concept families. A metric's family decides which rules apply.
 REVENUE_CONCEPTS = frozenset(
-    {"Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet"}
+    {
+        "Revenues",
+        "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
+        "SalesRevenueNet",
+    }
 )
 INCOME_CONCEPTS = frozenset(
     {
@@ -98,6 +103,23 @@ FILING_EVENTS = (DISPOSAL, ERROR_CORRECTION)
 SEPARATION_ITEMS: tuple[str, ...] = ("5.01",)
 ANNUAL_FORMS: tuple[str, ...] = ("10-K", "10-K/A")
 CURRENT_REPORT_FORMS: tuple[str, ...] = ("8-K", "8-K/A")
+# Generic first words of registrant names. They say nothing about a brand ("International
+# Business Machines" and "International Media Acquisition" share no business), so the scout
+# never uses them as the brand word; the source's ticker and any other first word still count.
+GENERIC_NAME_WORDS: frozenset[str] = frozenset(
+    {
+        "american",
+        "first",
+        "general",
+        "global",
+        "international",
+        "national",
+        "new",
+        "the",
+        "united",
+        "universal",
+    }
+)
 
 # How the disposed business's share of a metric is reported by the filer itself.
 DISPOSAL_MAGNITUDE: dict[str, str] = {

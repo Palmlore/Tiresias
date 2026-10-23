@@ -213,7 +213,25 @@ def _resolve(
         )
     if discovery is None:
         return Resolution(None, False, f"{asked} is not registered and discovery is unavailable")
-    return _discover(request, discovery, known)
+    found = _discover(request, discovery, known)
+    hit = next((x for x in listed if x.cik == found.entity.cik), None) if found.entity else None
+    if found.entity is None or hit is None:
+        return found
+    # Asked by name (or under another ticker) but already registered, e.g. by an earlier run.
+    try:
+        ready = _ready(hit, request.metric, views() if views else None)
+    except SourceError:
+        ready = False
+    if not ready:
+        return found
+    entity = Entity(hit.ticker, hit.cik, hit.name or found.entity.name)
+    return Resolution(
+        entity,
+        True,
+        f"{entity.name or entity.ticker.upper()} (CIK {entity.cik}) resolved from sec_tickers "
+        f"and already registered ({listed.source})",
+        evidence=found.evidence,
+    )
 
 
 def _discover(

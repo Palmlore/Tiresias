@@ -8,8 +8,9 @@ Nothing here names a company, a filing or an amount; the rules are about how SEC
 
 1. The hint must point at a disposal filing (8-K item 2.01) of the source entity, with its date.
 2. Candidates: registrants in the ticker map whose name carries the source's brand (first word
-   of the title equals the source's ticker or the first word of its title), newest CIK first,
-   at most MAX_CANDIDATES. A business that leaves as its own registrant usually keeps the brand.
+   of the title equals the source's ticker or the first word of its title, unless that word is
+   generic, ``knowledge.GENERIC_NAME_WORDS``), newest CIK first, at most MAX_CANDIDATES. A
+   business that leaves as its own registrant usually keeps the brand.
 3. For each candidate, its own filing history (sec_submissions) must show that it became a
    separate registrant at that disposal: it existed by the disposal date (earliest former name or
    filing), had filed no annual report before it, and filed its own current report within
@@ -31,7 +32,13 @@ from ..adapters.catalog import Catalog, CatalogEntry, CatalogError, Discovery, P
 from ..adapters.zetaris import CATALOG_TABLES, Entity, SourceError, object_ticker
 from ..models import EvidenceItem, InformationNeed
 from .common import ROWS_SHOWN
-from .knowledge import ANNUAL_FORMS, CURRENT_REPORT_FORMS, DISPOSAL, SEPARATION_ITEMS
+from .knowledge import (
+    ANNUAL_FORMS,
+    CURRENT_REPORT_FORMS,
+    DISPOSAL,
+    GENERIC_NAME_WORDS,
+    SEPARATION_ITEMS,
+)
 
 AGENT = "source_scout"
 MAX_CANDIDATES = 10
@@ -228,7 +235,7 @@ def _resolve(need: InformationNeed, discovery: Discovery) -> ScoutResult:
             f"the source entity ({hint.source_ticker or hint.source_cik}) is not in sec_tickers",
             [_item(lookup, [], "source entity lookup")],
         )
-    brand = {source.ticker.lower(), _first_word(source.title)} - {""}
+    brand = {source.ticker.lower(), _first_word(source.title)} - {""} - GENERIC_NAME_WORDS
     try:
         tickers = discovery.brand(sorted(brand))
     except (SourceError, CatalogError, ValueError) as err:

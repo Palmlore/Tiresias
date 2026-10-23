@@ -217,10 +217,15 @@ def test_live_unresolvable_or_ambiguous_company_is_a_frontier(
     assert not [s for s in fake.sql if s.startswith("CREATE LIGHTNING REST TABLE acme")]
 
 
-def test_live_name_resolves_exact_title(tmp_path, monkeypatch, no_real_http):
+def test_live_name_resolves_exact_title_and_reuses_it_when_warm(
+    tmp_path, monkeypatch, no_real_http
+):
     fake = FakeZetaris(ACME_TICKERS, ACME_ALIASES)
     result, _ = _live(fake, "03", tmp_path, {"name": "ACME Corp"}, monkeypatch)
     assert result.end_state == "actionable" and result.stats.sources_onboarded == 1
+    result, lines = _live(fake, "03", tmp_path / "warm", {"name": "ACME Corp"}, monkeypatch)
+    assert result.end_state == "actionable" and result.stats.sources_onboarded == 0
+    assert not any(x["agent"] == "onboarder" for x in lines)
 
 
 def test_live_source_gate_deny_and_cap_zero_register_nothing(tmp_path, monkeypatch, no_real_http):
