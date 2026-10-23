@@ -81,7 +81,7 @@ metadata.json         Sponsor and submission metadata (community schema 0.1)
 
 | Sponsor | Role in Tiresias | Status |
 |---|---|---|
-| **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | planned |
+| **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | in progress: adapter and source registration working against a local Zetaris, with sample-mode fallback; not yet driven by the agent loop |
 | **Meterless** | **H-MEM** stores lessons from past investigations (purgeable). **Nightshift** is the primary model provider. | in progress: H-MEM service working (conformance 13/13); Nightshift planned |
 | **Cursor** | Optional since 23 Oct (organizer update); Claude Code is the main coding agent | optional |
 | **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser, deep critic) | planned |

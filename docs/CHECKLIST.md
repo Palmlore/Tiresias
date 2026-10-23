@@ -33,9 +33,9 @@ Updated **2026-10-23 AEDT** (build day 2). Work now lands through DuelLoop-revie
 - [~] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10)
   - [x] Local Zetaris running; `verify.sh` 9/9; measured ([measurements/zetaris-local.md](measurements/zetaris-local.md))
   - [x] GE vs GE HealthCare reconciliation runs inside Zetaris (residual $114M), via `scripts/zetaris_probe.py`
-  - [ ] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9)
+  - [x] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9) (#5: live and sample sources, falls back to `data/sample/` on outage and traces `degraded`; live smoke row counts match sample mode)
   - [ ] Loop B registers a discovered entity's source at runtime from `catalog/sources.yaml`
-  - [ ] `zetaris/sql/` holds the registration SQL for the showcase entities
+  - [x] `zetaris/sql/` holds the registration SQL for the showcase entities (#5: 12 templates; `bootstrap` registered GE, GEHC, GEV and is idempotent)
 - [~] **Meterless Build rule: at least one engine in a working, user-facing feature, with test evidence** (SG §3.2)
   - [x] H-MEM in `services/cognition`; official conformance 13/13 (`npm run conformance`); 6 tests
   - [ ] User-facing feature: cold → warm → purge → cold memory demo through `/run`
@@ -115,7 +115,7 @@ Updated **2026-10-23 AEDT** (build day 2). Work now lands through DuelLoop-revie
 | When (AEDT) | Gate | Status |
 |---|---|---|
 | Thu 22 Oct (day 1) | Zetaris up and measured; repo scaffolded; cognition service working | [x] |
-| Fri 23 Oct | Agent: Zetaris adapter, tracing, Loop A on case 01 in sample mode | [~] tracing, model and memory clients merged; Zetaris adapter in review; Loop A next |
+| Fri 23 Oct | Agent: Zetaris adapter, tracing, Loop A on case 01 in sample mode | [~] tracing, Zetaris adapter, model and memory clients merged; Loop A next |
 | Sat 24 Oct | Loop B live; critic rules; Nightshift client; 3 cases end to end | [ ] |
 | Sun 25 Oct (day-4 checkpoint) | Runs locally **and** in Docker; sample mode with an empty `.env`; memory demo; fresh-clone validation; first judge install test on the clean Tahoe VM. More than 3 gaps means cut scope. | [ ] |
 | Mon 26 Oct | Freeze architecture. Branching and asker profiles polish; outputs and traces committed; README final | [ ] |
