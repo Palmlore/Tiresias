@@ -25,7 +25,7 @@
   "sponsors": {
     "zetaris": {
       "status": "in-progress",
-      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned; in Loop B the agent registers a newly discovered entity's SEC filings as a Lightning REST table at runtime, and the critic re-queries counterfactually.",
+      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Live mode is measured but not yet the judge's default path (sample mode runs the same logic on cached rows), hence in-progress.",
       "interface": "rest",
       "deployment": "local-docker",
       "data_sources": [
@@ -35,10 +35,18 @@
         "company_dns SIC"
       ],
       "where": [
+        "services/agent/src/tiresias_agent/adapters/zetaris.py",
+        "services/agent/src/tiresias_agent/adapters/catalog.py",
+        "services/agent/src/tiresias_agent/agents/onboarder.py",
         "zetaris/",
         "catalog/sources.yaml"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/measurements/live-any-company.md: live runs through local Zetaris on 2026-10-23 (three examples plus IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT), cold and warm, timed from each run's phase trace lines",
+        "docs/measurements/zetaris-local.md: local bundle latencies (REST table registration 0.6–2.0 s, cached queries)",
+        "services/agent/tests/test_any_company.py: no agent module outside the sponsor adapters makes HTTP calls; live discovery and registration run as Zetaris SQL (mocked endpoint)",
+        "services/agent/tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views"
+      ],
       "decisions": [
         "docs/decisions/ADR-0003-zetaris-evidence-layer.md"
       ]
