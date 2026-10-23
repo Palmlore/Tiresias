@@ -41,7 +41,7 @@ Status: **planned**
 
 ## Cursor
 
-Cursor is the development environment: the editor, plus its terminal and extensions hosting the AI coding assistants used. Cursor's own agent is used where plan credit allows; the event credit ran out on 22 Oct 2026, and confirmation is pending. This section will describe exactly what was used, and no more.
+Cursor is the development environment: the editor, plus its terminal and extensions hosting the AI coding assistants used. This section will describe exactly how Cursor was used, and no more.
 
 Status: **in progress**
 

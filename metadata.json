@@ -67,7 +67,7 @@
     },
     "cursor": {
       "status": "in-progress",
-      "how": "Development environment: editor, terminal and extensions hosting the AI coding assistants; Cursor's agent where plan credit allows.",
+      "how": "Development environment: editor, terminal and extensions hosting the AI coding assistants.",
       "surfaces": [
         "ide"
       ],

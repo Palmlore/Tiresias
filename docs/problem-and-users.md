@@ -24,7 +24,7 @@
 | 2 | Why did GE's **2023** revenue fall between the 2024 and 2025 10-Ks? | $67,954M → $35,348M (Δ $32,606M) | GE Vernova 2023 revenue $33,239M, residual −$633M | Spin-off |
 | 3 | Why did GE post a **$22.4B net loss in 2018**? | NetIncomeLoss −$22,355M; GoodwillImpairmentLoss $22,136M | Points to Power, then to the 2015 Alstom acquisition | Impairment |
 
-Why GE: one parent, several subsidiaries that each file with the SEC, a well-known break-up story, and more than one root-cause type. Neutrality note: GE HealthCare has a publicly announced imaging collaboration with NVIDIA (an event sponsor). The cases concern accounting restatements, not that collaboration. Fallback cases: 3M → Solventum, Danaher spin-offs.
+Why GE: one parent with several subsidiaries that each file with the SEC, a well-known break-up story, and more than one root-cause type.
 
 ## UX principles
 

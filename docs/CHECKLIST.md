@@ -43,7 +43,7 @@ Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 2
   - [ ] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers
   - [ ] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling)
 - [ ] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page)
-- [~] **Developed in Cursor.** Repo opened and edited in Cursor; describe exactly how it was used (OR §8.1; SP cursor). *Credit used up, confirmation pending (STATUS #1).*
+- [~] **Developed in Cursor.** Repo opened and edited in Cursor; describe exactly how it was used (OR §8.1; SP cursor).
 
 ## C. Agent system (Technical 20 · Innovation 15)
 - [ ] ≥2 named agents with distinct roles that interact more than once (OR §7.3; SC §9)
@@ -97,7 +97,7 @@ Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 2
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
 - [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris, Meterless, Cursor and NVIDIA, plus "what was unique" (SR §3.4) (drafted; finalize from what ships)
 - [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Meterless `in-progress`)
-- [ ] Switch to the official metadata format if the organizers publish one (STATUS #2)
+- [ ] Switch to the official metadata format if the organizers publish one (STATUS #1)
 
 ## J. Submission (HackOS)
 - [ ] Project name, one-sentence description and paragraph prepared (SF §3.1)

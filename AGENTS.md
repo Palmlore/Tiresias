@@ -5,7 +5,7 @@
 **Deadline: 27 Oct 2026 23:45 UTC (28 Oct 10:45 AEDT).** Hard deadline. Submit with hours to spare.
 
 ## Read first (in this order)
-0. [docs/HANDOVER.md](docs/HANDOVER.md): **start here each session.** Environment state, how to start it, leftover tasks and the next concrete steps.
+0. `../workspace/HANDOVER.md`: **start here each session.** It is private, outside this repo (a local git repo with no remote), and covers environment state, how to start it, leftover tasks and next steps. Working data, pinned upstream clones and internal notes live in `../workspace/` too, never in this public repo and never in a temp scratchpad.
 1. [docs/CHECKLIST.md](docs/CHECKLIST.md): the progress checklist, cross-referenced to every event requirement. **Tick items only when evidence exists.**
 2. [docs/STATUS.md](docs/STATUS.md): open questions and who owns them.
 3. [docs/architecture.md](docs/architecture.md), [docs/causal-criteria.md](docs/causal-criteria.md), [docs/decisions/](docs/decisions/) (ADR-0001..0008): the agreed design. Don't re-decide these without a new ADR.
