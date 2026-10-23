@@ -99,21 +99,21 @@ Found in: #9  ·  Status: open
 - Evidence: `docs/measurements/live-any-company.md` (case s4, XOM); `adapters/zetaris.py` (`CONCEPT_ALIASES`).
 
 ## B-12: Peers come only from registered entities; a non-SEC company gets no industry
-Found in: feat/entities-api  ·  Status: open
+Found in: #12  ·  Status: open
 - Out of scope because: the catalog has no SIC index (SEC publishes SIC per registrant in its submissions, not a list by code), so the scope check reads the SIC of the asked entity and of at most `MAX_PEER_PROBES` registered entities. A company outside SEC has no SIC in our data at all; proposing its industry needs a model (Nightshift: the model proposes an industry or peers, the agent validates each against filed data, the model never answers).
 - Safe to leave because: the alternatives that are offered are each validated; with no peer the check still offers registrants named in the question and the same entity's past period, and the `note` says why there are no peers.
 - Urgent if: the demo or a judge expects same-industry peers for a non-SEC company (e.g. a hardware maker outside SEC) or for an industry with no registered entity yet.
 - Evidence: `services/agent/src/tiresias_agent/agents/scope.py` (`alternatives`, `_sic`, `MAX_PEER_PROBES`); `zetaris/sql/38_registrant_profile.sql`.
 
 ## B-13: Suggestions and alternatives for an unregistered registrant are thin
-Found in: feat/entities-api  ·  Status: open
+Found in: #12  ·  Status: open
 - Out of scope because: suggestions are derived from the company's own companyfacts, which exist only once it is registered (12–16 s cold), and a GET should not register sources. `GET /entities/{cik}/suggestions` therefore answers 409 `EntityNotRegistered` for a searchable entity, and a scope-check alternative about an unregistered registrant takes its fiscal year from its submissions (two 10-K report dates) without checking that the metric is present.
 - Safe to leave because: the 409 says what to do (ask any question, which registers it, then call again); an alternative whose metric turns out to be missing ends at `evidence-frontier` (`MetricNotFound`) with the reason, never an invented value.
 - Urgent if: a UI needs suggestions for a company before its first run (add an explicit `register=true`, behind the source gate and `MAX_NEW_SOURCES_PER_RUN`).
 - Evidence: `services/agent/src/tiresias_agent/entities.py` (`_refuse`); `agents/scope.py` (`_alternative`, `_fiscal_year`).
 
 ## B-14: The scope check's text rules are English keyword rules
-Found in: feat/entities-api  ·  Status: open
+Found in: #12  ·  Status: open
 - Out of scope because: forecast/what-if detection (`forward_cue`) and named-company extraction (`name_phrases`: capitalised phrases matched to exactly one CIK in `sec_tickers`) are fixed rules (ADR-0007: rule-based without a model). They miss a lowercase company name, a brand shared by several registrants, or a forward question phrased without a cue word; parsing free text with a Nightshift model is planned (model proposes, agent validates).
 - Safe to leave because: false positives are kept low by design and tested (`tests/test_scope.py`); a missed forward question still runs and ends on the evidence (usually `MetricNotFound` or `NoEffect` for a future period, which the period-after-today rule also catches); an unmatched name just yields no alternative.
 - Urgent if: judges type free-form questions in other phrasings, or the UI accepts questions without a structured entity.
