@@ -41,9 +41,9 @@ Status: **planned**
 
 ## Cursor
 
-Cursor is the development environment: the editor, plus its terminal and extensions hosting the AI coding assistants used. This section will describe exactly how Cursor was used, and no more.
+Cursor became optional on 23 Oct 2026. The organizers' update to the Build section reads: "Cursor is now optional. You can use any AI coding tool you're comfortable with, such as Cursor, Claude Code, Windsurf or GitHub Copilot." Tiresias is built mainly with Claude Code (see [ai-usage.md](ai-usage.md#development-tools)). The core Build requirement is unchanged: a Meterless engine (H-MEM here) in a working feature, shown with a passing test or a live demo.
 
-Status: **in progress**
+Status: **optional, not a Tiresias dependency**
 
 ## What was unique
 

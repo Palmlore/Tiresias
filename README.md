@@ -83,7 +83,7 @@ metadata.json         Sponsor and submission metadata (community schema 0.1)
 |---|---|---|
 | **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | planned |
 | **Meterless** | **H-MEM** stores lessons from past investigations (purgeable). **Nightshift** is the primary model provider. | in progress: H-MEM service working (conformance 13/13); Nightshift planned |
-| **Cursor** | Development environment | in progress |
+| **Cursor** | Optional since 23 Oct (organizer update); Claude Code is the main coding agent | optional |
 | **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser, deep critic) | planned |
 
 Details are in [docs/sponsor-technology.md](docs/sponsor-technology.md). Status is only `working` when a judge can see it run.

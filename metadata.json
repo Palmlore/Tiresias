@@ -66,13 +66,13 @@
       ]
     },
     "cursor": {
-      "status": "in-progress",
-      "how": "Development environment: editor, terminal and extensions hosting the AI coding assistants.",
-      "surfaces": [
-        "ide"
-      ],
+      "status": "planned",
+      "how": "Optional since the organizers' 23 Oct 2026 update. Tiresias is built mainly with Claude Code; Cursor is not a dependency of the product or the build.",
+      "surfaces": [],
       "where": [],
-      "evidence": [],
+      "evidence": [
+        "docs/ai-usage.md#development-tools"
+      ],
       "decisions": []
     },
     "nvidia": {

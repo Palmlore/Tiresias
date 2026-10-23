@@ -13,7 +13,7 @@ A custom orchestrator in Python (FastAPI). No third-party agent framework so far
 See [sponsor-technology.md](sponsor-technology.md).
 
 ## Development tools
-Developed in Cursor. AI coding assistants were used for scaffolding, code, tests and documentation. All generated code is reviewed and tested before commit.
+Claude Code (Anthropic's CLI coding agent) is the main development tool, used for scaffolding, code, tests and documentation. Cursor became optional on 23 Oct 2026 (organizer update) and is not required by this build. All generated code is reviewed and tested before commit.
 
 ## Data
 Public SEC EDGAR and company_dns data. See [data-sources.md](data-sources.md). No synthetic data so far; any synthetic data will be labelled.

@@ -1,4 +1,4 @@
-# AGENTS.md: handover for coding agents (Cursor, Claude Code, others)
+# AGENTS.md: handover for coding agents (Claude Code is the main driver; Cursor or others also fine)
 
 **Tiresias**: an evidence-backed "5 Whys" root-cause agent for financial analysts on SEC filings. Open Agent Hackathon 2026, track *Reasoning Architecture* (ADR-0009). Solo entry by Palmlore. Repo: github.com/Palmlore/Tiresias (public, Apache-2.0).
 

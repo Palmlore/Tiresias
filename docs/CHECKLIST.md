@@ -43,7 +43,7 @@ Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 2
   - [ ] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers
   - [ ] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling)
 - [ ] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page)
-- [~] **Developed in Cursor.** Repo opened and edited in Cursor; describe exactly how it was used (OR §8.1; SP cursor).
+- [x] ~~**Developed in Cursor.**~~ Optional since the organizers' 23 Oct update ("Cursor is now optional … use any AI coding tool"). Claude Code is the main coding agent. Describe only the tools actually used ([ai-usage.md](ai-usage.md)) (OR §8.1 as amended; SP cursor).
 
 ## C. Agent system (Technical 20 · Innovation 15)
 - [ ] ≥2 named agents with distinct roles that interact more than once (OR §7.3; SC §9)
