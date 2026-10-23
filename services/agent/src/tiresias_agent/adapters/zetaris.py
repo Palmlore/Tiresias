@@ -212,6 +212,12 @@ def ticker_of(entity: str) -> str:
     return _check(_TICKER, str(entity).strip().lower(), "entity ticker")
 
 
+def object_ticker(symbol: str) -> str:
+    """An SEC ticker as a Zetaris object-name prefix: lower case, letters and digits only
+    ("BRK-B" -> "brkb"). Raises ValueError when nothing usable is left."""
+    return ticker_of(re.sub(r"[^a-z0-9]", "", str(symbol).strip().lower()))
+
+
 def concept_slug(concept: str) -> str:
     _check(_CONCEPT, concept, "concept")
     slug = CONCEPT_SLUGS.get(concept) or re.sub(r"(?<!^)(?=[A-Z])", "_", concept).lower()
@@ -746,10 +752,19 @@ def make_source(
 
 
 BOOTSTRAP_TIMEOUT_SECONDS = 180.0
+MIN_STATEMENT_SECONDS = 1.0  # below this much run budget left, a statement is skipped
 # Raw tables a registration can create, keyed by kind, with the catalog template behind each.
 REGISTRABLE_TABLES = ("facts", "submissions")
 CATALOG_TABLES = {"sec_companyfacts": "facts", "sec_submissions": "submissions"}
-_DONE_STATUS = {"cache": "cached", "concept_view": "replaced", "filings_view": "replaced"}
+# Discovery objects (catalog id sec_tickers): registered once, never an evidence source.
+TICKERS_TABLE = "sec_tickers_raw"
+TICKERS_VIEW = "sec_tickers"
+_DONE_STATUS = {
+    "cache": "cached",
+    "concept_view": "replaced",
+    "filings_view": "replaced",
+    "tickers_view": "replaced",
+}
 
 
 def bootstrap_plan(
@@ -758,11 +773,14 @@ def bootstrap_plan(
     concepts: Sequence[str] = tuple(CONCEPT_SLUGS),
     directory: Path | None = None,
     tables: Sequence[str] = REGISTRABLE_TABLES,
+    discovery: bool = False,
 ) -> list[tuple[str, str, str, str | None]]:
     """(step, object, sql, required raw table) in order. Only CREATE, CREATE OR REPLACE, CACHE.
 
     ``tables`` limits the raw tables (and the views over them) to register: "facts" (concept
-    views) and/or "submissions" (filings view). Loop B's onboarder registers only "facts"."""
+    views) and/or "submissions" (filings view). Loop B's onboarder registers only "facts".
+    ``discovery`` adds the sec_tickers discovery table and view (bootstrap CLI, or the live
+    discovery adapter on first use); they are catalog reads, not evidence sources."""
     unknown = set(tables) - set(REGISTRABLE_TABLES)
     if unknown or not tables:
         raise ValueError(f"tables must be a non-empty subset of {REGISTRABLE_TABLES}")
@@ -771,6 +789,13 @@ def bootstrap_plan(
         ("database", "TIRESIAS_SEC", render_file("00_database.sql", directory), None),
         ("container", "tiresias", render_file("01_container.sql", directory), None),
     ]
+    if discovery:
+        sql = render_file("13_tickers_table.sql", directory, sec_user_agent=ua)
+        steps.append(("tickers_table", f"TIRESIAS_SEC.{TICKERS_TABLE}", sql, None))
+        cache = render_file("12_cache_table.sql", directory, table=TICKERS_TABLE)
+        steps.append(("cache", f"TIRESIAS_SEC.{TICKERS_TABLE}", cache, TICKERS_TABLE))
+        view = render_file("22_tickers_view.sql", directory)
+        steps.append(("tickers_view", f"tiresias.{TICKERS_VIEW}", view, TICKERS_TABLE))
     for e in entities:
         t, cik = ticker_of(e.ticker), _check(_CIK10, e.cik, "CIK")
         facts, subs = f"{t}_facts_raw", f"{t}_submissions_raw"
@@ -801,28 +826,37 @@ def bootstrap(
     entities: Sequence[Entity] = SHOWCASE_ENTITIES,
     concepts: Sequence[str] = tuple(CONCEPT_SLUGS),
     tables: Sequence[str] = REGISTRABLE_TABLES,
+    discovery: bool = False,
+    deadline: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> list[dict[str, Any]]:
-    """Register the showcase sources (or, from Loop B, one discovered entity's ``tables``). Safe to run twice: "already exists" counts as done.
+    """Register the showcase sources (or one entity's ``tables``: the asked entity, or Loop B's
+    discovered one). Safe to run twice: "already exists" counts as done.
 
     A concept the entity never reported gives status "absent" (no view); other failures are
     recorded and the run goes on; steps on a raw table that failed are skipped. Never drops.
+    ``deadline`` (a ``clock()`` value, e.g. the end of the run budget) caps each statement's
+    timeout at the time left and skips the remaining statements once it has passed.
     """
     ua = sec_user_agent or os.getenv("SEC_USER_AGENT", "")
     failed_tables: set[str] = set()
     report: list[dict[str, Any]] = []
-    for step, obj, sql, requires in bootstrap_plan(ua, entities, concepts, tables=tables):
+    plan = bootstrap_plan(ua, entities, concepts, tables=tables, discovery=discovery)
+    for step, obj, sql, requires in plan:
         entry: dict[str, Any] = {"step": step, "object": obj}
         if requires in failed_tables:
             report.append({**entry, "status": "skipped", "duration_ms": 0})
             continue
+        timeout = max(client.config.timeout_seconds, BOOTSTRAP_TIMEOUT_SECONDS)
+        if deadline is not None:
+            left = deadline - clock()
+            if left < MIN_STATEMENT_SECONDS:
+                report.append({**entry, "status": "skipped", "duration_ms": 0, "budget": True})
+                continue
+            timeout = min(timeout, left)
         start = time.perf_counter()
         try:
-            client.run_sql(
-                sql,
-                label=f"bootstrap:{step}",
-                timeout=max(client.config.timeout_seconds, BOOTSTRAP_TIMEOUT_SECONDS),
-                redact=[ua],
-            )
+            client.run_sql(sql, label=f"bootstrap:{step}", timeout=timeout, redact=[ua])
             # Views use CREATE OR REPLACE, so a re-run reports them as "replaced".
             entry["status"] = _DONE_STATUS.get(step, "created")
         except SourceError as err:
@@ -839,6 +873,21 @@ def bootstrap(
         entry["duration_ms"] = _ms(start)
         report.append(entry)
     return report
+
+
+def lightning_tables(client: ZetarisClient, directory: Path | None = None) -> dict[str, str]:
+    """Registered REST tables in TIRESIAS_SEC: lower-case name -> endpoint (32_entities.sql)."""
+    result = client.run_sql(load_template("32_entities.sql", directory), label="list_tables")
+    return {
+        str(r.get("name") or "").lower(): str(r.get("source_table") or "")
+        for r in result.rows
+        if r.get("name")
+    }
+
+
+def endpoint_cik(endpoint: str) -> str | None:
+    match = re.search(r"CIK(\d{10})", endpoint or "")
+    return match.group(1) if match else None
 
 
 # --- CLI --------------------------------------------------------------------------------------
@@ -895,14 +944,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "smoke":
         return _smoke(make_source(args.sample, tracer))
     client = ZetarisClient(ZetarisConfig.from_env(), tracer=tracer)
-    report = bootstrap(client)
+    report = bootstrap(client, discovery=True)
     for entry in report:
         print(json.dumps(entry), flush=True)
     counts: dict[str, int] = {}
     for entry in report:
         counts[entry["status"]] = counts.get(entry["status"], 0) + 1
     print(json.dumps({"bootstrap": counts}), flush=True)
-    core = {"database", "container", "facts_table", "submissions_table"}
+    core = {"database", "container", "facts_table", "submissions_table", "tickers_table"}
     return 1 if any(e["status"] == "failed" and e["step"] in core for e in report) else 0
 
 
@@ -921,7 +970,10 @@ __all__ = [
     "ZetarisClient",
     "ZetarisConfig",
     "bootstrap",
+    "endpoint_cik",
+    "lightning_tables",
     "make_source",
+    "object_ticker",
 ]
 
 

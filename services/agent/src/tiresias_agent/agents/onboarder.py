@@ -28,13 +28,16 @@ from typing import Any, Literal
 
 from ..adapters.zetaris import (
     CATALOG_TABLES,
+    CONCEPT_SLUGS,
     DEFAULT_FORMS,
+    REGISTRABLE_TABLES,
     Entity,
     EvidenceSource,
     SourceError,
     ZetarisClient,
     bootstrap,
     bootstrap_plan,
+    concept_aliases,
     sample_dir,
     ticker_of,
 )
@@ -55,11 +58,15 @@ Status = Literal["registered", "degraded", "denied", "capped", "failed"]
 class Registry:
     """The entities this run may query: the asked one, plus each one the onboarder registered."""
 
-    def __init__(self, source: EvidenceSource, asked: str) -> None:
+    def __init__(
+        self, source: EvidenceSource, asked: str, onboarded: Sequence[Entity] = ()
+    ) -> None:
         self.source = source
         self.name = source.name
         self.allowed = {ticker_of(asked)}
-        self.onboarded: list[Entity] = []
+        # Sources this run registered already (e.g. the asked entity, before Loop A): they
+        # count toward MAX_NEW_SOURCES_PER_RUN.
+        self.onboarded: list[Entity] = list(onboarded)
 
     def add(self, entity: Entity) -> None:
         self.allowed.add(ticker_of(entity.ticker))
@@ -125,6 +132,8 @@ def onboard(
     client: ZetarisClient | None = None,
     data_dir: Path | None = None,
     sec_user_agent: str | None = None,
+    deadline: float | None = None,
+    clock: Any = time.monotonic,
 ) -> Registration:
     entity, template = scout.entity, scout.template
     if entity is None or template is None:
@@ -218,7 +227,13 @@ def onboard(
         )
     start = time.perf_counter()
     report = bootstrap(
-        client, sec_user_agent=ua, entities=[entity], concepts=aliases, tables=(kind,)
+        client,
+        sec_user_agent=ua,
+        entities=[entity],
+        concepts=aliases,
+        tables=(kind,),
+        deadline=deadline,
+        clock=clock,
     )
     table = next(e for e in report if e["step"] == f"{kind}_table")
     steps = [{k: e.get(k) for k in ("step", "object", "status")} for e in report]
@@ -295,7 +310,9 @@ def _sample(
     )
 
 
-def _done(tracer: Any, need: InformationNeed, reg: Registration) -> Registration:
+def _done(
+    tracer: Any, need: InformationNeed | str, reg: Registration, **extra: Any
+) -> Registration:
     status = {
         "registered": "success",
         "degraded": "degraded",
@@ -307,9 +324,10 @@ def _done(tracer: Any, need: InformationNeed, reg: Registration) -> Registration
         agent=AGENT,
         action="register",
         status=status,
-        node_id=need.node_id,
+        node_id=need if isinstance(need, str) else need.node_id,
         target_agent="analyst" if reg.ok else "reporter",
         output_summary=reg.reason,
+        **extra,
         registration=reg.mode,
         outcome=reg.status,
         template=reg.template,
@@ -326,3 +344,162 @@ def _done(tracer: Any, need: InformationNeed, reg: Registration) -> Registration
 
 def _ms(start: float) -> int:
     return round((time.perf_counter() - start) * 1000)
+
+
+def onboard_entity(
+    entity: Entity,
+    *,
+    metric: str,
+    gate: Gate,
+    used: int,
+    cap: int,
+    tracer: Any,
+    client: ZetarisClient | None,
+    deadline: float | None = None,
+    clock: Any = time.monotonic,
+    sec_user_agent: str | None = None,
+) -> Registration:
+    """Live only: register the **asked** entity (not in the showcase set) before Loop A.
+
+    Same order as ``onboard``: source cap -> dry run -> source gate -> registration. Registers
+    both raw tables (companyfacts and submissions), their caches, the concept views the
+    hypothesiser's rules use plus the asked metric and its aliases, and the filings view; it is
+    one new evidence source and counts toward MAX_NEW_SOURCES_PER_RUN. ``deadline`` (the end of
+    the run budget, a ``clock()`` value) bounds every statement. There is no sample fallback: the
+    sample slice only holds the showcase entities, so an outage fails the registration."""
+    node = "n0"
+    base: dict[str, Any] = {"entity": entity, "template": "sec_companyfacts+sec_submissions"}
+    scope = {"scope": "asked_entity"}
+    if used >= cap:
+        return _done(
+            tracer,
+            node,
+            Registration(
+                "capped",
+                f"MAX_NEW_SOURCES_PER_RUN={cap} reached ({used} onboarded); not registering "
+                f"{entity.name} (CIK {entity.cik})",
+                **base,
+            ),
+            **scope,
+        )
+    ua = sec_user_agent if sec_user_agent is not None else os.getenv(USER_AGENT_ENV, "")
+    concepts = list(dict.fromkeys([*concept_aliases(metric), *CONCEPT_SLUGS]))
+    try:
+        plan = bootstrap_plan(ua, [entity], concepts, tables=REGISTRABLE_TABLES)
+    except (ValueError, KeyError, OSError) as err:
+        return _done(
+            tracer,
+            node,
+            Registration("failed", f"dry run failed: {_mask(str(err), ua)}", **base),
+            **scope,
+        )
+    table_sql = next(_mask(sql, ua) for step, _, sql, _ in plan if step == "facts_table")
+    plan_item = EvidenceItem(
+        sql=table_sql,
+        filter=f"dry run: {len(plan)} statements from zetaris/sql for the asked entity",
+        source="zetaris",
+        row_count=len(plan),
+        matched=len(plan),
+        rows=[{"step": step, "object": obj} for step, obj, _, _ in plan][:20],
+    )
+    tracer.emit(
+        agent=AGENT,
+        action="dry_run",
+        node_id=node,
+        target_agent="gate",
+        input_summary=f"asked entity {entity.name} (CIK {entity.cik})",
+        output_summary=f"{len(plan)} statements: "
+        + ", ".join(f"{step} {obj}" for step, obj, _, _ in plan)[:400],
+        sql=table_sql,
+        rows=len(plan),
+        template=base["template"],
+        **scope,
+    )
+    decision = gate.decide(
+        GateRequest(
+            gate=GATE,
+            question=f"Register the asked entity {entity.name} (CIK {entity.cik}) in Zetaris as "
+            f"{len(plan)} statements (companyfacts + submissions)? ({used}/{cap} sources used)",
+            options=OPTIONS,
+            proposal="register",
+            node_id=node,
+            requested_by=AGENT,
+            context={"cik": entity.cik, "used": used, "cap": cap, "scope": "asked_entity"},
+        )
+    )
+    base["gate_decided"] = True
+    if decision.choice != "register":
+        return _done(
+            tracer,
+            node,
+            Registration(
+                "denied",
+                f"source gate ({decision.mode}, {decision.decided_by}) denied registering the "
+                f"asked entity {entity.name}",
+                evidence=[plan_item],
+                **base,
+            ),
+            **scope,
+        )
+    if client is None:
+        return _done(
+            tracer,
+            node,
+            Registration(
+                "failed", "live mode without a Zetaris client", evidence=[plan_item], **base
+            ),
+            **scope,
+        )
+    start = time.perf_counter()
+    report = bootstrap(
+        client,
+        sec_user_agent=ua,
+        entities=[entity],
+        concepts=concepts,
+        deadline=deadline,
+        clock=clock,
+    )
+    steps = [{k: e.get(k) for k in ("step", "object", "status")} for e in report]
+    item = plan_item.model_copy(
+        update={
+            "filter": f"registered one statement at a time ({_ms(start)} ms)",
+            "rows": steps[:20],
+        }
+    )
+    tables = {e["step"]: e for e in report if e["step"] in {"facts_table", "submissions_table"}}
+    bad = [e for e in tables.values() if e["status"] not in _DONE]
+    if not bad and len(tables) == 2:
+        views = [e for e in report if e["step"] == "concept_view" and e["status"] in _DONE]
+        return _done(
+            tracer,
+            node,
+            Registration(
+                "registered",
+                f"registered {entity.name} (CIK {entity.cik}) in Zetaris: companyfacts + "
+                f"submissions ({len(views)} concept view(s), filings view)",
+                mode="zetaris",
+                evidence=[item],
+                **base,
+            ),
+            **scope,
+        )
+    first = bad[0] if bad else {"status": "missing"}
+    why = (
+        "the run budget ran out during registration"
+        if first.get("budget") or first["status"] == "skipped"
+        else first.get("error", first["status"])
+    )
+    return _done(
+        tracer,
+        node,
+        Registration(
+            "failed",
+            f"Zetaris registration of {entity.name} failed "
+            f"({'outage' if first.get('recoverable') else 'not recoverable'}; the offline sample "
+            f"holds only the showcase entities): {why}",
+            mode="zetaris",
+            evidence=[item],
+            **base,
+        ),
+        **scope,
+    )

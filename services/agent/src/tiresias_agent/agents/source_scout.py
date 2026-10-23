@@ -2,7 +2,8 @@
 picks the catalog template that holds the missing variable (docs/architecture.md, Loop B).
 
 Only from the catalog: every read goes through a catalog template (``sec_tickers``,
-``sec_submissions``) and the chosen template must be a catalog entry the onboarder can register.
+``sec_submissions``), served in live mode by Zetaris (``adapters.catalog.ZetarisDiscovery``),
+and the chosen template must be a catalog entry the onboarder can register.
 Nothing here names a company, a filing or an amount; the rules are about how SEC filers behave:
 
 1. The hint must point at a disposal filing (8-K item 2.01) of the source entity, with its date.
@@ -27,7 +28,7 @@ from datetime import date
 from typing import Any
 
 from ..adapters.catalog import Catalog, CatalogEntry, CatalogError, Discovery, Profile, TickerRow
-from ..adapters.zetaris import CATALOG_TABLES, Entity, SourceError, ticker_of
+from ..adapters.zetaris import CATALOG_TABLES, Entity, SourceError, object_ticker
 from ..models import EvidenceItem, InformationNeed
 from .common import ROWS_SHOWN
 from .knowledge import ANNUAL_FORMS, CURRENT_REPORT_FORMS, DISPOSAL, SEPARATION_ITEMS
@@ -206,10 +207,13 @@ def _resolve(need: InformationNeed, discovery: Discovery) -> ScoutResult:
     if template is None:
         return ScoutResult(None, None, why_template)
     try:
-        tickers = discovery.tickers()
-    except (SourceError, CatalogError) as err:
+        lookup = discovery.lookup(
+            tickers=[hint.source_ticker] if hint.source_ticker else [],
+            ciks=[hint.source_cik] if hint.source_cik else [],
+        )
+    except (SourceError, CatalogError, ValueError) as err:
         return ScoutResult(None, None, f"catalog read failed (sec_tickers): {err}")
-    rows = list(tickers)
+    rows = list(lookup)
     source = next(
         (r for r in rows if hint.source_cik and r.cik10 == hint.source_cik),
         None,
@@ -222,24 +226,25 @@ def _resolve(need: InformationNeed, discovery: Discovery) -> ScoutResult:
             None,
             None,
             f"the source entity ({hint.source_ticker or hint.source_cik}) is not in sec_tickers",
-            [_item(tickers, [], "source entity lookup")],
+            [_item(lookup, [], "source entity lookup")],
         )
     brand = {source.ticker.lower(), _first_word(source.title)} - {""}
+    try:
+        tickers = discovery.brand(sorted(brand))
+    except (SourceError, CatalogError, ValueError) as err:
+        return ScoutResult(None, None, f"catalog read failed (sec_tickers by brand): {err}")
     seen: set[str] = {source.cik10}
     matches: list[TickerRow] = []
-    for r in sorted(rows, key=lambda r: r.cik10, reverse=True):  # newest registrant first
+    for r in sorted(tickers, key=lambda r: r.cik10, reverse=True):  # newest registrant first
         if r.cik10 in seen or _first_word(r.title) not in brand:
             continue
         try:
-            ticker_of(r.ticker)
+            object_ticker(r.ticker)
         except ValueError:
             continue
         seen.add(r.cik10)
         matches.append(r)
-    flt = (
-        f"cik != '{source.cik10}' AND lower(first_word(title)) IN "
-        f"({', '.join(repr(b) for b in sorted(brand))}) ORDER BY cik DESC LIMIT {MAX_CANDIDATES}"
-    )
+    flt = f"cik != '{source.cik10}'; one row per CIK; first {MAX_CANDIDATES}"
     evidence = [
         _item(
             tickers,
@@ -254,8 +259,8 @@ def _resolve(need: InformationNeed, discovery: Discovery) -> ScoutResult:
     assessments: list[Assessment] = []
     for r in matches[:MAX_CANDIDATES]:
         try:
-            subs = discovery.submissions(r.cik10)
-        except (SourceError, CatalogError) as err:
+            subs = discovery.submissions(r.cik10, r.ticker)
+        except (SourceError, CatalogError, ValueError) as err:
             a = Assessment(ticker=r.ticker, cik10=r.cik10, title=r.title)
             a.reason = f"catalog read failed (sec_submissions): {err}"
             assessments.append(a)
@@ -294,7 +299,7 @@ def _resolve(need: InformationNeed, discovery: Discovery) -> ScoutResult:
             assessments,
         )
     best = ok[0]
-    entity = Entity(ticker_of(best.ticker), best.cik10, best.title)
+    entity = Entity(object_ticker(best.ticker), best.cik10, best.title)
     return ScoutResult(
         entity,
         template,

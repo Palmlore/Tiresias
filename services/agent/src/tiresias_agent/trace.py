@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import sys
+import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -21,6 +22,11 @@ REDACTED = "***"
 _SECRET_KEY = re.compile(r"token|key|authorization|password", re.IGNORECASE)
 _BEARER = re.compile(r"\b(bearer)\s+[^\s'\"]+", re.IGNORECASE)
 _RESERVED = frozenset({"timestamp", "service", "run_id", "parent_run_id", "agent", "action"})
+# Keys that match _SECRET_KEY by accident and never hold a credential.
+_NOT_SECRET = frozenset({"join_key"})
+_WRITE_LOCK = threading.Lock()  # heartbeat lines come from a second thread (phase())
+PHASE_AGENT = "orchestrator"
+HEARTBEAT_ENV = "PHASE_HEARTBEAT_SECONDS"
 
 
 def new_run_id() -> str:
@@ -46,7 +52,7 @@ def redact(value: Any) -> Any:
 
 
 def _is_secret(key: Any, value: Any) -> bool:
-    if not isinstance(key, str) or not _SECRET_KEY.search(key):
+    if not isinstance(key, str) or key in _NOT_SECRET or not _SECRET_KEY.search(key):
         return False
     return value is not None and not isinstance(value, int | float)
 
@@ -96,6 +102,10 @@ class Tracer:
             if key not in _RESERVED:
                 event[key] = value
         line = json.dumps(event, default=str)
+        with _WRITE_LOCK:
+            self._write(line)
+
+    def _write(self, line: str) -> None:
         sys.stdout.write(line + "\n")
         sys.stdout.flush()
         if self.sink is not None:
@@ -137,6 +147,67 @@ class Tracer:
         status = merged.pop("status", "success")
         merged.pop("duration_ms", None)
         self.emit(agent=agent, action=action, status=status, duration_ms=_ms(start), **merged)
+
+
+def heartbeat_seconds(env: dict[str, str] | None = None) -> float:
+    """PHASE_HEARTBEAT_SECONDS (default 5, clamped to 0.05..60), read at call time."""
+    env = os.environ if env is None else env
+    try:
+        value = float(env.get(HEARTBEAT_ENV) or 5)
+    except ValueError:
+        value = 5.0
+    return max(0.05, min(value, 60.0))
+
+
+@contextmanager
+def phase(
+    tracer: Any,
+    name: str,
+    *,
+    owner: str,
+    every: float | None = None,
+    **fields: Any,
+) -> Iterator[dict[str, Any]]:
+    """Bracket a slow phase for a UI: ``orchestrator``/``phase_start`` when it begins,
+    ``orchestrator``/``heartbeat`` every ``every`` seconds while it runs (default
+    PHASE_HEARTBEAT_SECONDS), and ``orchestrator``/``phase_done`` with ``duration_ms`` when it ends.
+    Every line carries ``phase=name`` and ``target_agent=owner`` (the agent doing the work).
+
+    Works with any tracer that has ``emit``. The yielded dict collects fields for the done line
+    (and may set "status"); an exception gives status "error" and propagates.
+    """
+    start = time.perf_counter()
+    base = {"phase": name, "target_agent": owner, **fields}
+    tracer.emit(agent=PHASE_AGENT, action="phase_start", **base)
+    stop = threading.Event()
+    interval = every if every is not None else heartbeat_seconds()
+
+    def beat() -> None:
+        while not stop.wait(interval):
+            try:
+                tracer.emit(agent=PHASE_AGENT, action="heartbeat", elapsed_ms=_ms(start), **base)
+            except Exception:  # noqa: BLE001 - observability must not end a run
+                return
+
+    thread = threading.Thread(target=beat, name=f"heartbeat-{name}", daemon=True)
+    thread.start()
+    extra: dict[str, Any] = {}
+    status = "success"
+    try:
+        yield extra
+    except BaseException as exc:
+        status = "error"
+        extra["error_type"] = type(exc).__name__
+        raise
+    finally:
+        stop.set()
+        thread.join(timeout=1.0)
+        done = {**base, **extra}
+        status = done.pop("status", status)
+        done.pop("duration_ms", None)
+        tracer.emit(
+            agent=PHASE_AGENT, action="phase_done", status=status, duration_ms=_ms(start), **done
+        )
 
 
 class NullTracer(Tracer):

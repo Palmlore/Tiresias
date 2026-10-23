@@ -111,17 +111,19 @@ def test_scout_resolves_the_disposed_business_from_the_data(prefix, cik):
     assert [c.cik10 for c in qualifying] == [cik]  # the other registrant fails a rule
     line = next(e for e in tracer.events if e["agent"] == "source_scout")
     assert line["status"] == "success" and line["entity"]["cik"] == cik
-    assert line["template"] == "sec_companyfacts" and line["sql"].startswith("GET https://")
+    assert line["template"] == "sec_companyfacts" and "FROM tiresias.sec_tickers" in line["sql"]
 
 
-def test_scout_reads_only_catalog_endpoints():
+def test_scout_reads_only_catalog_objects_as_zetaris_sql():
     tracer = RecordingTracer()
     source_scout.resolve(
         _need("01"), discovery=SampleDiscovery(CATALOG, tracer=tracer), tracer=tracer
     )
     reads = [e for e in tracer.events if e["agent"] == "catalog"]
-    prefixes = [e.endpoint.split("{")[0] for e in CATALOG.entries]
-    assert reads and all(any(r["sql"][4:].startswith(p) for p in prefixes) for r in reads)
+    assert {r["action"] for r in reads} == {"tickers", "submissions"}
+    for r in reads:  # the SQL live mode runs through Zetaris, over catalog-backed objects
+        assert r["sql"].startswith("SELECT ")
+        assert "FROM tiresias.sec_tickers" in r["sql"] or "_submissions_raw" in r["sql"]
 
 
 def test_scout_refuses_a_hint_without_a_disposal_filing():
@@ -146,10 +148,20 @@ class FakeDiscovery:
         self.catalog = CATALOG
         self._tickers, self._profiles = tickers, profiles
 
-    def tickers(self):
-        return Evidence(self._tickers, sql="GET tickers", source=self.name)
+    def _rows(self, keep):
+        return Evidence([t for t in self._tickers if keep(t)], sql="SELECT tickers", source="fake")
 
-    def submissions(self, cik10):
+    def lookup(self, *, tickers=(), ciks=()):
+        up = {t.upper() for t in tickers}
+        return self._rows(lambda t: t.ticker.upper() in up or t.cik10 in set(ciks))
+
+    def brand(self, words):
+        return self._rows(lambda t: t.title.split()[0].lower() in set(words))
+
+    def search(self, name):
+        return self._rows(lambda t: name.lower() in t.title.lower())
+
+    def submissions(self, cik10, ticker):
         p = self._profiles.get(cik10)
         return Evidence([p] if p else [], sql=f"GET {cik10}", source=self.name)
 

@@ -16,14 +16,14 @@ sources:
     joins_on: [cik, concept, period]
     rate_limit_per_second: 10
   - id: sec_submissions
-    description: Company profile and filing history, including 8-K item codes (2.01 = completion of acquisition or disposition).
+    description: Company profile and filing history, including 8-K item codes (2.01 = completion of acquisition or disposition). The scout reads a candidate's through a TIRESIAS_SEC.<ticker>_submissions_raw table registered on demand (discovery, not counted in MAX_NEW_SOURCES_PER_RUN).
     endpoint: https://data.sec.gov/submissions/CIK{cik10}.json
     params: [cik10]
     joins_on: [cik]
     rate_limit_per_second: 10
   - id: sec_tickers
-    description: Ticker to CIK to name map, used to resolve a discovered entity.
-    endpoint: https://www.sec.gov/files/company_tickers.json
+    description: Ticker to CIK to name map (row-array form, so Zetaris can explode it), used to resolve the asked entity and a discovered one. Registered once as tiresias.sec_tickers; a discovery read, not an evidence source.
+    endpoint: https://www.sec.gov/files/company_tickers_exchange.json
     params: []
     joins_on: [ticker, cik]
   - id: company_dns_sic

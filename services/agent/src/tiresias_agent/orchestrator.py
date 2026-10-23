@@ -37,6 +37,7 @@ from pydantic import ValidationError
 from .adapters.catalog import CatalogError, Discovery, make_discovery
 from .adapters.zetaris import (
     DEFAULT_FORMS,
+    Entity,
     EvidenceSource,
     ZetarisClient,
     ZetarisConfig,
@@ -45,6 +46,7 @@ from .adapters.zetaris import (
 from .agents import (
     analyst,
     critic,
+    entity_resolver,
     gap_analyst,
     hypothesiser,
     onboarder,
@@ -59,6 +61,7 @@ from .agents.framer import summary as frame_summary
 from .agents.knowledge import actionable_family, money, residual_text
 from .config import LoopBudgets, settings
 from .gates import Gate, GateRequest
+from .models import Entity as EntityRef
 from .models import (
     ErrorDetail,
     ErrorResponse,
@@ -68,7 +71,7 @@ from .models import (
     RunResult,
     RunStats,
 )
-from .trace import Tracer, new_run_id
+from .trace import Tracer, new_run_id, phase
 
 AGENT = "orchestrator"
 REPO_ROOT = Path(__file__).resolve().parents[4]
@@ -124,6 +127,8 @@ class LoopA:
         self.started = clock()
         self.nodes: list[Node] = []
         self.hops = self.retries = self.prunes = self.gate_decisions = 0
+        # Evidence from before Loop A (entity resolution and registration), shown on the root.
+        self.prelude_evidence: list = []
 
     # --- budget -------------------------------------------------------------------------------
 
@@ -214,7 +219,7 @@ class LoopA:
             share=1.0,
             raw_share=1.0,
             effect=frame.delta,
-            evidence=[frame.evidence],
+            evidence=[*self.prelude_evidence, frame.evidence],
         )
         self.nodes.append(root)
         parent, path, tested = root, {root.variable}, set()
@@ -338,6 +343,11 @@ class _Run:
     note: str | None = None
     error: ErrorDetail | None = None
     sources_onboarded: int = 0
+    started: float = 0.0
+    onboarded: list[Entity] = field(default_factory=list)  # sources this run registered
+    prelude_evidence: list = field(default_factory=list)
+    prelude_gate_decisions: int = 0
+    discovery: Discovery | None = None
 
 
 def _fail(run: _Run, err: Exception) -> None:
@@ -394,7 +404,7 @@ def _start(
         "parent_run_id": parent_run_id,
         "tracer": tracer,
     }
-    run = _Run(request, tracer, budgets, sample, common, clock)
+    run = _Run(request, tracer, budgets, sample, common, clock, started=clock())
     try:
         run.gate = gate or Gate(
             request.options.hitl_mode or settings.hitl_mode,
@@ -407,50 +417,128 @@ def _start(
     return run, source
 
 
-def _loop_a(run: _Run, source: EvidenceSource) -> None:
-    """Framer + Loop A. Records the outcome on ``run``; never raises."""
-    request, tracer = run.request, run.tracer
-    try:
-        assert run.gate is not None
-        run.loop = LoopA(
-            request,
+def _unframed(run: _Run, reason: str) -> None:
+    """The effect cannot be framed (entity or metric not in the sources): evidence frontier
+    for the metric itself, with the reason in the information need."""
+    request = run.request
+    run.end_state = "evidence-frontier"
+    run.need = gap_analyst.for_variable(
+        None,
+        variable=request.metric,
+        node_id="n0",
+        reason=reason,
+        tracer=run.tracer,
+        ticker=(request.entity.ticker or request.entity.name or "").lower(),
+        cik=request.entity.cik,
+        period=request.period,
+    )
+
+
+def _prepare_entity(run: _Run, source: EvidenceSource) -> bool:
+    """Resolve the asked entity and, in live mode, register it if Zetaris does not have it yet
+    (behind the source gate, counted in MAX_NEW_SOURCES_PER_RUN, bounded by the run budget).
+    Returns False when the run must stop at the evidence frontier; never raises."""
+    tracer = run.tracer
+    client = _find(source, "client")
+
+    def discovery() -> Discovery:
+        if run.discovery is None:
+            run.discovery = make_discovery(
+                run.sample, tracer, data_dir=_find(source, "data_dir"), client=client
+            )
+        return run.discovery
+
+    with phase(tracer, "resolve_entity", owner=entity_resolver.AGENT) as done:
+        res = entity_resolver.resolve(
+            run.request,
             source=source,
+            sample=run.sample,
             tracer=tracer,
-            gate=run.gate,
-            budgets=run.budgets,
-            clock=run.clock,
+            discovery=discovery,
+            views=_find(source, "registered_views"),
         )
-        try:
-            run.frame = frame_question(request, run.loop.source, tracer)
-        except FrameFailure as err:
-            tracer.emit(
-                agent="framer",
-                action="frame",
-                status="rejected",
-                node_id="n0",
-                target_agent="gap_analyst",
-                output_summary=str(err),
-            )
-            run.end_state = "evidence-frontier"
-            run.need = gap_analyst.for_variable(
-                None,
-                variable=request.metric,
-                node_id="n0",
-                reason=str(err),
+        done.update(outcome="resolved" if res.ok else res.error_type, registered=res.registered)
+    if res.error_type == "InvalidInput":
+        raise LoopError("InvalidInput", res.reason)
+    if not res.ok or res.entity is None:
+        _unframed(run, res.reason)
+        return False
+    entity = res.entity
+    if not res.registered:
+        assert run.gate is not None
+        with phase(tracer, "register_entity", owner=onboarder.AGENT) as done:
+            reg = onboarder.onboard_entity(
+                entity,
+                metric=run.request.metric,
+                gate=run.gate,
+                used=len(run.onboarded),
+                cap=run.budgets.max_new_sources,
                 tracer=tracer,
-                ticker=(request.entity.ticker or "").lower(),
-                cik=request.entity.cik,
-                period=request.period,
+                client=client,
+                deadline=run.started + run.budgets.run_seconds,
+                clock=run.clock,
             )
+            done.update(outcome=reg.status)
+        run.prelude_gate_decisions += int(reg.gate_decided)
+        if not reg.ok:
+            _unframed(run, f"{res.reason}; onboarder: {reg.reason}")
+            return False
+        run.onboarded.append(entity)
+        run.sources_onboarded = len(run.onboarded)
+        refresh = getattr(source, "refresh", None)
+        if callable(refresh):
+            refresh()
+        run.prelude_evidence = [*res.evidence, *reg.evidence]
+    run.request = run.request.model_copy(
+        update={"entity": EntityRef(ticker=entity.ticker, cik=entity.cik, name=entity.name or None)}
+    )
+    return True
+
+
+def _loop_a(run: _Run, source: EvidenceSource) -> None:
+    """Entity check, framer + Loop A. Records the outcome on ``run``; never raises."""
+    tracer = run.tracer
+    try:
+        if not _prepare_entity(run, source):
             return
-        run.end_state, run.chosen, run.need, run.note = run.loop.run(run.frame)
+        request = run.request
+        assert run.gate is not None
+        with phase(tracer, "loop_a", owner=AGENT) as done:
+            run.loop = LoopA(
+                request,
+                source=source,
+                tracer=tracer,
+                gate=run.gate,
+                budgets=run.budgets,
+                clock=run.clock,
+            )
+            run.loop.started = run.started  # one budget for the run, registration included
+            run.loop.gate_decisions += run.prelude_gate_decisions
+            run.loop.prelude_evidence = list(run.prelude_evidence)
+            try:
+                with phase(tracer, "frame", owner="framer"):
+                    run.frame = frame_question(request, run.loop.source, tracer)
+            except FrameFailure as err:
+                tracer.emit(
+                    agent="framer",
+                    action="frame",
+                    status="rejected",
+                    node_id="n0",
+                    target_agent="gap_analyst",
+                    output_summary=str(err),
+                )
+                _unframed(run, str(err))
+                done.update(end_state=run.end_state)
+                return
+            run.end_state, run.chosen, run.need, run.note = run.loop.run(run.frame)
+            done.update(end_state=run.end_state)
     except Exception as err:  # noqa: BLE001 - LoopError or a bug: a structured result either way
         _fail(run, err)
 
 
 def _report(run: _Run) -> RunResult:
     loop = run.loop
-    stats = loop.stats() if loop else RunStats()
+    stats = loop.stats() if loop else RunStats(gate_decisions=run.prelude_gate_decisions)
     stats.sources_onboarded = run.sources_onboarded
     if run.error is not None:
         return reporter.build(
@@ -545,12 +633,14 @@ def run_investigation(
         and run.loop is not None
     ):
         try:
-            LoopB(
-                run,
-                discovery=discovery,
-                zetaris_client=zetaris_client,
-                data_dir=data_dir,
-            ).run()
+            with phase(run.tracer, "loop_b", owner=AGENT) as done:
+                LoopB(
+                    run,
+                    discovery=discovery,
+                    zetaris_client=zetaris_client,
+                    data_dir=data_dir,
+                ).run()
+                done.update(end_state=run.end_state)
         except Exception as err:  # noqa: BLE001 - a run must end in a structured result
             _fail(run, err)
     elif run.error is None and run.end_state == "evidence-frontier" and run.need is not None:
@@ -602,7 +692,7 @@ class LoopB:
         self.discovery = discovery
         self.client = zetaris_client
         self.data_dir = data_dir or _find(self.loop.source, "data_dir")
-        self.registry = onboarder.Registry(self.loop.source, self.frame.ticker)
+        self.registry = onboarder.Registry(self.loop.source, self.frame.ticker, run.onboarded)
 
     def _frontier(self, why: str) -> None:
         run = self.run_state
@@ -633,34 +723,44 @@ class LoopB:
             output_summary=f"information need: {need.variable} for the "
             f"{need.entity_hint.relation}; sources cap {run.budgets.max_new_sources}",
         )
+        client = self.client
+        if not run.sample and client is None:
+            client = _find(self.loop.source, "client") or ZetarisClient(
+                ZetarisConfig.from_env(), tracer=tracer
+            )
         try:
-            discovery = self.discovery or make_discovery(run.sample, tracer, data_dir=self.data_dir)
+            discovery = (
+                self.discovery
+                or run.discovery
+                or make_discovery(run.sample, tracer, data_dir=self.data_dir, client=client)
+            )
         except CatalogError as err:
             return self._frontier(f"catalog unavailable: {err}")
-        scout = source_scout.resolve(need, discovery=discovery, tracer=tracer)
+        with phase(tracer, "scout", owner=source_scout.AGENT) as done:
+            scout = source_scout.resolve(need, discovery=discovery, tracer=tracer)
+            done.update(outcome="resolved" if scout.resolved else "unresolved")
         if not scout.resolved:
             return self._frontier(f"source scout could not resolve the hint: {scout.reason}")
         try:
             self.loop._check_time()
         except _Budget as err:
             return self._budget(str(err))
-        client = self.client
-        if not run.sample and client is None:
-            client = _find(self.loop.source, "client") or ZetarisClient(
-                ZetarisConfig.from_env(), tracer=tracer
-            )
         assert run.gate is not None
-        reg = onboarder.onboard(
-            scout,
-            need,
-            gate=run.gate,
-            registry=self.registry,
-            cap=run.budgets.max_new_sources,
-            sample=run.sample,
-            tracer=tracer,
-            client=client,
-            data_dir=self.data_dir,
-        )
+        with phase(tracer, "onboard", owner=onboarder.AGENT) as done:
+            reg = onboarder.onboard(
+                scout,
+                need,
+                gate=run.gate,
+                registry=self.registry,
+                cap=run.budgets.max_new_sources,
+                sample=run.sample,
+                tracer=tracer,
+                client=client,
+                data_dir=self.data_dir,
+                deadline=self.loop.started + run.budgets.run_seconds,
+                clock=self.loop.clock,
+            )
+            done.update(outcome=reg.status)
         self.loop.gate_decisions += int(reg.gate_decided)
         run.sources_onboarded = len(self.registry.onboarded)
         if reg.status == "capped":
@@ -682,7 +782,10 @@ class LoopB:
         node_id = next(
             f"{parent.node_id}.{i}" for i in range(1, 100) if f"{parent.node_id}.{i}" not in taken
         )
-        r = reconciler.measure(frame, need, entity, self.registry, node_id=node_id, tracer=tracer)
+        with phase(tracer, "reconcile", owner=reconciler.ANALYST):
+            r = reconciler.measure(
+                frame, need, entity, self.registry, node_id=node_id, tracer=tracer
+            )
         self.loop.hops += 1
         v, residual = reconciler.judge(frame, r)
         if v.escalation:
