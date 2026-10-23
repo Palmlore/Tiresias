@@ -62,6 +62,10 @@ Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 2
 - [ ] Runs are bounded: a run finishes in ≤10 min, with timeouts and capped loops (TE §5)
 - [ ] Failures return a controlled response, not a hang or a stack trace (TE §5; SC §5)
 - [ ] Full validation flow from a fresh clone (SC §14), first on **day 4**, again before submitting
+- [ ] **Judge installation test on a clean macOS Tahoe VM** (Tart `macos-tahoe-base`, nothing preinstalled): a newcomer following only the README gets the system running. Rule: `submission/` is all a judge sees; assume no cache, no local setup.
+  - [ ] Every setup step is a script where possible (one command per step, idempotent, prints ✔/✖)
+  - [ ] Steps that can't be scripted (e.g. Nightshift install, access gate, NVIDIA key) have a screenshot and a one-line reason why they're manual
+  - [ ] Local scaffolding used during the build is documented and removed before submitting
 
 ## E. Data, secrets, integrity
 - [x] `.env.example` with placeholders only; `.env` gitignored; secrets scan passes (`scripts/check_secrets.sh`) (OR §11; SC §11)
@@ -111,7 +115,7 @@ Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 2
 | Thu 22 Oct (day 1) | Zetaris up and measured; repo scaffolded; cognition service working | [x] |
 | Fri 23 Oct | Agent: Zetaris adapter, tracing, Loop A on case 01 in sample mode | [ ] |
 | Sat 24 Oct | Loop B live; critic rules; Nightshift client; 3 cases end to end | [ ] |
-| Sun 25 Oct (day-4 checkpoint) | Runs locally **and** in Docker; sample mode with an empty `.env`; memory demo; fresh-clone validation. More than 3 gaps means cut scope. | [ ] |
+| Sun 25 Oct (day-4 checkpoint) | Runs locally **and** in Docker; sample mode with an empty `.env`; memory demo; fresh-clone validation; first judge install test on the clean Tahoe VM. More than 3 gaps means cut scope. | [ ] |
 | Mon 26 Oct | Freeze architecture. Branching and asker profiles polish; outputs and traces committed; README final | [ ] |
 | Tue 27 Oct | Record the demo, finish the deck and sponsor explanation | [ ] |
 | Wed 28 Oct, before 06:00 AEDT | **Submit** (deadline 10:45 AEDT) | [ ] |
