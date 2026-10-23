@@ -82,6 +82,18 @@ def test_run_sql_sends_a_run_id_even_without_one_supplied():
     assert run_ids[0] and run_ids[0] == run_ids[1]
 
 
+@pytest.mark.parametrize(
+    "rows",
+    [[{"other": "wrong"}], [["1", "2"]], [["1"], "scalar"]],
+    ids=["dict-keys-mismatch", "list-length-mismatch", "not-a-row"],
+)
+def test_run_sql_rejects_rows_not_keyed_by_response_headers(rows):
+    client, _ = make_client(lambda request: ok(["value"], rows))
+    with pytest.raises(z.SourceError) as caught:
+        client.run_sql("SELECT 1 AS value", label="shape")
+    assert caught.value.recoverable is False
+
+
 def test_run_sql_retries_503_then_succeeds_with_fresh_request_ids():
     request_ids = []
 

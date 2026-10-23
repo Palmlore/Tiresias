@@ -427,7 +427,17 @@ class ZetarisClient:
         if isinstance(payload, dict):
             columns = [str(c) for c in payload.get("headers") or []]
             for row in payload.get("data") or []:
-                rows.append(dict(row) if isinstance(row, dict) else dict(zip(columns, row)))
+                # Every row must be keyed by exactly the response headers; a malformed
+                # payload is an error, not a silently mis-keyed result.
+                if isinstance(row, dict) and sorted(row) == sorted(columns):
+                    rows.append(dict(row))
+                elif isinstance(row, list) and len(row) == len(columns):
+                    rows.append(dict(zip(columns, row)))
+                else:
+                    return SourceError(
+                        f"Zetaris {label}: row does not match response headers {columns}",
+                        recoverable=False,
+                    )
         result = QueryResult(
             rows=rows,
             columns=columns,
