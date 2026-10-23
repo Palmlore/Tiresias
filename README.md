@@ -67,7 +67,13 @@ uv run python -m tiresias_agent.app                                             
 uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json   # CLI: RunResult on stdout
 ```
 
-Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable; it has not yet been run end to end. See [deploy/README.md](deploy/README.md).
+Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable. Every read, including the discovery of a missing entity, goes through Zetaris. See [deploy/README.md](deploy/README.md).
+
+### Ask about your own company
+
+- **Sample mode (default, offline) covers the GE family only**: GE, GE HealthCare and GE Vernova, because [data/sample/](data/sample/) is a cached slice of their SEC filings (that is what lets it run with no keys). Any other company ends in well under a second at `evidence-frontier`, with a reason that says the slice covers only those three and how to run live.
+- **Live mode works for any SEC registrant.** Name it by ticker, CIK or name (`"entity": {"ticker": "IBM"}`, `{"cik": "0000051143"}` or `{"name": "Hilton Worldwide Holdings Inc."}`). Tiresias resolves it through the SEC ticker list registered in Zetaris, asks the source gate, and registers the company's filings in Zetaris while the run is going. Measured on 2026-10-23 ([docs/measurements/live-any-company.md](docs/measurements/live-any-company.md)): **the first question about a new company takes about 15–21 s** (12–16 s of it is Zetaris downloading the company's SEC facts once); **the next one takes 3–11 s**. Progress shows on the trace stream as `phase_start` / `heartbeat` / `phase_done` lines.
+- Not every company gets a full answer: the rule set is small (disposals, impairments, restatements), and Loop B only follows a spin-off that keeps the parent's name. In the measurement GE, J&J and Hilton end `actionable`; IBM, 3M, Crane NXT, Caterpillar and ExxonMobil end at `evidence-frontier`, each with the reason.
 
 ## Where to look (judging criteria → repository)
 

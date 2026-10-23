@@ -81,7 +81,27 @@ cd services/agent && uv run python -m tiresias_agent.adapters.zetaris smoke [--s
 cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--loop-a] [--logs-dir DIR]
 #   MAX_NEW_SOURCES_PER_RUN=0 shows the source cap (end state budget); scripted {"source": "deny"} shows the source gate
 #   stdout: the RunResult JSON only; trace lines go to stderr and <repo>/logs/trace-<run_id>.jsonl
+#   any SEC registrant live: {"entity": {"ticker": "IBM"}} or {"entity": {"name": "Hilton Worldwide Holdings Inc."}}
+# Live latency per phase (needs Zetaris + .env; cold = first run for an entity, then warm). Writes no repo files
+cd services/agent && uv run python ../../scripts/perf_smoke.py [request.json ...] [--runs 2] [--logs-dir DIR] [--out FILE.jsonl] [--env-file PATH]
+#   defaults: the three input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
 ```
+
+## Run phases (for UI)
+Every slow phase is bracketed by trace lines on the SSE stream (`GET /runs/{id}/events`): `agent: "orchestrator"`, `action: "phase_start"` / `"phase_done"`, field `phase` (below), `target_agent` (the agent doing the work), `duration_ms` and `status` on `phase_done` (plus `outcome` / `end_state` where useful); while a phase runs, `action: "heartbeat"` with the same `phase` and `elapsed_ms` every `PHASE_HEARTBEAT_SECONDS` (default 5), so no wait is silent for more than ~5 s. Nested phases close before their parent. Measured live on 2026-10-23 ([docs/measurements/live-any-company.md](docs/measurements/live-any-company.md)); sample mode runs every phase in milliseconds.
+
+| `phase` | Owner (`target_agent`) | When | Typical live duration |
+|---|---|---|---|
+| `resolve_entity` | `entity_resolver` | every run | 0.1–0.6 s |
+| `register_entity` | `onboarder` | live, asked entity not in Zetaris yet (cold) | 11.8–15.6 s (one companyfacts `CACHE TABLE`, 7–12 s, is most of it); absent when warm |
+| `loop_a` | `orchestrator` | every run past entity checks (includes `frame`) | 3–10 s (0.2 s when the metric is not found) |
+| `frame` | `framer` | inside `loop_a`: first evidence query | 0.2–2.6 s |
+| `loop_b` | `orchestrator` | Loop A ended at a frontier with a need | 0.0–3.6 s warm; 11.4 s with a cold onboard (14.4 s before the scout fix) |
+| `scout` | `source_scout` | inside `loop_b` | 0.0–0.5 s with no new candidate; 1–2.5 s with new candidate submissions tables |
+| `onboard` | `onboarder` | inside `loop_b`, scout resolved | 1.0–1.6 s if the table exists; 8.1 s cold |
+| `reconcile` | `analyst` | inside `loop_b`, registered | 0.5–1.4 s |
+
+Whole run, live: an unknown company cold 15–21 s, the same company warm 3–11 s, the GE examples 9–11 s.
 
 ## External services (live mode only; sample mode needs none)
 - **Zetaris**: local Docker bundle at `~/Repos/hackathon2026/zetaris/zetaris-platform` (2.4.3.1-hackathon). REST `http://localhost:8888/api/v1.0`, or `http://host.docker.internal:8888/api/v1.0` from containers. `POST /sql-editor/sqls/run` with `Authorization: Bearer`, `X-Org-ID: 1` and a fresh `X-Request-ID` UUID. `bootstrap` registers database `TIRESIAS_SEC`, container `tiresias`, raw REST tables `TIRESIAS_SEC.<ticker>_{facts,submissions}_raw` and views `tiresias.<ticker>_<concept slug>` / `tiresias.<ticker>_filings` for `ge`, `gehc`, `gev`. The older probe views `ge_revenue_cf` and `gehc_revenue` still exist but are unused.
@@ -129,10 +149,12 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 - In live mode **every read goes through Zetaris**, discovery included: nothing in `services/agent/src` names an SEC endpoint or opens HTTP except the three sponsor adapters (`tests/test_any_company.py` guards it). SEC URLs live only in `catalog/sources.yaml` and `zetaris/sql/`; Zetaris fetches them with `SEC_USER_AGENT`. `scripts/fetch_sample.py` is offline tooling that rebuilds `data/sample/`, not a runtime path.
 - `sec_tickers` is registered from `company_tickers_exchange.json` (row arrays), not `company_tickers.json`: the latter is one object keyed `"0".."N"`, which Zetaris would infer as a struct with ~10k fields. The sample keeps the trimmed `company_tickers.json`; both carry CIK, ticker and name.
 - Registration status lines: the Zetaris client traces `bootstrap:database` / `container` / an existing table as `status: error` ("already exists") before `bootstrap` classifies it as `exists`; read the `onboarder` `register` line (or `phase_done`) for the outcome (BACKLOG B-9).
+- **Cold vs warm (live):** the first run for a company Zetaris has never seen registers it (`register_entity`, 12–16 s, mostly the companyfacts `CACHE TABLE` download) and is 15–21 s end to end; the next run is 3–11 s. Registrations persist in Zetaris; the cache does not survive a Zetaris restart (the first query then refetches). Measured in `docs/measurements/live-any-company.md`.
+- Discovery tables pile up: each scout run may register up to `MAX_CANDIDATES` `<ticker>_submissions_raw` tables (CREATE + CACHE, ~0.6–1.3 s each the first time). They are reused by later runs and never dropped (bootstrap never drops).
 - An entity asked about in sample mode that is not in `data/sample/` ends in milliseconds at `evidence-frontier` (`EntityNotInSample`); the reason lists the slice and how to run live.
 - The CLI resolves a relative request path against the cwd, then the repo root, and writes traces to `<repo>/logs/` unless `LOGS_DIR` or `--logs-dir` is set.
 
 ## Next work (see docs/CHECKLIST.md for the full list)
-1. Run Loop B live against Zetaris end to end (BACKLOG B-7).
+1. A UI over `/runs/{id}/events` using the phase lines ("Run phases (for UI)").
 2. Nightshift client in live mode once the VM's Runtime URL and token are in `.env` (model-backed hypothesiser/critic lanes).
 3. Memory demo (cold → warm → purge → cold) through `adapters.cognition` (recall must degrade to no memory), asker profiles, branching.

@@ -38,7 +38,7 @@ Found in: #6  ·  Status: done (#PR_ANY)
 - Safe to leave because: an outage degrades per call to the sample (traced `degraded`); a non-recoverable `SourceError` (e.g. a concept view that does not exist) is caught by the analyst, traced `error` and the candidate is pruned as "not testable", so the run still ends in an end state.
 - Urgent if: the demo or `/run` uses live mode, or a pruned-as-not-testable candidate hides a real SQL bug (check `analyst`/`measure` lines with `status: error` in the trace).
 - Evidence: `services/agent/src/tiresias_agent/agents/analyst.py` (`except SourceError`); `orchestrator.main --live`.
-- Resolved in #PR_ANY: the three input examples and five surprise companies were run live end to end against local Zetaris, cold and warm, with no `degraded` line; timings and end states in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md) (`scripts/perf_smoke.py`).
+- Resolved in #PR_ANY: the three input examples and seven other companies (IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT) were run live end to end against local Zetaris, cold and warm, with no `degraded` line; timings and end states in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md) (`scripts/perf_smoke.py`).
 
 ## B-4: Live Loop B discovery reads SEC directly, not through Zetaris
 Found in: #8  ·  Status: done (#PR_ANY)
@@ -68,7 +68,7 @@ Found in: #8  ·  Status: done (#PR_ANY)
 - Safe to leave because: sample mode is the default and what judges run; in live mode a failed registration ends the run at `evidence-frontier` (non-recoverable) or degrades to the sample with a `degraded` trace line (outage).
 - Urgent if: the demo uses `--live`, or `/run` is switched to `run_investigation` with `SAMPLE_MODE=false`.
 - Evidence: `tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views`, `::test_onboarder_live_outage_degrades_but_a_bad_request_never_uses_the_sample`.
-- Resolved in #PR_ANY: input examples 01 and 02 run live end to end (Zetaris discovery → scout → onboard → reconcile) and end `actionable`, as in sample mode; see [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
+- Resolved in #PR_ANY: input examples 01 and 02 run live end to end (Zetaris discovery → scout → onboard → reconcile) and end `actionable`, as in sample mode, and a company outside the showcase (Hilton FY2016, asked by name) reaches Loop B cold and reconciles to Hilton Grand Vacations; see [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
 
 ## B-8: A registered entity gets no view for a concept outside `CONCEPT_SLUGS`
 Found in: #PR_ANY  ·  Status: open
@@ -90,3 +90,10 @@ Found in: #PR_ANY  ·  Status: open
 - Safe to leave because: for a large filer whose `recent` block no longer reaches the event, the hypothesiser finds no 8-K for the window and the run ends at `evidence-frontier`, never with an invented event; a candidate whose early filings fell out of `recent` fails the scout's "registrant by the disposal" rule and is refused, not guessed.
 - Urgent if: a judge's question is about an event several years back at a filer with many filings (for example insider Forms 3/4/5 push old 8-Ks out of `recent`).
 - Evidence: `zetaris/sql/21_filings_view.sql`, `zetaris/sql/37_submissions_profile.sql`; see the end states in `docs/measurements/live-any-company.md`.
+
+## B-11: Revenue is only recognised under three us-gaap concepts
+Found in: #PR_ANY  ·  Status: open
+- Out of scope because: the concept alias group is `Revenues`, `RevenueFromContractWithCustomerExcludingAssessedTax` and (added in #PR_ANY) `…IncludingAssessedTax`. Some filers report total revenue under another concept (ExxonMobil's companyfacts holds only four recent `Revenues` facts); finding the right concept needs a concept-discovery step over the companyfacts map, which is the slow full explode (18 s, AGENTS.md gotcha).
+- Safe to leave because: the framer ends at `evidence-frontier` (`MetricNotFound`, "no Revenues value for … in the registered sources") in under a second; nothing is guessed.
+- Urgent if: a judge asks about revenue for an energy or financial filer, or for any company whose total revenue sits under another concept.
+- Evidence: `docs/measurements/live-any-company.md` (case s4, XOM); `adapters/zetaris.py` (`CONCEPT_ALIASES`).
