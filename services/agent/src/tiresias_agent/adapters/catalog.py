@@ -109,6 +109,7 @@ def parse_catalog(text: str, path: str = "") -> Catalog:
     top: dict[str, Any] = {}
     sources: list[dict[str, Any]] = []
     in_sources = False
+    key_indent = -1
     for n, raw in enumerate(text.splitlines(), 1):
         if not raw.strip() or raw.lstrip().startswith("#"):
             continue
@@ -124,9 +125,16 @@ def parse_catalog(text: str, path: str = "") -> Catalog:
                 continue
             top[key] = _scalar(val or "")
         elif in_sources and dash:
-            sources.append({key: _scalar(val or "")})
-        elif in_sources and sources and not dash and indent > 0:
-            sources[-1][key] = _scalar(val or "")
+            if val in (None, ""):
+                raise CatalogError(f"{path}:{n}: {key!r} needs a scalar value (no nesting)")
+            key_indent = indent + 2
+            sources.append({key: _scalar(val)})
+        elif in_sources and sources and not dash and indent == key_indent:
+            # Flat mappings only: an empty value would open a nested block, and a key at any
+            # other indentation belongs to one.
+            if val in (None, ""):
+                raise CatalogError(f"{path}:{n}: {key!r} needs a scalar value (no nesting)")
+            sources[-1][key] = _scalar(val)
         else:
             raise CatalogError(f"{path}:{n}: unexpected indentation: {raw.strip()[:60]!r}")
     entries = []

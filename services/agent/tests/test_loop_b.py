@@ -87,6 +87,12 @@ def test_catalog_parses_all_templates_with_params_and_join_keys():
 def test_catalog_rejects_lines_outside_its_yaml_subset():
     with pytest.raises(CatalogError):
         parse_catalog("sources:\n  - id: x\n    nested:\n      deeper: 1\n")
+    complete = "sources:\n  - id: x\n    endpoint: /x\n    params: []\n    joins_on: []\n"
+    assert parse_catalog(complete).ids() == ["x"]
+    # A nested mapping inside an otherwise complete entry must not parse silently.
+    for nested in ("    nested: yes\n      deeper: 1\n", "    nested:\n      deeper: 1\n"):
+        with pytest.raises(CatalogError):
+            parse_catalog(complete + nested)
     with pytest.raises(CatalogError):
         parse_catalog("version: 1\n")  # no sources
 
