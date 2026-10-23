@@ -99,6 +99,17 @@ def test_echoed_token_is_masked_in_reply_text_usage_and_repr():
     assert_no_token(reply.text, reply.usage, repr(reply), tracer.events)
 
 
+def test_token_in_message_content_is_masked_in_trace_input_summary():
+    def handler(request):
+        return httpx.Response(200, json=completion("ok"))
+
+    tracer = RecordingTracer()
+    make_client(handler, tracer).chat([{"role": "user", "content": TOKEN}], lane="fast")
+    [event] = tracer.events
+    assert "***" in event["input_summary"]
+    assert_no_token(tracer.events)
+
+
 def test_routed_model_and_provider_come_from_receipt():
     def handler(request):
         return httpx.Response(200, json=completion("ok", meterless=RECEIPT))

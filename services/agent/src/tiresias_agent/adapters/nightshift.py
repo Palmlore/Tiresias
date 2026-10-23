@@ -283,7 +283,11 @@ class NightshiftClient:
     ) -> ModelReply:
         requested = self.config.model_for(lane)
         prompt_text = " ".join(str(m.get("content", "")) for m in messages if isinstance(m, dict))
-        trace = {"model": requested, "lane": lane, "input_summary": _summary(prompt_text)}
+        trace = {
+            "model": requested,
+            "lane": lane,
+            "input_summary": _summary(self._safe(prompt_text)),
+        }
         start = time.monotonic()
         retries = 0
         try:
@@ -305,7 +309,7 @@ class NightshiftClient:
                 provider=None,
                 retry_count=retries,
                 duration_ms=int((time.monotonic() - start) * 1000),
-                output_summary=self._safe(_summary(f"{type(exc).__name__}: {exc}")),
+                output_summary=_summary(self._safe(f"{type(exc).__name__}: {exc}")),
                 **trace,
             )
             raise
@@ -317,7 +321,7 @@ class NightshiftClient:
             provider=reply.provider,
             retry_count=retries,
             duration_ms=reply.duration_ms,
-            output_summary=self._safe(_summary(reply.text)),
+            output_summary=_summary(self._safe(reply.text)),
             **trace,
         )
         return reply
