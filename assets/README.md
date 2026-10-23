@@ -6,6 +6,7 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 
 | Path | What | Format and size |
 |---|---|---|
+| `brand/palette.json` | Colour tokens (ink, bronze, celeste, parchment, text) | JSON; reuse in the deck, diagrams and UI |
 | `brand/logo.svg`, `brand/logo-1024.png` | Tiresias mark (square) | SVG + 1024×1024 PNG, transparent background |
 | `brand/cover.png` | Project image: HackOS submission card, README header, video thumbnail | 1920×1080 PNG (16:9), ≤ 1 MB |
 | `brand/social.png` | Link preview (GitHub social preview) | 1280×640 PNG, ≤ 1 MB |
@@ -38,7 +39,7 @@ Keep the whole folder under about 30 MB; no Git LFS. The agent image never inclu
 
 - **Characters, introduced gradually and never more than three:** **Tiresias**, the blind seer and the agent's voice (veiled eyes, a staff; calm, deliberate). **The Sphinx**, the critic who asks "Why?" and guards uncomfortable truths. **You**, the analyst at the gates who judges and decides. Simple, flat icons that read at 32 px; no gore, no mythological clutter.
 - **Tone:** evidence over oracle. The tagline: *"Tiresias named the cause first, but had no evidence and was not believed. This Tiresias brings the evidence."*
-- **Palette:** a dark ink background, one warm accent (bronze or gold) for Tiresias, one cool accent for the Sphinx, and neutral text; WCAG AA contrast for any text. Use the same palette in the deck, diagrams and UI.
+- **Palette:** a dark ink background, one warm accent (bronze or gold) for Tiresias, one cool accent for the Sphinx, and neutral text; WCAG AA contrast for any text. Tokens: [`brand/palette.json`](brand/palette.json). Use the same palette in the deck, diagrams and UI.
 - **Type:** one sans-serif family for text, one monospace for SQL and trace lines; deck body text ≥ 24 pt.
 
 ## Deck: the eight required points (SR §3.2)
@@ -62,4 +63,8 @@ Add one row per file when it lands.
 
 | File | Source (tool, model, or real run + date) | Figures shown and where they come from | Licence |
 |---|---|---|---|
-| | | | |
+| `brand/palette.json` | Written 2026-10-23 in a Cursor agent session. Contrast ratios measured with sRGB relative luminance (WCAG 2.x). | None | Apache-2.0 |
+| `brand/logo.svg`, `brand/logo-1024.png` | Geometry in [`scripts/render_brand.py`](../scripts/render_brand.py), 2026-10-23. PNG rasterised with Pillow from the same shapes. No third-party artwork. | None (mark only: staff + veiled disc) | Apache-2.0 |
+| `characters/tiresias.svg`, `characters/tiresias.png` | Same renderer, 2026-10-23. Bronze, veiled eyes, staff. | None | Apache-2.0 |
+| `characters/sphinx.svg`, `characters/sphinx.png` | Same renderer, 2026-10-23. Celeste, ears and one wing. | None | Apache-2.0 |
+| `characters/you.svg`, `characters/you.png` | Same renderer, 2026-10-23. Parchment figure in a stone gate. | None | Apache-2.0 |

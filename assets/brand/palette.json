@@ -1,0 +1,24 @@
+{
+  "comment": "Tiresias visual tokens. Use these hex values in the deck, diagrams and UI. Text on ink is WCAG AAA; bronze and celeste on ink are AAA for text as well, but body copy should still use 'text' or 'parchment'.",
+  "ink": "#12151C",
+  "bronze": "#D4A054",
+  "celeste": "#7EB6C9",
+  "parchment": "#EDE6D9",
+  "stone": "#9B968C",
+  "text": "#F4EFE4",
+  "roles": {
+    "background": "ink",
+    "tiresias": "bronze",
+    "sphinx": "celeste",
+    "you": "parchment",
+    "muted": "stone",
+    "body": "text"
+  },
+  "contrast_on_ink": {
+    "text": 15.93,
+    "parchment": 14.72,
+    "bronze": 7.79,
+    "celeste": 8.19,
+    "stone": 6.21
+  }
+}
