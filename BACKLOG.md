@@ -121,11 +121,12 @@ Found in: #12  ·  Status: open
 - Evidence: `services/agent/src/tiresias_agent/agents/scope.py` (`_STRONG`, `_WEAK`, `_PAST_FRAME`, `_NOT_A_NAME`); `tests/test_scope.py` (`FORWARD`, `IN_SCOPE`).
 
 ## B-15: Loop B accepts an add-back that over-explains far beyond tolerance
-Found in: #13  ·  Status: open
+Found in: #13  ·  Status: done (#15)
 - Out of scope because: the reconciler and its `critic_escalation` proposal (`accept-capped`) are the reconcile step's design (#8); this PR changes only who is reconciled. Found while a scout rule was too loose: DuPont FY2020 was matched to Dow Inc. (an earlier spin-off), the add-back explained 636% of the restatement, and the auto gate accepted it capped at 100% (`actionable`). The scout rule was fixed in the same PR (a Form 10 older than the lookback no longer excuses an annual report), so that run now ends at the frontier.
 - Safe to leave because: the reason text and the trace state the over-explanation ("explains 636% … over-explains beyond tolerance"), and a scripted or interactive gate can prune it; with the scout's rules a gross mismatch needs a wrong counterparty that also passes every new-registrant test.
 - Urgent if: any live run shows an `actionable` Loop B link with a share far above 100% (for example over 150%), or a judge reads the 100%-capped share without the residual.
 - Evidence: `services/agent/src/tiresias_agent/agents/reconciler.py` (`"proposal": "accept-capped"`); trace of the DuPont run before the fix (scratch, not committed).
+- Resolved in #15: a bound, `MAX_OVER_EXPLAINED` (`config.max_over_explained()`, default 1.5 = 150% of the root effect, clamped 1.05..10.0). Beyond tolerance and up to the bound the reconciler's `critic_escalation` proposal stays `accept-capped`; beyond the bound it is `prune`, with the reason "the add-back of X explains N% of the change, beyond the 150% bound (MAX_OVER_EXPLAINED), so the match is likely wrong", so under the auto policy the run ends at `evidence-frontier` with that reason in `information_need.reason`. A scripted or interactive `accept-capped` still accepts it (share capped at 100%, `partially-evidenced`). The critic trace line carries `over_explained_bound` and `gate_choice`. Within tolerance (case 02, residual −0.0194) nothing changes. Tests: `tests/test_loop_b.py` (`test_reconcile_over_explained_bands`, `test_beyond_bound_add_back_*`).
 
 ## B-16: One counterparty per disposal
 Found in: #13  ·  Status: open

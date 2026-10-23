@@ -7,6 +7,13 @@ with the original figure. The share explained is ``disposed / (original - restat
 residual is what is left (signed: negative when the add-back over-explains, i.e. offsetting
 items exist, such as sales between the two businesses). Nothing downstream is frozen.
 
+Over-explanation is graded in three bands (BACKLOG B-15): within ``RECONCILE_TOLERANCE`` of the
+original it is reconciled; beyond tolerance but at most ``MAX_OVER_EXPLAINED`` (config, default
+150% of the root effect) the critic_escalation gate is asked with the proposal ``accept-capped``
+(offsetting items exist); beyond that bound the proposal is ``prune``, because an add-back that
+explains far more than the change says the counterparty is likely the wrong one. A scripted or
+interactive gate may still accept it.
+
 Traced as agent ``analyst`` (measure) and ``critic`` (verdict) with ``loop: "B"``.
 """
 
@@ -17,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..adapters.zetaris import Entity, EvidenceSource, Fact, SourceError
+from ..config import max_over_explained
 from ..models import EvidenceItem, InformationNeed
 from .common import (
     MIN_SHARE,
@@ -131,8 +139,12 @@ def _summary(r: Reconciliation, frame: Frame) -> str:
     )
 
 
-def judge(frame: Frame, r: Reconciliation) -> tuple[Verdict, float | None]:
-    """The critic's verdict on the add-back, and the signed residual share. Pure."""
+def judge(
+    frame: Frame, r: Reconciliation, *, bound: float | None = None
+) -> tuple[Verdict, float | None]:
+    """The critic's verdict on the add-back, and the signed residual share. Pure, apart from
+    reading ``MAX_OVER_EXPLAINED`` when ``bound`` is not given."""
+    bound = max_over_explained() if bound is None else bound
     if r.error:
         return Verdict("prune", "causal", f"not testable: {r.error}", "hypothesis"), None
     if r.effect is None or r.counterfactual is None or frame.delta == 0:
@@ -162,6 +174,27 @@ def judge(frame: Frame, r: Reconciliation) -> tuple[Verdict, float | None]:
             Verdict("prune", "causal", test + f"; below {pct(MIN_SHARE)}", "evidenced", share, raw),
             residual,
         )
+    if raw > bound and gap > tolerance:
+        return (
+            Verdict(
+                "accept",
+                "causal",
+                f"the add-back of {r.entity.name} explains {pct(raw)} of the change, beyond the "
+                f"{pct(bound)} bound (MAX_OVER_EXPLAINED), so the match is likely wrong; " + test,
+                "partially-evidenced",
+                share,
+                raw,
+                escalation={
+                    "question": f"The add-back of {r.entity.name} explains {pct(raw)} of the "
+                    f"restatement, beyond the {pct(bound)} bound: the counterparty is likely "
+                    "wrong. Prune, or accept with share capped at 100%?",
+                    "options": ("accept-capped", "prune"),
+                    "proposal": "prune",
+                    "bound": bound,
+                },
+            ),
+            residual,
+        )
     if raw > OVER_EXPLAINED and gap > tolerance:
         return (
             Verdict(
@@ -177,6 +210,7 @@ def judge(frame: Frame, r: Reconciliation) -> tuple[Verdict, float | None]:
                     "or prune?",
                     "options": ("accept-capped", "prune"),
                     "proposal": "accept-capped",
+                    "bound": bound,
                 },
             ),
             residual,
@@ -200,7 +234,14 @@ def judge(frame: Frame, r: Reconciliation) -> tuple[Verdict, float | None]:
 
 
 def trace_verdict(
-    tracer: Any, node_id: str, r: Reconciliation, v: Verdict, residual: float | None
+    tracer: Any,
+    node_id: str,
+    r: Reconciliation,
+    v: Verdict,
+    residual: float | None,
+    *,
+    bound: float | None = None,
+    gate_choice: str | None = None,
 ) -> None:
     tracer.emit(
         agent=CRITIC,
@@ -216,6 +257,8 @@ def trace_verdict(
         share_explained=v.share,
         raw_share=None if v.raw_share is None else round(v.raw_share, 4),
         residual=residual,
+        over_explained_bound=bound,
+        gate_choice=gate_choice,
         residual_amount=r.residual_amount,
         counterfactual=r.counterfactual,
         output_summary=v.reason,

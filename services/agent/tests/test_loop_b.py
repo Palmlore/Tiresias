@@ -1,5 +1,6 @@
 """Loop B: source scout, onboarder (source gate), reconcile, and run_investigation end to end."""
 
+import dataclasses
 import json
 import shutil
 from pathlib import Path
@@ -426,7 +427,7 @@ class OneSeries:
         return Evidence(facts, sql="SELECT ... FROM tiresias.bbb_revenues", source="fake")
 
 
-def _reconcile(original, restated, values, kind="restatement"):
+def _reconcile(original, restated, values, kind="restatement", bound=None):
     frame = _frame(original, restated, kind)
     need = _hint_need()
     r = reconciler.measure(
@@ -437,7 +438,7 @@ def _reconcile(original, restated, values, kind="restatement"):
         node_id="n0.1.1",
         tracer=RecordingTracer(),
     )
-    return r, *reconciler.judge(frame, r)
+    return r, *reconciler.judge(frame, r, bound=bound)
 
 
 def test_reconcile_add_back_math_share_and_residual():
@@ -454,7 +455,7 @@ def test_reconcile_over_explained_within_tolerance_has_a_negative_residual():
 
 
 def test_reconcile_over_explained_beyond_tolerance_escalates():
-    _, v, _ = _reconcile(150.0, 100.0, [80.0])
+    _, v, _ = _reconcile(150.0, 100.0, [60.0])  # 120%: inside MAX_OVER_EXPLAINED (150%)
     assert v.escalation and v.escalation["proposal"] == "accept-capped"
 
 
@@ -606,3 +607,110 @@ def test_bootstrap_plan_can_register_only_the_facts_table():
     assert len(z.bootstrap_plan("Test t@x.io", [e], ["Revenues"])) == len(plan) + 3
     with pytest.raises(ValueError):
         z.bootstrap_plan("Test t@x.io", [e], ["Revenues"], tables=("bogus",))
+
+
+# --- over-explanation bands (BACKLOG B-15) -----------------------------------------------------
+
+
+def test_max_over_explained_defaults_to_150_percent_and_is_clamped():
+    from tiresias_agent.agents.common import OVER_EXPLAINED
+    from tiresias_agent.config import MAX_OVER_EXPLAINED_DEFAULT, max_over_explained
+
+    assert max_over_explained({}) == MAX_OVER_EXPLAINED_DEFAULT == 1.5
+    assert max_over_explained({"MAX_OVER_EXPLAINED": "2.5"}) == 2.5
+    assert max_over_explained({"MAX_OVER_EXPLAINED": "0.5"}) == OVER_EXPLAINED
+    assert max_over_explained({"MAX_OVER_EXPLAINED": "99"}) == 10.0
+    assert max_over_explained({"MAX_OVER_EXPLAINED": "x"}) == 1.5
+
+
+def test_reconcile_over_explained_bands():
+    # within tolerance: reconciled, no gate (case 02's shape: a small negative residual)
+    _, v, residual = _reconcile(1000.0, 900.0, [102.0], bound=1.5)
+    assert v.decision == "accept" and v.evidence_status == "evidenced" and not v.escalation
+    assert residual == pytest.approx(-0.02)
+    # beyond tolerance, within the bound: escalate, proposal accept-capped (unchanged)
+    _, v, _ = _reconcile(150.0, 100.0, [60.0], bound=1.5)
+    assert v.raw_share == pytest.approx(1.2) and v.share == 1.0
+    assert v.escalation["proposal"] == "accept-capped" and v.escalation["bound"] == 1.5
+    # beyond the bound: the proposal is prune and the reason says the match is likely wrong
+    _, v, residual = _reconcile(150.0, 100.0, [318.0], bound=1.5)
+    assert v.raw_share == pytest.approx(6.36) and residual == pytest.approx(-5.36)
+    assert v.escalation["proposal"] == "prune"
+    assert set(v.escalation["options"]) == {"accept-capped", "prune"}
+    assert v.reason.startswith("the add-back of B explains 636% of the change, beyond the 150%")
+    assert "likely wrong" in v.reason
+    # a wider bound moves the same add-back back into the escalation band
+    _, v, _ = _reconcile(150.0, 100.0, [318.0], bound=7.0)
+    assert v.escalation["proposal"] == "accept-capped"
+
+
+def test_reconcile_bound_comes_from_the_environment(monkeypatch):
+    monkeypatch.setenv("MAX_OVER_EXPLAINED", "7")
+    assert _reconcile(150.0, 100.0, [318.0])[1].escalation["proposal"] == "accept-capped"
+    monkeypatch.delenv("MAX_OVER_EXPLAINED")
+    assert _reconcile(150.0, 100.0, [318.0])[1].escalation["proposal"] == "prune"
+
+
+class InflatedCounterparty(SampleSource):
+    """The sample slice, but every entity other than the asked one reports `factor` times its
+    values: a stand-in for a wrong counterparty whose add-back grossly over-explains."""
+
+    def __init__(self, asked, factor, **kw):
+        super().__init__(**kw)
+        self.asked, self.factor = asked, factor
+
+    def concept_series(self, entity, concept):
+        result = super().concept_series(entity, concept)
+        if entity.lower() == self.asked:
+            return result
+        facts = [dataclasses.replace(f, val=f.val * self.factor) for f in result]
+        return Evidence(facts, sql=result.sql, source=result.source)
+
+
+def _inflated_run(tmp_path, **options):
+    req = request("01")
+    req.options.sample_mode = True
+    for key, value in options.items():
+        setattr(req.options, key, value)
+    asked = (req.entity.ticker or "").lower()
+    tracer = RecordingTracer()
+    result = run_investigation(req, source=InflatedCounterparty(asked, 6.0), tracer=tracer)
+    return result, tracer.events
+
+
+def test_beyond_bound_add_back_ends_at_the_frontier_under_auto(tmp_path):
+    result, events = _inflated_run(tmp_path)
+    assert result.end_state == "evidence-frontier" and result.error is None
+    link = next(n for n in result.why_tree if n.rule == "reconcile")
+    assert link.verdict == "pruned" and link.share_explained == 1.0
+    assert "beyond the 150% bound" in result.information_need.reason
+    assert "likely wrong" in result.information_need.reason
+    assert "Loop B:" in result.information_need.reason
+    verdict = next(e for e in events if e["agent"] == "critic" and e.get("loop") == "B")
+    assert verdict["action"] == "prune" and verdict["status"] == "rejected"
+    assert verdict["over_explained_bound"] == 1.5 and verdict["gate_choice"] == "prune"
+    assert verdict["raw_share"] > 1.5 and verdict["share_explained"] == 1.0
+    gate = next(
+        e
+        for e in events
+        if e["agent"] == "gate"
+        and e.get("gate") == "critic_escalation"
+        and e.get("node_id") == link.node_id
+    )
+    assert gate["proposal"] == "prune" and gate["output_summary"].startswith("prune")
+
+
+def test_beyond_bound_add_back_can_be_accepted_by_a_scripted_decision(tmp_path):
+    auto, _ = _inflated_run(tmp_path)
+    node_id = next(n.node_id for n in auto.why_tree if n.rule == "reconcile")
+    result, events = _inflated_run(
+        tmp_path,
+        hitl_mode="scripted",
+        decisions={f"critic_escalation:{node_id}": "accept-capped"},
+    )
+    assert result.end_state == "actionable"
+    link = next(n for n in result.why_tree if n.rule == "reconcile")
+    assert link.verdict == "accepted" and link.share_explained == 1.0
+    assert link.evidence_status == "partially-evidenced"
+    verdict = next(e for e in events if e["agent"] == "critic" and e.get("loop") == "B")
+    assert verdict["action"] == "accept" and verdict["gate_choice"] == "accept-capped"
