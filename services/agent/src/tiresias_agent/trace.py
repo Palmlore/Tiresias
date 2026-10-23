@@ -107,7 +107,8 @@ class Tracer:
         """Emit once when the block ends, with duration_ms.
 
         The yielded dict collects extra fields (and may set "status"). If the block raises,
-        the line has status "error" and error_type, and the exception propagates.
+        the line has status "error" and error_type, and the exception propagates. The measured
+        duration_ms always wins over a caller-supplied one.
         """
         extra: dict[str, Any] = {}
         start = time.perf_counter()
@@ -116,10 +117,12 @@ class Tracer:
         except BaseException as exc:
             merged = {**fields, **extra, "error_type": type(exc).__name__}
             merged.pop("status", None)
+            merged.pop("duration_ms", None)
             self.emit(agent=agent, action=action, status="error", duration_ms=_ms(start), **merged)
             raise
         merged = {**fields, **extra}
         status = merged.pop("status", "success")
+        merged.pop("duration_ms", None)
         self.emit(agent=agent, action=action, status=status, duration_ms=_ms(start), **merged)
 
 

@@ -155,3 +155,14 @@ def test_new_run_id_is_sortable_and_filename_safe():
         assert re.match(r"^run-\d{8}T\d{6}Z-[0-9a-f]{6}$", run_id)
     assert len(set(ids)) == len(ids)
     assert sorted(ids, key=lambda r: r[:20]) == ids
+
+
+def test_span_measured_duration_wins_over_caller_field(tmp_path):
+    tracer = Tracer("run-dur", logs_dir=tmp_path)
+    with tracer.span(agent="a", action="ok", duration_ms=999_999) as extra:
+        extra["duration_ms"] = 888_888
+    with pytest.raises(RuntimeError), tracer.span(agent="a", action="boom", duration_ms=1):
+        raise RuntimeError("x")
+    lines = [json.loads(x) for x in (tmp_path / "trace-run-dur.jsonl").read_text().splitlines()]
+    assert [x["status"] for x in lines] == ["success", "error"]
+    assert all(isinstance(x["duration_ms"], int) and x["duration_ms"] < 999_999 for x in lines)
