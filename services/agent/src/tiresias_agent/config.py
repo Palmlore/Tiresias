@@ -61,3 +61,19 @@ class LoopBudgets:
             run_seconds=_bounded_float(env, "RUN_BUDGET_SECONDS", 600.0, 1.0, 3600.0),
             max_new_sources=_bounded_int(env, "MAX_NEW_SOURCES_PER_RUN", 2, 0, 5),
         )
+
+
+# Expected wall time of a first full investigation, in seconds (GET /entities, the scope check's
+# alternatives). Measured live on 2026-10-23, docs/measurements/live-any-company.md ("What a UI
+# should expect"): a company Zetaris has never registered (cold) takes 15-21 s end to end, a
+# registered one (warm) 3-11 s. Sample mode runs every phase in milliseconds (AGENTS.md, "Run
+# phases (for UI)"). Re-measure with scripts/perf_smoke.py before changing these.
+FIRST_RUN_SECONDS: dict[str, tuple[float, float, str]] = {
+    "sample": (0.0, 1.0, "sample mode runs every phase in milliseconds (offline slice)"),
+    "ready": (3.0, 11.0, "registered in Zetaris (warm), measured 2026-10-23"),
+    "searchable": (
+        15.0,
+        21.0,
+        "not registered yet (cold: the run registers it first), measured 2026-10-23",
+    ),
+}

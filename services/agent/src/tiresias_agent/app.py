@@ -7,17 +7,24 @@ as Server-Sent Events. Errors always use the contract's Error shape, never a sta
 
 import json
 import os
+import secrets
+from datetime import UTC, datetime
 
 import uvicorn
-from fastapi import FastAPI, Header, Request
+from fastapi import FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from . import __version__
+from . import __version__, entities
+from .adapters.catalog import make_discovery
+from .adapters.zetaris import make_source
 from .config import settings
-from .models import ErrorDetail, ErrorResponse, RunRequest
+from .models import ErrorDetail, ErrorResponse, Role, RunRequest
+from .orchestrator import _find
 from .runs import RegistryBusy, RunConflict, RunRecord, RunRegistry, valid_run_id
+from .runs import logs_dir as _logs_dir
 from .runs import wait_budget_seconds as _wait_budget
+from .trace import Tracer
 
 app = FastAPI(title="Tiresias agent", version=__version__)
 registry = RunRegistry()
@@ -183,6 +190,73 @@ def run_events(run_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Run-Id": run_id},
     )
+
+
+# --- entity directory (pick a company, suggested questions) ----------------------------------
+
+
+def _directory(request: Request, sample_mode: bool | None):
+    """Mode, tracer, evidence source and a lazy discovery for one directory call. Trace lines go
+    to trace-<X-Run-Id>.jsonl, else to one file per day (trace-api-YYYYMMDD.jsonl)."""
+    sample = settings.sample_mode if sample_mode is None else sample_mode
+    run_id = _header_run_id(request) or f"api-{datetime.now(UTC):%Y%m%d}"
+    tracer = Tracer(
+        run_id,
+        logs_dir=_logs_dir(),
+        defaults={"mode": "sample" if sample else "live", "request_id": secrets.token_hex(4)},
+    )
+    source = make_source(sample, tracer)
+    cache: dict = {}
+
+    def discovery():
+        if "d" not in cache:
+            cache["d"] = make_discovery(sample, tracer, client=_find(source, "client"))
+        return cache["d"]
+
+    return sample, tracer, source, discovery
+
+
+def _echo(request: Request) -> dict[str, str] | None:
+    rid = _header_run_id(request)
+    return {"X-Run-Id": rid} if rid else None
+
+
+@app.get("/entities")
+def list_entities(
+    request: Request,
+    q: str | None = Query(default=None, max_length=80),
+    limit: int = Query(default=entities.DEFAULT_LIMIT, ge=1, le=entities.MAX_LIMIT),
+    sample_mode: bool | None = None,
+) -> JSONResponse:
+    sample, tracer, source, discovery = _directory(request, sample_mode)
+    body = entities.list_entities(
+        q, sample=sample, source=source, discovery=discovery, tracer=tracer, limit=limit
+    )
+    return JSONResponse(content=body.model_dump(mode="json"), headers=_echo(request))
+
+
+@app.get("/entities/{cik}/suggestions")
+def entity_suggestions(
+    request: Request,
+    cik: str,
+    role: Role = "analyst",
+    limit: int = Query(default=12, ge=1, le=20),
+    sample_mode: bool | None = None,
+) -> JSONResponse:
+    sample, tracer, source, discovery = _directory(request, sample_mode)
+    try:
+        body = entities.suggestions(
+            cik,
+            sample=sample,
+            source=source,
+            discovery=discovery,
+            tracer=tracer,
+            role=role,
+            limit=limit,
+        )
+    except entities.DirectoryError as err:
+        return error_response(err.status, err.error_type, str(err), run_id=_header_run_id(request))
+    return JSONResponse(content=body.model_dump(mode="json"), headers=_echo(request))
 
 
 def _not_implemented(what: str) -> JSONResponse:

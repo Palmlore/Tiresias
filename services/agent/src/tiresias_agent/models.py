@@ -173,6 +173,96 @@ class ErrorDetail(BaseModel):
     recoverable: bool = False
 
 
+ScopeReasonType = Literal["forecast", "not-sec-registrant", "not-in-sample"]
+EntityTier = Literal["ready", "searchable"]
+
+
+class ScopeReason(BaseModel):
+    """Why a question is outside what Tiresias answers (a why-question about a filed change of
+    an SEC registrant), in plain words."""
+
+    type: ScopeReasonType
+    message: str
+    cue: str | None = Field(default=None, description="The words that triggered a forecast rule")
+
+
+class Suggestion(BaseModel):
+    """A question derived from the entity's own filed data, validated by framing it (the
+    framer measured a non-trivial effect). ``request`` can be posted to /run as-is."""
+
+    kind: EffectKind
+    basis: str = Field(
+        description="restatement | largest change | lowest value | highest value | latest change"
+    )
+    question: str
+    metric: str
+    period: Period
+    baseline: Observation
+    target: Observation
+    delta: float
+    relative_change: float | None = None
+    checks: list[str] = Field(default_factory=list, description="What was validated, in words")
+    request: RunRequest
+
+
+class Alternative(BaseModel):
+    """A runnable question offered instead of an out-of-scope one."""
+
+    basis: str = Field(
+        description="named in the question | same entity, past period | same SIC peer (<sic>)"
+    )
+    entity: Entity
+    registered: bool
+    checks: list[str] = Field(default_factory=list)
+    request: RunRequest
+
+
+class ScopeCheck(BaseModel):
+    """Set on a RunResult when the scope check stopped the run before Loop A."""
+
+    in_scope: bool
+    reasons: list[ScopeReason] = Field(default_factory=list)
+    alternatives: list[Alternative] = Field(default_factory=list)
+    note: str | None = None
+
+
+class ExpectedWait(BaseModel):
+    """Expected wall time of a first full investigation (measured, see ``basis``)."""
+
+    min_seconds: float
+    max_seconds: float
+    basis: str
+
+
+class EntityInfo(BaseModel):
+    cik: str
+    ticker: str
+    name: str = ""
+    tier: EntityTier
+    metrics: list[str] = Field(
+        default_factory=list, description="Supported metrics with registered data (ready only)"
+    )
+    expected_first_run: ExpectedWait
+
+
+class EntityList(BaseModel):
+    mode: Literal["sample", "live"]
+    query: str | None = None
+    entities: list[EntityInfo] = Field(default_factory=list)
+    searchable: bool = Field(description="Whether the searchable tier (sec_tickers) was searched")
+    note: str | None = None
+    degraded: bool = False
+
+
+class SuggestionList(BaseModel):
+    mode: Literal["sample", "live"]
+    entity: EntityInfo
+    suggestions: list[Suggestion] = Field(default_factory=list)
+    considered: int = Field(default=0, description="Candidate questions derived from the data")
+    rejected: int = Field(default=0, description="Candidates that failed validation")
+    note: str | None = None
+
+
 class RunResult(BaseModel):
     """Leads with the decision (ADR-0009): end state and recommended action, then the evidence."""
 
@@ -193,6 +283,11 @@ class RunResult(BaseModel):
     trace_file: str | None = None
     sample_mode: bool | None = None
     error: ErrorDetail | None = None
+    scope: ScopeCheck | None = Field(
+        default=None,
+        description="Set when the scope check stopped the run before Loop A (end state "
+        "evidence-frontier): the reasons and runnable alternatives",
+    )
 
 
 class ErrorResponse(BaseModel):

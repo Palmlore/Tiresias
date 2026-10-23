@@ -52,13 +52,21 @@ from .agents import (
     onboarder,
     reconciler,
     reporter,
+    scope,
     source_scout,
 )
 from .agents.common import MOST_OF_EFFECT, Candidate, Frame, LoopError, Measurement, Node
 from .agents.framer import FrameFailure
 from .agents.framer import frame as frame_question
 from .agents.framer import summary as frame_summary
-from .agents.knowledge import actionable_family, money, residual_text
+from .agents.knowledge import (
+    BREAKDOWN_RELATION,
+    EVENT_RULES,
+    actionable_family,
+    money,
+    residual_text,
+    ruled_out_text,
+)
 from .config import LoopBudgets, settings
 from .gates import Gate, GateRequest
 from .models import Entity as EntityRef
@@ -70,6 +78,7 @@ from .models import (
     RunRequest,
     RunResult,
     RunStats,
+    ScopeCheck,
 )
 from .trace import Tracer, new_run_id, phase
 
@@ -284,6 +293,17 @@ class LoopA:
             return self._stop("external-driver", [parent], None)
         if frontier:
             return self._frontier(frame, frontier)
+        tested = self.nodes[1:]
+        if (
+            parent.verdict == "root"
+            and tested
+            and all(n.verdict == "pruned" and n.rule in EVENT_RULES for n in tested)
+        ):
+            # Every candidate was an accounting/filing event and each was ruled out: the
+            # filed totals have nothing more to say; ask for a breakdown, not the same total.
+            ruled_out = list(dict.fromkeys(ruled_out_text(n.rule, n.variable) for n in tested))
+            need = gap_analyst.for_breakdown(frame, ruled_out, self.tracer)
+            return self._stop("evidence-frontier", [], need)
         need = gap_analyst.for_variable(
             frame,
             variable=parent.variable,
@@ -348,6 +368,7 @@ class _Run:
     prelude_evidence: list = field(default_factory=list)
     prelude_gate_decisions: int = 0
     discovery: Discovery | None = None
+    scope: ScopeCheck | None = None  # set when the scope check stopped the run
 
 
 def _fail(run: _Run, err: Exception) -> None:
@@ -460,6 +481,25 @@ def _prepare_entity(run: _Run, source: EvidenceSource) -> bool:
         done.update(outcome="resolved" if res.ok else res.error_type, registered=res.registered)
     if res.error_type == "InvalidInput":
         raise LoopError("InvalidInput", res.reason)
+    with phase(tracer, "scope_check", owner=scope.AGENT) as done:
+        verdict = scope.check(
+            run.request,
+            res,
+            sample=run.sample,
+            source=source,
+            discovery=discovery,
+            tracer=tracer,
+        )
+        done.update(outcome="in_scope" if verdict.in_scope else "out_of_scope")
+    if not verdict.in_scope:
+        # Stop before Loop A: a plain reason and runnable alternatives (end state
+        # evidence-frontier, RunResult.scope). An unresolved entity keeps its information need.
+        run.scope = verdict
+        if res.ok:
+            run.end_state = "evidence-frontier"
+        else:
+            _unframed(run, res.reason)
+        return False
     if not res.ok or res.entity is None:
         _unframed(run, res.reason)
         return False
@@ -559,6 +599,7 @@ def _report(run: _Run) -> RunResult:
         need=run.need,
         stats=stats,
         note=run.note,
+        scope=run.scope,
         **run.common,
     )
 
@@ -626,6 +667,21 @@ def run_investigation(
     if run.error is None and source is not None:
         _loop_a(run, source)
     if (
+        run.error is None
+        and run.end_state == "evidence-frontier"
+        and run.need is not None
+        and run.need.entity_hint.relation == BREAKDOWN_RELATION
+    ):
+        run.tracer.emit(
+            agent=AGENT,
+            action="loop_b",
+            status="rejected",
+            node_id=run.need.node_id,
+            loop="B",
+            output_summary="Loop B skipped: the need is a segment or product breakdown, and no "
+            "catalog source holds one (SEC company facts report totals only)",
+        )
+    elif (
         run.error is None
         and run.end_state == "evidence-frontier"
         and run.need is not None

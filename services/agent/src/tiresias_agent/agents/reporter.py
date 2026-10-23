@@ -5,10 +5,26 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..models import Effect, ErrorDetail, InformationNeed, Link, RunResult, RunStats
+from ..models import (
+    Effect,
+    ErrorDetail,
+    InformationNeed,
+    Link,
+    RunResult,
+    RunStats,
+    ScopeCheck,
+)
 from .common import Frame, Node
 from .framer import summary as frame_summary
-from .knowledge import ACTIONS, EXTERNAL_ACTION, RECONCILED_ACTIONS, actionable_family, money, pct
+from .knowledge import (
+    ACTIONS,
+    BREAKDOWN_RELATION,
+    EXTERNAL_ACTION,
+    RECONCILED_ACTIONS,
+    actionable_family,
+    money,
+    pct,
+)
 
 AGENT = "reporter"
 SUCCESS_STATES = {"actionable", "branched", "cyclic", "external-driver"}
@@ -104,6 +120,7 @@ def build(
     tracer: Any,
     error: ErrorDetail | None = None,
     note: str | None = None,
+    scope: ScopeCheck | None = None,
 ) -> RunResult:
     action = root_cause = None
     residual: float | None = None
@@ -151,6 +168,12 @@ def build(
                 if need
                 else ""
             )
+        elif need is not None and need.entity_hint.relation == BREAKDOWN_RELATION:
+            root_cause = need.reason
+            action = (
+                f"Next: onboard {need.entity_hint.description}, then run: {need.test} "
+                "Until then, treat the change as unexplained by any filed event."
+            )
         elif need is not None:
             root_cause = f"Not measurable from the registered sources: {need.reason}"
             action = (
@@ -185,6 +208,21 @@ def build(
             4,
         )
 
+    if scope is not None and not scope.in_scope:
+        root_cause = "Out of scope: " + " ".join(r.message for r in scope.reasons)
+        if scope.alternatives:
+            action = "Ask instead: " + " | ".join(a.request.question for a in scope.alternatives)
+        elif any(r.type == "not-in-sample" for r in scope.reasons):
+            action = (
+                "Run live (options.sample_mode=false) to ask about any SEC registrant, or pick a "
+                "company in the sample (GET /entities)."
+            )
+        else:
+            action = (
+                "Ask why a figure an SEC registrant has already filed changed (GET /entities "
+                "lists companies; GET /entities/{cik}/suggestions derives questions from their "
+                "filings)."
+            )
     status = "error" if error else ("success" if end_state in SUCCESS_STATES else "partial")
     result = RunResult(
         end_state=end_state,
@@ -201,6 +239,7 @@ def build(
         trace_file=trace_file,
         sample_mode=sample_mode,
         error=error,
+        scope=scope if scope is not None and not scope.in_scope else None,
     )
     tracer.emit(
         agent=AGENT,

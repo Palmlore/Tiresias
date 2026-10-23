@@ -65,14 +65,53 @@ paths:
         `: keepalive` is sent after 15 s without a line. The stream ends with one `event: end` whose
         data is {run_id, status, run_status?, end_state?, error?}, or after RUN_BUDGET_SECONDS + 30 s.
         For progress UIs, slow phases are bracketed by trace lines with agent `orchestrator` and
-        action `phase_start` / `phase_done` (field `phase`: resolve_entity, register_entity,
-        loop_a, frame, loop_b, scout, onboard, reconcile; `phase_done` carries duration_ms), and
+        action `phase_start` / `phase_done` (field `phase`: resolve_entity, scope_check,
+        register_entity, loop_a, frame, loop_b, scout, onboard, reconcile; `phase_done` carries duration_ms), and
         action `heartbeat` (same `phase`, `elapsed_ms`) every PHASE_HEARTBEAT_SECONDS (default 5)
         while a phase runs (AGENTS.md "Run phases (for UI)").
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Event stream, content: {text/event-stream: {schema: {type: string}}}}
         "404": {description: Unknown or evicted (type RunNotFound), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /entities:
+    get:
+      summary: Companies to ask about, for a picker with type-ahead (implemented)
+      description: >
+        Tier "ready" = registered already (live - the entity's Zetaris facts table, filings view
+        and a supported metric view; sample - the data/sample/ slice), so a run starts at once.
+        Tier "searchable" (live only, with q of 2+ characters) = any SEC registrant in the Zetaris
+        view tiresias.sec_tickers matching the ticker, CIK or name; a run registers it first.
+        Sample mode lists only the slice and says why in `note`. Each entity carries the measured
+        expected first-run wait (docs/measurements/live-any-company.md). Emits `api` trace lines
+        to trace-<X-Run-Id>.jsonl, else trace-api-YYYYMMDD.jsonl.
+      parameters:
+        - {name: q, in: query, schema: {type: string, maxLength: 80}, description: "Ticker, CIK or part of the name"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+        - {name: sample_mode, in: query, schema: {type: boolean}, description: Defaults to SAMPLE_MODE}
+        - {$ref: "#/components/parameters/XRunId"}
+      responses:
+        "200": {description: Entities, content: {application/json: {schema: {$ref: "#/components/schemas/EntityList"}}}}
+        "422": {description: Invalid query (type ValidationError), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /entities/{cik}/suggestions:
+    get:
+      summary: Questions derived from the entity's own filed data, each a RunRequest to post as-is (implemented)
+      description: >
+        Restatements (two annual filings that disagree on the same fiscal year; most recent first),
+        the largest year-on-year changes, and the lowest / highest annual value, for Revenues and
+        NetIncomeLoss. Each is validated by the framer on the same data (registered entity, metric
+        present, the intended kind of effect, relative change at least 1%) before it is returned.
+        Neutral wording. Only for a ready (registered) entity.
+      parameters:
+        - {name: cik, in: path, required: true, schema: {type: string, pattern: "^[0-9]{1,10}$"}}
+        - {name: role, in: query, schema: {type: string, enum: [analyst, auditor, board], default: analyst}, description: "Asker of the suggested requests (default levers per role)"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 12}}
+        - {name: sample_mode, in: query, schema: {type: boolean}}
+        - {$ref: "#/components/parameters/XRunId"}
+      responses:
+        "200": {description: Suggestions, content: {application/json: {schema: {$ref: "#/components/schemas/SuggestionList"}}}}
+        "404": {description: "Not an SEC registrant (EntityNotFound, live) or not in the sample (EntityNotInSample)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "409": {description: "An SEC registrant not registered in Zetaris yet (EntityNotRegistered): run any question about it first", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: Invalid CIK or query (ValidationError), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /runs/{run_id}/branch:
     post:
       summary: Branch from a node of a finished run with a new question or asker (planned; returns a structured 501)
@@ -224,7 +263,7 @@ components:
         description: {type: string}
     InformationNeed:
       type: object
-      description: Loop A to Loop B hand-off when no registered source can test a candidate
+      description: "Loop A to Loop B hand-off when no registered source can test a candidate. When every candidate was a ruled-out accounting event, variable is '<metric> by segment or product' and entity_hint.relation 'same entity, breakdown' (Loop B is skipped: no catalog source holds a breakdown)"
       required: [node_id, variable, entity_hint, period, join_key, test, reason]
       properties:
         node_id: {type: string}
@@ -263,6 +302,9 @@ components:
         status: {type: string, enum: [success, partial, error]}
         effect: {$ref: "#/components/schemas/Effect"}
         information_need: {$ref: "#/components/schemas/InformationNeed"}
+        scope:
+          oneOf: [{$ref: "#/components/schemas/ScopeCheck"}, {type: "null"}]
+          description: "Set when the scope check stopped the run before Loop A (end state evidence-frontier, status partial): plain reasons and runnable alternatives"
         why_tree: {type: array, items: {$ref: "#/components/schemas/Link"}}
         stats: {$ref: "#/components/schemas/RunStats"}
         trace_file: {type: string}
@@ -271,6 +313,82 @@ components:
           type: [object, "null"]
           description: Set when status is error (a controlled failure, never a stack trace)
           properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}
+    ScopeReason:
+      type: object
+      required: [type, message]
+      properties:
+        type: {type: string, enum: [forecast, not-sec-registrant, not-in-sample]}
+        message: {type: string}
+        cue: {type: [string, "null"], description: "The words (or the future period) that triggered the forecast rule"}
+    Alternative:
+      type: object
+      required: [basis, entity, registered, request]
+      properties:
+        basis: {type: string, description: "named in the question | same entity, past period | same SIC peer (<sic>)"}
+        entity: {type: object, properties: {ticker: {type: string}, cik: {type: string}, name: {type: [string, "null"]}}}
+        registered: {type: boolean, description: "false = an SEC registrant the run registers first (cold)"}
+        checks: {type: array, items: {type: string}, description: What was validated against data}
+        request: {$ref: "#/components/schemas/RunRequest"}
+    ScopeCheck:
+      type: object
+      required: [in_scope]
+      properties:
+        in_scope: {type: boolean}
+        reasons: {type: array, items: {$ref: "#/components/schemas/ScopeReason"}}
+        alternatives: {type: array, maxItems: 3, items: {$ref: "#/components/schemas/Alternative"}}
+        note: {type: [string, "null"]}
+    Suggestion:
+      type: object
+      required: [kind, basis, question, metric, period, baseline, target, delta, request]
+      properties:
+        kind: {type: string, enum: [restatement, change]}
+        basis: {type: string, description: "restatement | largest change | lowest value | highest value | latest change"}
+        question: {type: string}
+        metric: {type: string}
+        period: {type: object, properties: {start: {type: string, format: date}, end: {type: string, format: date}}}
+        baseline: {$ref: "#/components/schemas/Observation"}
+        target: {$ref: "#/components/schemas/Observation"}
+        delta: {type: number}
+        relative_change: {type: [number, "null"]}
+        checks: {type: array, items: {type: string}}
+        request: {$ref: "#/components/schemas/RunRequest"}
+    ExpectedWait:
+      type: object
+      required: [min_seconds, max_seconds, basis]
+      properties:
+        min_seconds: {type: number}
+        max_seconds: {type: number}
+        basis: {type: string}
+    EntityInfo:
+      type: object
+      required: [cik, ticker, tier, expected_first_run]
+      properties:
+        cik: {type: string}
+        ticker: {type: string}
+        name: {type: string}
+        tier: {type: string, enum: [ready, searchable]}
+        metrics: {type: array, items: {type: string}, description: Supported metrics with registered data}
+        expected_first_run: {$ref: "#/components/schemas/ExpectedWait"}
+    EntityList:
+      type: object
+      required: [mode, entities, searchable]
+      properties:
+        mode: {type: string, enum: [sample, live]}
+        query: {type: [string, "null"]}
+        entities: {type: array, items: {$ref: "#/components/schemas/EntityInfo"}}
+        searchable: {type: boolean, description: Whether tiresias.sec_tickers was searched}
+        note: {type: [string, "null"]}
+        degraded: {type: boolean}
+    SuggestionList:
+      type: object
+      required: [mode, entity, suggestions]
+      properties:
+        mode: {type: string, enum: [sample, live]}
+        entity: {$ref: "#/components/schemas/EntityInfo"}
+        suggestions: {type: array, items: {$ref: "#/components/schemas/Suggestion"}}
+        considered: {type: integer, description: Candidate questions derived from the data}
+        rejected: {type: integer, description: Candidates that failed validation}
+        note: {type: [string, "null"]}
     Error:
       type: object
       required: [status, error]

@@ -13,7 +13,7 @@ from typing import Any
 
 from ..models import EntityHint, InformationNeed, Period
 from .common import Frame, Node
-from .knowledge import money
+from .knowledge import BREAKDOWN_GAP, BREAKDOWN_RELATION, metric_label, money
 
 AGENT = "gap_analyst"
 JOIN_KEY = ["cik", "concept", "period_start", "period_end"]
@@ -96,6 +96,41 @@ def for_variable(
         join_key=JOIN_KEY,
         expected_magnitude=abs(frame.delta) if frame else None,
         test=f"Register a source with {variable} for the period, then re-run Loop A on it.",
+        reason=reason,
+    )
+    _trace(tracer, need)
+    return need
+
+
+def for_breakdown(frame: Frame, ruled_out: list[str], tracer: Any) -> InformationNeed:
+    """Every candidate was an accounting or filing event and each was ruled out: say what was
+    ruled out, and ask for a breakdown of the metric (segment or product), not the same total
+    again (the filed totals cannot be split further)."""
+    label = metric_label(frame.metric)
+    who = frame.ticker.upper()
+    size = money(abs(frame.delta))
+    move = "difference" if frame.kind == "restatement" else ("rise" if frame.delta > 0 else "fall")
+    reason = (
+        f"Ruled out (none explains the {size} {move}): {'; '.join(ruled_out)}. "
+        + BREAKDOWN_GAP.format(label=label)
+    )
+    need = InformationNeed(
+        node_id="n0",
+        variable=f"{frame.metric} by segment or product",
+        variable_aliases=[],
+        entity_hint=EntityHint(
+            relation=BREAKDOWN_RELATION,
+            source_ticker=who,
+            source_cik=frame.cik,
+            description=f"a segment or product breakdown of {who}'s {label} for "
+            f"{frame.period_label} (not the filed total, which is already measured)",
+        ),
+        period=Period(start=frame.period_start, end=frame.period_end),
+        join_key=[*JOIN_KEY, "segment"],
+        expected_magnitude=abs(frame.delta),
+        test=f"Intervention: reset each segment's {label} to its baseline and re-measure "
+        f"{frame.metric}; a segment explains the effect if resetting it removes most of the "
+        f"{size} {move}.",
         reason=reason,
     )
     _trace(tracer, need)

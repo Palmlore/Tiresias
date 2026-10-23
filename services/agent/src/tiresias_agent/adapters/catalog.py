@@ -212,6 +212,7 @@ class FilingRow:
     filing_date: str
     items: str
     accession_number: str
+    report_date: str = ""
 
 
 @dataclass(frozen=True)
@@ -223,6 +224,7 @@ class Profile:
     tickers: tuple[str, ...]
     former_names: tuple[dict[str, str], ...]
     filings: tuple[FilingRow, ...] = field(default_factory=tuple)
+    sic: str = ""  # SEC standard industry code ("" when the registrant has none)
 
 
 class Discovery(Protocol):
@@ -238,6 +240,8 @@ class Discovery(Protocol):
     def search(self, name: str) -> Evidence[TickerRow]: ...
 
     def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]: ...
+
+    def registrant(self, cik10: str, ticker: str) -> Evidence[Profile]: ...
 
 
 # --- SQL (the same text in sample and live mode) -----------------------------------------------
@@ -322,6 +326,11 @@ def submissions_sql(ticker: str, directory: Path | None = None) -> str:
     return render_file("37_submissions_profile.sql", directory, table=submissions_table(ticker))
 
 
+def registrant_sql(ticker: str, directory: Path | None = None) -> str:
+    """The submissions profile with ``sic`` and per-filing ``report_date`` (agents/scope.py)."""
+    return render_file("38_registrant_profile.sql", directory, table=submissions_table(ticker))
+
+
 def _first_word(text: str) -> str:
     parts = text.strip().split()
     return parts[0].lower() if parts else ""
@@ -362,6 +371,7 @@ def _profile(data: Any, cik10: str) -> Profile:
         raise SourceError("sec_submissions: body is not an object", recoverable=False)
     recent = (data.get("filings") or {}).get("recent") or {}
     items = recent.get("items") or []
+    reports = recent.get("reportDate") or []
     try:
         filings = tuple(
             FilingRow(
@@ -369,6 +379,7 @@ def _profile(data: Any, cik10: str) -> Profile:
                 filing_date=str(recent["filingDate"][i]),
                 items=str((items[i] if i < len(items) else "") or ""),
                 accession_number=str(accn),
+                report_date=str((reports[i] if i < len(reports) else "") or ""),
             )
             for i, accn in enumerate(recent.get("accessionNumber") or [])
         )
@@ -385,6 +396,7 @@ def _profile(data: Any, cik10: str) -> Profile:
         tickers=tuple(str(t) for t in data.get("tickers") or []),
         former_names=former,
         filings=filings,
+        sic=str(data.get("sic") or ""),
     )
 
 
@@ -414,6 +426,7 @@ def _profile_rows(result: QueryResult, cik10: str) -> Profile | None:
             filing_date=str(r.get("filing_date") or ""),
             items=str(r.get("items") or ""),
             accession_number=str(r["accession_number"]),
+            report_date=str(r.get("report_date") or ""),
         )
         for r in result.rows
         if r.get("accession_number") not in (None, "", "null")
@@ -424,6 +437,7 @@ def _profile_rows(result: QueryResult, cik10: str) -> Profile | None:
         tickers=tuple(str(t) for t in _json_list(head.get("tickers"))),
         former_names=former,
         filings=filings,
+        sic=str(head.get("sic") or ""),
     )
 
 
@@ -522,6 +536,12 @@ class SampleDiscovery:
         return self._emit(
             "submissions", Evidence(found, sql=sql, source=self.name, note=note), start
         )
+
+    def registrant(self, cik10: str, ticker: str) -> Evidence[Profile]:
+        """The same profile (with sic and report dates), reporting registrant_sql."""
+        result = self.submissions(cik10, ticker)
+        result.sql = registrant_sql(ticker)
+        return result
 
 
 # --- live: Zetaris only --------------------------------------------------------------------------
@@ -706,6 +726,20 @@ class ZetarisDiscovery:
         self._emit("submissions", out, start)
         return out
 
+    def registrant(self, cik10: str, ticker: str) -> Evidence[Profile]:
+        """The profile with sic and report dates (38_registrant_profile.sql); same table."""
+        start = time.perf_counter()
+        if not _CIK10.match(cik10):
+            raise CatalogError(f"{SUBMISSIONS}: invalid cik10 {cik10!r}")
+        self._ensure_submissions(cik10, ticker)
+        sql = registrant_sql(ticker, self.directory)
+        result = self.client.run_sql(sql, label="discovery_registrant")
+        profile = _profile_rows(result, cik10)
+        note = None if profile else f"no submissions for CIK {cik10}"
+        out = Evidence([profile] if profile else [], sql=sql, source=self.name, note=note)
+        self._emit("registrant", out, start)
+        return out
+
 
 class FallbackDiscovery:
     """Live first; on a recoverable error serve the sample, traced degraded. A non-recoverable
@@ -752,6 +786,9 @@ class FallbackDiscovery:
 
     def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]:
         return self._call("submissions", cik10, ticker)
+
+    def registrant(self, cik10: str, ticker: str) -> Evidence[Profile]:
+        return self._call("registrant", cik10, ticker)
 
 
 def make_discovery(

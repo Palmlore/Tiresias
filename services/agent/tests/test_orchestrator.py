@@ -225,12 +225,21 @@ FORBIDDEN = [
     r"35[,_]?348",
     r"22[,_]?136",
     r"0001193125-2",
+    # the live demo cases of the scope check and suggestions (entities and CIKs)
+    r"\bSMCI\b",
+    r"Super ?Micro",
+    r"(?i)nvidia",
+    r"\bNVDA\b",
+    r"(?i)gigabyte",
+    r"0001375365",
+    r"0001045810",
 ]
 LOGIC_FILES = sorted(
     [
         *(SRC / "agents").glob("*.py"),
         SRC / "orchestrator.py",
         SRC / "gates.py",
+        SRC / "entities.py",
         SRC / "adapters" / "catalog.py",
     ]
 )
@@ -239,6 +248,7 @@ LOGIC_FILES = sorted(
 def test_guard_covers_the_loop_b_agents():
     names = {p.name for p in LOGIC_FILES}
     assert {"source_scout.py", "onboarder.py", "reconciler.py", "catalog.py"} <= names
+    assert {"scope.py", "suggester.py", "entities.py"} <= names
 
 
 @pytest.mark.parametrize("path", LOGIC_FILES, ids=lambda p: p.name)
