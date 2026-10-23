@@ -93,6 +93,9 @@ class Node:
     attempts: int = 1
     evidence: list[EvidenceItem] = field(default_factory=list)
     measurement: Measurement | None = None
+    # Loop B extras: signed residual share ("residual"), and text fields the action templates
+    # use ("format": counterparty, counterparty_value, residual).
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass

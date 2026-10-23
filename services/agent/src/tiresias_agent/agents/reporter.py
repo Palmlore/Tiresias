@@ -8,7 +8,7 @@ from typing import Any
 from ..models import Effect, ErrorDetail, InformationNeed, Link, RunResult, RunStats
 from .common import Frame, Node
 from .framer import summary as frame_summary
-from .knowledge import ACTIONS, EXTERNAL_ACTION, actionable_family, money, pct
+from .knowledge import ACTIONS, EXTERNAL_ACTION, RECONCILED_ACTIONS, actionable_family, money, pct
 
 AGENT = "reporter"
 SUCCESS_STATES = {"actionable", "branched", "cyclic", "external-driver"}
@@ -36,7 +36,7 @@ def link(node: Node) -> Link:
         label=node.label,
         evidence_status=node.evidence_status,
         share_explained=node.share,
-        residual=None if node.share is None else round(1 - node.share, 4),
+        residual=_residual(node),
         sql=node.evidence[-1].sql if node.evidence else None,
         depth=node.depth,
         verdict=node.verdict,
@@ -45,6 +45,13 @@ def link(node: Node) -> Link:
         attempts=node.attempts,
         evidence=node.evidence,
     )
+
+
+def _residual(node: Node) -> float | None:
+    """Loop B links carry a signed residual (negative = over-explained); others 1 - share."""
+    if node.context.get("residual") is not None:
+        return node.context["residual"]
+    return None if node.share is None else round(1 - node.share, 4)
 
 
 def driver(node: Node) -> str:
@@ -65,10 +72,12 @@ def event_text(node: Node) -> str:
 
 
 def action_for(frame: Frame, node: Node, family: str) -> str | None:
-    template = ACTIONS.get((node.category or "", family))
+    actions = RECONCILED_ACTIONS if node.rule == "reconcile" else ACTIONS
+    template = actions.get((node.category or "", family))
     if template is None:
         return None
     return template.format(
+        **node.context.get("format", {}),
         period=frame.period_label,
         metric=frame.metric,
         target=money(frame.target.value),
@@ -108,7 +117,11 @@ def build(
         main = chosen[0]
         fam = actionable_family(main.category or "", levers, role)
         action = action_for(frame, main, fam) if fam else None
-        root_cause = f"{main.claim}: {driver(main)}; {main.reason}"
+        root_cause = (
+            f"{main.claim}; {main.reason}"
+            if main.rule == "reconcile"
+            else f"{main.claim}: {driver(main)}; {main.reason}"
+        )
     elif frame is not None and end_state == "branched":
         parts = [f"{n.claim} ({pct(n.share)})" for n in chosen]
         root_cause = "Several causes each explain a share: " + "; ".join(parts)
@@ -120,7 +133,11 @@ def build(
         action = " ".join(a for a in acts if a) or "Monitor each branch; none is in your levers."
     elif frame is not None and end_state == "external-driver" and chosen:
         main = chosen[0]
-        root_cause = f"{main.claim}: {driver(main)}"
+        root_cause = (
+            f"{main.claim}; {main.reason}"
+            if main.rule == "reconcile"
+            else f"{main.claim}: {driver(main)}"
+        )
         action = EXTERNAL_ACTION.format(driver=driver(main), levers=", ".join(levers) or role)
     elif end_state == "evidence-frontier":
         main = chosen[0] if chosen else None
@@ -150,6 +167,12 @@ def build(
         action = "Incomplete: re-run with a larger budget, or branch from the best node."
         if note:
             action += f" ({note})"
+    if (
+        chosen
+        and end_state in {"actionable", "external-driver"}
+        and chosen[0].context.get("residual") is not None
+    ):
+        residual = chosen[0].context["residual"]  # signed (Loop B reconciliation)
     if residual is not None and end_state in {"evidence-frontier", "budget"}:
         residual = round(
             max(

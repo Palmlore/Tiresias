@@ -482,6 +482,10 @@ class LiveZetarisSource:
         self.directory = directory
         self._views: set[str] | None = None
 
+    def refresh(self) -> None:
+        """Forget the cached view list (after a runtime registration, Loop B)."""
+        self._views = None
+
     def registered_views(self) -> set[str]:
         if self._views is None:
             result = self.client.run_sql(
@@ -708,6 +712,11 @@ class FallbackSource:
             )
             return result
 
+    def refresh(self) -> None:
+        for inner in (self.primary, self.fallback):
+            if hasattr(inner, "refresh"):
+                inner.refresh()
+
     def entities(self) -> Evidence[Entity]:
         return self._call("entities")
 
@@ -737,6 +746,9 @@ def make_source(
 
 
 BOOTSTRAP_TIMEOUT_SECONDS = 180.0
+# Raw tables a registration can create, keyed by kind, with the catalog template behind each.
+REGISTRABLE_TABLES = ("facts", "submissions")
+CATALOG_TABLES = {"sec_companyfacts": "facts", "sec_submissions": "submissions"}
 _DONE_STATUS = {"cache": "cached", "concept_view": "replaced", "filings_view": "replaced"}
 
 
@@ -745,8 +757,15 @@ def bootstrap_plan(
     entities: Sequence[Entity] = SHOWCASE_ENTITIES,
     concepts: Sequence[str] = tuple(CONCEPT_SLUGS),
     directory: Path | None = None,
+    tables: Sequence[str] = REGISTRABLE_TABLES,
 ) -> list[tuple[str, str, str, str | None]]:
-    """(step, object, sql, required raw table) in order. Only CREATE, CREATE OR REPLACE, CACHE."""
+    """(step, object, sql, required raw table) in order. Only CREATE, CREATE OR REPLACE, CACHE.
+
+    ``tables`` limits the raw tables (and the views over them) to register: "facts" (concept
+    views) and/or "submissions" (filings view). Loop B's onboarder registers only "facts"."""
+    unknown = set(tables) - set(REGISTRABLE_TABLES)
+    if unknown or not tables:
+        raise ValueError(f"tables must be a non-empty subset of {REGISTRABLE_TABLES}")
     ua = _check(_USER_AGENT, sec_user_agent, "SEC_USER_AGENT")
     steps: list[tuple[str, str, str, str | None]] = [
         ("database", "TIRESIAS_SEC", render_file("00_database.sql", directory), None),
@@ -759,16 +778,19 @@ def bootstrap_plan(
             ("facts_table", "10_companyfacts_table.sql", facts),
             ("submissions_table", "11_submissions_table.sql", subs),
         ):
+            if step.removesuffix("_table") not in tables:
+                continue
             sql = render_file(tmpl, directory, ticker=t, cik10=cik, sec_user_agent=ua)
             steps.append((step, f"TIRESIAS_SEC.{table}", sql, None))
             cache = render_file("12_cache_table.sql", directory, table=table)
             steps.append(("cache", f"TIRESIAS_SEC.{table}", cache, table))
-        for c in concepts:
+        for c in concepts if "facts" in tables else ():
             slug = concept_slug(c)
             sql = render_file("20_concept_view.sql", directory, ticker=t, slug=slug, concept=c)
             steps.append(("concept_view", f"tiresias.{t}_{slug}", sql, facts))
-        sql = render_file("21_filings_view.sql", directory, ticker=t)
-        steps.append(("filings_view", f"tiresias.{t}_filings", sql, subs))
+        if "submissions" in tables:
+            sql = render_file("21_filings_view.sql", directory, ticker=t)
+            steps.append(("filings_view", f"tiresias.{t}_filings", sql, subs))
     return steps
 
 
@@ -778,8 +800,9 @@ def bootstrap(
     sec_user_agent: str | None = None,
     entities: Sequence[Entity] = SHOWCASE_ENTITIES,
     concepts: Sequence[str] = tuple(CONCEPT_SLUGS),
+    tables: Sequence[str] = REGISTRABLE_TABLES,
 ) -> list[dict[str, Any]]:
-    """Register the showcase sources. Safe to run twice: "already exists" counts as done.
+    """Register the showcase sources (or, from Loop B, one discovered entity's ``tables``). Safe to run twice: "already exists" counts as done.
 
     A concept the entity never reported gives status "absent" (no view); other failures are
     recorded and the run goes on; steps on a raw table that failed are skipped. Never drops.
@@ -787,7 +810,7 @@ def bootstrap(
     ua = sec_user_agent or os.getenv("SEC_USER_AGENT", "")
     failed_tables: set[str] = set()
     report: list[dict[str, Any]] = []
-    for step, obj, sql, requires in bootstrap_plan(ua, entities, concepts):
+    for step, obj, sql, requires in bootstrap_plan(ua, entities, concepts, tables=tables):
         entry: dict[str, Any] = {"step": step, "object": obj}
         if requires in failed_tables:
             report.append({**entry, "status": "skipped", "duration_ms": 0})
@@ -810,6 +833,7 @@ def bootstrap(
             else:
                 entry["status"] = "failed"
                 entry["error"] = str(err)[:200]
+                entry["recoverable"] = err.recoverable
                 if step.endswith("_table"):
                     failed_tables.add(obj.split(".")[-1])
         entry["duration_ms"] = _ms(start)

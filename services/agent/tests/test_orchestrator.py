@@ -226,7 +226,19 @@ FORBIDDEN = [
     r"22[,_]?136",
     r"0001193125-2",
 ]
-LOGIC_FILES = sorted([*(SRC / "agents").glob("*.py"), SRC / "orchestrator.py", SRC / "gates.py"])
+LOGIC_FILES = sorted(
+    [
+        *(SRC / "agents").glob("*.py"),
+        SRC / "orchestrator.py",
+        SRC / "gates.py",
+        SRC / "adapters" / "catalog.py",
+    ]
+)
+
+
+def test_guard_covers_the_loop_b_agents():
+    names = {p.name for p in LOGIC_FILES}
+    assert {"source_scout.py", "onboarder.py", "reconciler.py", "catalog.py"} <= names
 
 
 @pytest.mark.parametrize("path", LOGIC_FILES, ids=lambda p: p.name)

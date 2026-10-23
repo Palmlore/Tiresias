@@ -91,6 +91,14 @@ ERROR_CORRECTION = FilingEvent(
 )
 FILING_EVENTS = (DISPOSAL, ERROR_CORRECTION)
 
+# Loop B (source scout): how a disposed business shows up as its own registrant. When a
+# business leaves its parent as a separate registrant (a spin-off or split-off), the new
+# registrant files its own 8-K around the completion date, typically with item 5.01 (changes in
+# control of registrant), and it has filed no annual report before the separation.
+SEPARATION_ITEMS: tuple[str, ...] = ("5.01",)
+ANNUAL_FORMS: tuple[str, ...] = ("10-K", "10-K/A")
+CURRENT_REPORT_FORMS: tuple[str, ...] = ("8-K", "8-K/A")
+
 # How the disposed business's share of a metric is reported by the filer itself.
 DISPOSAL_MAGNITUDE: dict[str, str] = {
     "revenue": DISPOSAL_GROUP_REVENUE,
@@ -160,6 +168,24 @@ ACTIONS: dict[tuple[str, str], str] = {
         "controls that let the error through."
     ),
 }
+# Actions once Loop B has reconciled the effect against the disposed business's own filings.
+RECONCILED_ACTIONS: dict[tuple[str, str], str] = {
+    ("portfolio_change", "model"): (
+        "Re-base the {period} {metric} in the model on continuing operations ({target} as now "
+        "reported, {delta} vs {baseline}): the restatement removes {counterparty} ({event}), "
+        "whose own filings report {counterparty_value} for the period; residual: {residual}."
+    ),
+    ("portfolio_change", "audit"): (
+        "The restated {period} {metric} ({baseline} to {target}) reconciles to the removal of "
+        "{counterparty} ({event}): its own filings report {counterparty_value} for the period "
+        "(residual: {residual}). Scope follow-up requests to that residual and to the "
+        "discontinued-operations reclassification before sign-off."
+    ),
+    ("portfolio_change", "strategy"): (
+        "Assess the portfolio without {counterparty} ({event}): it accounted for "
+        "{counterparty_value} of the {period} {metric}; residual: {residual}."
+    ),
+}
 EXTERNAL_ACTION = (
     "Monitor or adapt: the cause found ({driver}) is outside the asker's levers ({levers}); "
     "track it rather than act on it."
@@ -201,6 +227,15 @@ def money(value: float | None) -> str:
     if v >= 1e6:
         return f"{sign}${v / 1e6:.1f}M"
     return f"{sign}${v:,.0f}"
+
+
+def residual_text(amount: float | None, share: float | None) -> str:
+    """A signed residual in words: what is left unexplained, or by how much it over-explains."""
+    if amount is None or share is None:
+        return "n/a"
+    if share >= 0:
+        return f"{money(abs(amount))} unexplained ({share * 100:.1f}% of the effect)"
+    return f"over-explained by {money(abs(amount))} ({-share * 100:.1f}% of the effect)"
 
 
 def pct(value: float | None) -> str:
