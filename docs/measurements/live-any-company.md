@@ -102,7 +102,7 @@ cd services/agent && uv run python ../../scripts/perf_smoke.py ../../input_examp
 
 ## 2026-10-23 (evening): source scout by filing evidence (B-5)
 
-Same machine, same Zetaris bundle (not restarted). Branch `feat/spinoff-match`, pass 3 ran at commit `a54daec` (the code in this PR; the fixes listed under pass A are in it). Defaults as above, gates `auto`. Every number below comes from the run's own trace; raw JSON lines and traces stayed in a scratch directory (not committed).
+Same machine, same Zetaris bundle (not restarted). Branch `feat/spinoff-match`, pass 3 ran at commit `a54daec`, before the branch was rebased onto #12 (the same scout code is `8504ca8` after the rebase; the fixes listed under pass A are in it). Defaults as above, gates `auto`. Every number below comes from the run's own trace; raw JSON lines and traces stayed in a scratch directory (not committed).
 
 **What changed:** the scout now asks EDGAR full-text search (catalog `sec_fulltext`, one Zetaris REST table per search) which filers' Form 10 (10-12B/10-12G) in the 540 days before the disposal contains the source's name, and checks those first, whatever their name; the brand only ranks. If nothing qualifies it searches 8-Ks within 7 days of the disposal for a buyer and refuses a sale to an existing company with the buyer named.
 
