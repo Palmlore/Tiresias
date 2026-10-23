@@ -63,6 +63,21 @@ class LoopBudgets:
         )
 
 
+# Loop B critic (agents/reconciler.py): the largest share of the root effect a counterparty's
+# add-back may explain before the match itself is suspect. Between OVER_EXPLAINED (1.05, in
+# agents/common.py) and this bound an over-explaining add-back goes to the critic_escalation gate
+# with the proposal "accept-capped" (offsetting items exist); beyond it the proposal is "prune"
+# (the counterparty is likely wrong), so the auto policy ends the run at the evidence frontier. A
+# scripted or interactive gate may still accept it. BACKLOG B-15.
+MAX_OVER_EXPLAINED_DEFAULT = 1.5
+
+
+def max_over_explained(env: Mapping[str, str] | None = None) -> float:
+    """MAX_OVER_EXPLAINED, read at call time and clamped to 1.05..10.0 (default 1.5 = 150%)."""
+    env = os.environ if env is None else env
+    return _bounded_float(env, "MAX_OVER_EXPLAINED", MAX_OVER_EXPLAINED_DEFAULT, 1.05, 10.0)
+
+
 # Expected wall time of a first full investigation, in seconds (GET /entities, the scope check's
 # alternatives). Measured live on 2026-10-23, docs/measurements/live-any-company.md ("What a UI
 # should expect"): a company Zetaris has never registered (cold) takes 15-21 s end to end, a

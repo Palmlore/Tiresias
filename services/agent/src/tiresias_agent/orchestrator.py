@@ -67,7 +67,7 @@ from .agents.knowledge import (
     residual_text,
     ruled_out_text,
 )
-from .config import LoopBudgets, settings
+from .config import LoopBudgets, max_over_explained, settings
 from .gates import Gate, GateRequest
 from .models import Entity as EntityRef
 from .models import (
@@ -843,7 +843,9 @@ class LoopB:
                 frame, need, entity, self.registry, node_id=node_id, tracer=tracer
             )
         self.loop.hops += 1
-        v, residual = reconciler.judge(frame, r)
+        bound = max_over_explained()
+        v, residual = reconciler.judge(frame, r, bound=bound)
+        gate_choice = None
         if v.escalation:
             decision = self.loop.gate.decide(
                 GateRequest(
@@ -853,12 +855,15 @@ class LoopB:
                     proposal=v.escalation["proposal"],
                     node_id=node_id,
                     requested_by=critic.AGENT,
-                    context={"share": v.raw_share},
+                    context={"share": v.raw_share, "bound": bound},
                 )
             )
             self.loop.gate_decisions += 1
+            gate_choice = decision.choice
             v = critic.apply_gate(v, decision.choice)
-        reconciler.trace_verdict(tracer, node_id, r, v, residual)
+        reconciler.trace_verdict(
+            tracer, node_id, r, v, residual, bound=bound, gate_choice=gate_choice
+        )
         if v.decision == "prune":
             self.loop.prunes += 1
         events = parent.measurement.events if parent.measurement else []
