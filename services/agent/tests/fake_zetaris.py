@@ -113,24 +113,31 @@ class FakeZetaris:
         return ok(cols, [[str(c), n, t, "NYSE"] for t, c, n in rows])
 
     def _profile(self, ticker):
-        cols = ["cik", "name", "tickers", "former_names", "accession_number", "form"]
+        cols = ["cik", "name", "sic", "tickers", "former_names", "accession_number", "form"]
+        tail = ["filing_date", "items", "report_date"]
         if ticker not in self.aliases:  # a registrant with no filings: one OUTER row
-            return ok(
-                [*cols, "filing_date", "items"], [["0", ticker, "[]", "[]", None, None, None, None]]
-            )
+            return ok([*cols, *tail], [["0", ticker, "", "[]", "[]", None, None, None, None, None]])
         data = self._load(self.aliases[ticker], "submissions")
         recent = data["filings"]["recent"]
         head = [
             data["cik"],
             data["name"],
+            str(data.get("sic") or ""),
             json.dumps(data.get("tickers") or []),
             json.dumps(data.get("formerNames") or []),
         ]
         rows = [
-            [*head, accn, recent["form"][i], recent["filingDate"][i], recent["items"][i]]
+            [
+                *head,
+                accn,
+                recent["form"][i],
+                recent["filingDate"][i],
+                recent["items"][i],
+                recent["reportDate"][i],
+            ]
             for i, accn in enumerate(recent["accessionNumber"])
         ]
-        return ok([*cols, "filing_date", "items"], rows)
+        return ok([*cols, *tail], rows)
 
     def _filings(self, s):
         ticker = re.search(r"FROM tiresias\.(\w+)_filings", s).group(1)

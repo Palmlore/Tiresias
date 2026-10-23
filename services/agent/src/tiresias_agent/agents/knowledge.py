@@ -236,6 +236,60 @@ def actionable_family(category: str, levers: list[str], role: str | None) -> str
     return preferred if preferred in usable else min(usable)
 
 
+# --- Suggested questions, alternatives and the frontier wording -------------------------------
+
+# Metrics the rules can investigate (one per concept family), and how a question names them.
+SUGGESTED_METRICS: tuple[str, ...] = ("Revenues", "NetIncomeLoss")
+METRIC_LABELS: dict[str, str] = {
+    "Revenues": "revenue",
+    "RevenueFromContractWithCustomerExcludingAssessedTax": "revenue",
+    "RevenueFromContractWithCustomerIncludingAssessedTax": "revenue",
+    "SalesRevenueNet": "revenue",
+    "NetIncomeLoss": "net income",
+    "ProfitLoss": "profit",
+}
+# Levers a suggested question gives each role when the caller names none (the role's family).
+DEFAULT_LEVERS: dict[str, tuple[str, ...]] = {
+    "analyst": ("model adjustments", "estimates", "rating"),
+    "auditor": ("testing scope", "follow-up requests", "sign-off"),
+    "board": ("portfolio strategy", "capital allocation"),
+}
+# Hypothesiser rules that test an accounting or filing event (not a slice of the total). When
+# every candidate tested was one of these and each was ruled out, the filed totals have nothing
+# left to say: the next evidence is a breakdown of the metric, which SEC company facts lack.
+EVENT_RULES: frozenset[str] = frozenset(
+    {"filing_event", "event_concept", "concept_switch", "comparative_restated"}
+)
+RULED_OUT_TEXT: dict[str, str] = {
+    "disposal": "acquisition or disposal (8-K item 2.01)",
+    "error_correction": "error correction (8-K item 4.02 or a 10-K/A)",
+    "concept_switch": "change of reported concept",
+    "comparative_restated": "restated prior-year comparative",
+}
+BREAKDOWN_GAP = (
+    "The filed totals don't break {label} down further (segment or product detail isn't in "
+    "SEC company facts)."
+)
+BREAKDOWN_RELATION = "same entity, breakdown"
+
+
+def metric_label(metric: str) -> str:
+    return METRIC_LABELS.get(metric, metric)
+
+
+def ruled_out_text(rule: str | None, variable: str) -> str:
+    """What a pruned event candidate ruled out, in words (generic, from its rule)."""
+    if rule == "filing_event":
+        for fe in FILING_EVENTS:
+            if variable == f"8-K {'/'.join(fe.items)}":
+                return RULED_OUT_TEXT.get(fe.key, fe.description)
+    if rule == "event_concept":
+        for ev in EVENT_CONCEPTS:
+            if ev.concept == variable:
+                return ev.description.split(" (")[0]
+    return RULED_OUT_TEXT.get(rule or "", variable)
+
+
 # --- Formatting ---------------------------------------------------------------------------------
 
 

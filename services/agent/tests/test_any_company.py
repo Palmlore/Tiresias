@@ -286,6 +286,7 @@ def test_sample_run_brackets_every_slow_phase(tmp_path):
     dones = [x for x in lines if x["action"] == "phase_done"]
     assert starts == [
         "resolve_entity",
+        "scope_check",
         "loop_a",
         "frame",
         "loop_b",

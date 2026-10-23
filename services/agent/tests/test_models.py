@@ -151,6 +151,14 @@ def test_result_shapes_match_the_contract_field_for_field():
         "Effect",
         "EntityHint",
         "InformationNeed",
+        "ScopeCheck",
+        "ScopeReason",
+        "Alternative",
+        "Suggestion",
+        "ExpectedWait",
+        "EntityInfo",
+        "EntityList",
+        "SuggestionList",
     ):
         model = getattr(models, name)
         assert set(schemas[name]["properties"]) == set(model.model_fields), name
