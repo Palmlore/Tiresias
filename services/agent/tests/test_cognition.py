@@ -284,6 +284,14 @@ def test_run_id_defaults_to_tracer_run_id():
     assert calls[0].headers["x-run-id"] == "run-from-tracer"
 
 
+def test_run_id_is_minted_when_none_is_known():
+    client, calls = make_client(ok({"lessons": []}), run_id=None)
+    client.list_memory()
+    client.list_memory()
+    assert calls[0].headers.get("x-run-id")
+    assert calls[1].headers["x-run-id"] == calls[0].headers["x-run-id"] == client.run_id
+
+
 def test_no_tracer_is_a_noop():
     client, _ = make_client(refuse, tracer=None)
     assert client.recall("why?").available is False

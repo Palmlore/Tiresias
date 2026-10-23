@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Protocol, Self
 
@@ -185,7 +186,7 @@ def _short(text: str) -> str:
 
 
 class CognitionClient:
-    """One method per endpoint. Every request carries ``X-Run-Id`` when a run id is known."""
+    """One method per endpoint. Every request carries ``X-Run-Id`` (minted if none is given)."""
 
     def __init__(
         self,
@@ -197,7 +198,10 @@ class CognitionClient:
     ) -> None:
         self.config = config or CognitionConfig.from_env()
         self.tracer: Tracer = tracer if tracer is not None else _NoopTracer()
-        self.run_id = run_id if run_id is not None else getattr(tracer, "run_id", None)
+        # Every request carries X-Run-Id: mint one for the client's lifetime if none is known.
+        self.run_id: str = (
+            run_id or getattr(tracer, "run_id", None) or f"run-{uuid.uuid4().hex[:12]}"
+        )
         self._http = httpx.Client(
             base_url=self.config.url,
             timeout=self.config.timeout_s,
@@ -224,7 +228,7 @@ class CognitionClient:
         params: dict[str, str] | None = None,
         idempotent: bool = False,
     ) -> dict[str, Any]:
-        headers = {"X-Run-Id": self.run_id} if self.run_id else {}
+        headers = {"X-Run-Id": self.run_id}
         attempts = 1 + (self.config.retries if idempotent else 0)
         for attempt in range(attempts):
             try:
@@ -333,11 +337,9 @@ class CognitionClient:
     ) -> RememberResult:
         """POST /memory/remember. The run id travels in X-Run-Id (the server prefers it)."""
         started = time.perf_counter()
-        payload: dict[str, Any] = {"content": content}
+        payload: dict[str, Any] = {"content": content, "run_id": self.run_id}
         if namespace is not None:
             payload["namespace"] = namespace
-        if self.run_id:
-            payload["run_id"] = self.run_id
         if agent_id is not None:
             payload["agent_id"] = agent_id
         if tags is not None:
