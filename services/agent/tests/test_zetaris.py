@@ -259,6 +259,18 @@ def test_live_outage_falls_back_to_sample_and_is_traced_degraded():
     assert any(e["status"] == "error" and e["source"] == "zetaris" for e in tracer.events)
 
 
+def test_live_non_recoverable_error_is_raised_not_served_from_sample():
+    tracer = RecordingTracer()
+    client, _ = make_client(
+        lambda request: httpx.Response(400, json={"msg": "bad sql"}), tracer=tracer
+    )
+    source = z.make_source(False, tracer, client=client)
+    with pytest.raises(z.SourceError) as excinfo:
+        source.concept_series("ge", "Revenues")
+    assert not excinfo.value.recoverable
+    assert not [e for e in tracer.events if e["status"] == "degraded"]
+
+
 def test_sample_mode_never_touches_the_network():
     assert isinstance(z.make_source(True), z.SampleSource)
 

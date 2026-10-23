@@ -666,7 +666,9 @@ class SampleSource:
 
 
 class FallbackSource:
-    """Live first; on SourceError (after the client's retries) serve the sample, traced degraded."""
+    """Live first; on a recoverable SourceError (outage, timeout, 5xx, after the client's retries)
+    serve the sample, traced degraded. A non-recoverable error (bad SQL, auth, malformed response)
+    is a bug or misconfiguration, not an outage: it is raised, never papered over with sample rows."""
 
     def __init__(
         self, primary: EvidenceSource, fallback: EvidenceSource, tracer: Tracer | None = None
@@ -680,6 +682,8 @@ class FallbackSource:
         try:
             return getattr(self.primary, method)(*args)
         except SourceError as err:
+            if not err.recoverable:
+                raise
             start = time.perf_counter()
             result = getattr(self.fallback, method)(*args)
             result.degraded = True
