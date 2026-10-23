@@ -121,6 +121,32 @@ GENERIC_NAME_WORDS: frozenset[str] = frozenset(
     }
 )
 
+# Exchange Act registration statements (Form 10 under section 12(b) or 12(g)). A business that
+# leaves its parent as a new public registrant files one before the separation, and its text
+# names the parent (the separation and distribution agreements, the carve-out financials). The
+# source scout searches these filings for the parent's name, so the new registrant is found from
+# filing evidence whatever its own name. A sale to an existing company files no Form 10; the
+# buyer's own 8-K (item 2.01, completion of an acquisition) names the seller instead.
+REGISTRATION_FORMS: tuple[str, ...] = ("10-12B", "10-12G")
+# Legal-form words dropped from a registrant's name before it is searched as a phrase in filing
+# text ("... Corp" in the ticker map, "... Corporation" in the documents).
+LEGAL_NAME_WORDS: frozenset[str] = frozenset(
+    {
+        "co",
+        "company",
+        "corp",
+        "corporation",
+        "inc",
+        "incorporated",
+        "llc",
+        "lp",
+        "ltd",
+        "limited",
+        "plc",
+        "the",
+    }
+)
+
 # How the disposed business's share of a metric is reported by the filer itself.
 DISPOSAL_MAGNITUDE: dict[str, str] = {
     "revenue": DISPOSAL_GROUP_REVENUE,

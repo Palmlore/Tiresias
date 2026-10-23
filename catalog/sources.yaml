@@ -26,6 +26,12 @@ sources:
     endpoint: https://www.sec.gov/files/company_tickers_exchange.json
     params: []
     joins_on: [ticker, cik]
+  - id: sec_fulltext
+    description: EDGAR full-text search (2001 on) for filings of given forms in a date range whose text contains a phrase. The source scout searches the parent's name in Form 10 registrations before a disposal (and buyers' 8-Ks around it) to find the counterparty from filing evidence, whatever its name. One TIRESIAS_SEC.fts_<hash>_raw table per search, registered on demand (discovery, not counted in MAX_NEW_SOURCES_PER_RUN); one page of at most 100 hits.
+    endpoint: https://efts.sec.gov/LATEST/search-index?q={phrase}&forms={forms}&dateRange=custom&startdt={start}&enddt={end}
+    params: [phrase, forms, start, end]
+    joins_on: [cik]
+    rate_limit_per_second: 10
   - id: company_dns_sic
     description: SIC industry hierarchy (V4).
     endpoint: https://company-dns.mediumroast.io/V4.0/na/sic/code/%25

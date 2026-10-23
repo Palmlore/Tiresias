@@ -120,10 +120,12 @@ def test_scout_reads_only_catalog_objects_as_zetaris_sql():
         _need("01"), discovery=SampleDiscovery(CATALOG, tracer=tracer), tracer=tracer
     )
     reads = [e for e in tracer.events if e["agent"] == "catalog"]
-    assert {r["action"] for r in reads} == {"tickers", "submissions"}
+    assert {r["action"] for r in reads} == {"tickers", "submissions", "fulltext"}
     for r in reads:  # the SQL live mode runs through Zetaris, over catalog-backed objects
         assert r["sql"].startswith("SELECT ")
-        assert "FROM tiresias.sec_tickers" in r["sql"] or "_submissions_raw" in r["sql"]
+        assert any(
+            t in r["sql"] for t in ("FROM tiresias.sec_tickers", "_submissions_raw", ".fts_")
+        )
 
 
 def test_scout_refuses_a_hint_without_a_disposal_filing():
@@ -164,6 +166,9 @@ class FakeDiscovery:
     def submissions(self, cik10, ticker):
         p = self._profiles.get(cik10)
         return Evidence([p] if p else [], sql=f"GET {cik10}", source=self.name)
+
+    def filers_naming(self, phrase, forms, start, end):
+        return Evidence([], sql="SELECT fulltext", source=self.name, note="none")
 
 
 def _hint_need(date="2030-06-01"):

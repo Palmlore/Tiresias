@@ -4,13 +4,20 @@ It understands the statements rendered from zetaris/sql/ (registration DDL, SHOW
 filings, sec_tickers and submissions queries) and answers them from data/sample/ under other
 names: ``aliases`` maps a fake object ticker (e.g. "acme") to a sample prefix (e.g. "ge"), so a
 company outside the showcase set can be exercised end to end without a network.
+
+``documents`` stands in for EDGAR full-text search (catalog ``sec_fulltext``): a list of
+{"cik", "name", "form", "file_date", "items", "text"}; a search table's endpoint (q, forms,
+startdt, enddt) selects the documents whose text contains the phrase. ``names`` overrides the
+profile name a submissions read returns (object ticker -> name).
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -29,9 +36,21 @@ def bad(msg):
 
 
 class FakeZetaris:
-    def __init__(self, tickers, aliases, *, tables=None, views=None, fail_all=False):
+    def __init__(
+        self,
+        tickers,
+        aliases,
+        *,
+        tables=None,
+        views=None,
+        fail_all=False,
+        documents=(),
+        names=None,
+    ):
         self.tickers = tickers  # [(ticker, cik_int, name)]
         self.aliases = aliases  # object ticker -> sample prefix
+        self.documents = list(documents)
+        self.names = dict(names or {})
         self.tables = dict(tables or {})  # name -> endpoint
         self.views = set(views or ())
         self.fail_all = fail_all
@@ -84,6 +103,9 @@ class FakeZetaris:
             return ok([], [])
         if "FROM tiresias.sec_tickers" in s:
             return self._tickers(s)
+        m = re.search(r"FROM tiresias_sec\.(fts_\w+)", s)
+        if m:
+            return self._fulltext(m.group(1), s)
         m = re.search(r"FROM tiresias_sec\.(\w+)_submissions_raw LATERAL VIEW OUTER", s)
         if m:
             return self._profile(m.group(1))
@@ -121,7 +143,7 @@ class FakeZetaris:
         recent = data["filings"]["recent"]
         head = [
             data["cik"],
-            data["name"],
+            self.names.get(ticker, data["name"]),
             str(data.get("sic") or ""),
             json.dumps(data.get("tickers") or []),
             json.dumps(data.get("formerNames") or []),
@@ -138,6 +160,49 @@ class FakeZetaris:
             for i, accn in enumerate(recent["accessionNumber"])
         ]
         return ok([*cols, *tail], rows)
+
+    def _search(self, table):
+        query = parse_qs(urlsplit(self.tables[table]).query)
+        phrase = query["q"][0].strip('"').lower()
+        forms = set(query["forms"][0].split(","))
+        lo, hi = query["startdt"][0], query["enddt"][0]
+        return [
+            d
+            for d in self.documents
+            if phrase in d["text"].lower()
+            and d["form"].split("/")[0] in forms
+            and lo <= d["file_date"] <= hi
+        ]
+
+    def _fulltext(self, table, s):
+        if table not in self.tables:
+            return bad(f"[TABLE_OR_VIEW_NOT_FOUND] {table}")
+        docs = self._search(table)
+        if s.startswith("SELECT hits.total.value AS total"):
+            return ok(["total"], [[len(docs)]])
+        if not docs:  # Zetaris infers hits.hits as array<string> for an empty page
+            return bad('[INVALID_EXTRACT_BASE_FIELD_TYPE] Can\'t extract a value from "h".')
+        by = defaultdict(list)
+        for d in docs:
+            by[d["cik"]].append(d)
+        rows = []
+        for cik, ds in by.items():
+            items = sorted({i for d in ds for i in d.get("items", [])})
+            rows.append(
+                [
+                    f"{cik:010d}",
+                    ds[0]["name"],
+                    len(ds),
+                    min(d["file_date"] for d in ds),
+                    max(d["file_date"] for d in ds),
+                    ",".join(sorted({d["form"] for d in ds})),
+                    ",".join(items),
+                    len(docs),
+                ]
+            )
+        rows.sort(key=lambda r: (r[2], r[0]), reverse=True)
+        cols = ["cik", "name", "hits", "first_date", "last_date", "forms", "items", "total"]
+        return ok(cols, rows)
 
     def _filings(self, s):
         ticker = re.search(r"FROM tiresias\.(\w+)_filings", s).group(1)
