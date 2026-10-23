@@ -1,6 +1,6 @@
 # assets/
 
-Images and the slide deck for the submission. Everything here is our own work or generated for this project, and each file's source and licence is listed in the inventory below, because an unlicensed asset disqualifies a submission. The demo video is **not** stored here (see [Video](#video)).
+Images and the slide deck for the submission. Rows marked **[TBC]** depend on something not built or recorded yet (the UI, the final run, the video): skip them for now. Everything here is our own work or generated for this project, and each file's source and licence is listed in the inventory below, because an unlicensed asset disqualifies a submission. The demo video is **not** stored here (see [Video](#video)).
 
 ## Layout
 
@@ -11,11 +11,11 @@ Images and the slide deck for the submission. Everything here is our own work or
 | `brand/social.png` | Link preview (GitHub social preview) | 1280×640 PNG, ≤ 1 MB |
 | `characters/{tiresias,sphinx,you}.svg` | The three characters, as icons for the UI, deck and video | SVG (+ 512×512 PNG each), one colour family |
 | `diagrams/architecture.svg` | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
-| `screenshots/NN-<what>.png` | Real captures of the UI, terminal and trace, numbered in demo order | PNG, ≥ 1600 px wide, ≤ 1 MB each |
-| `deck/tiresias-deck.pdf` | The slide deck, as submitted | PDF, 16:9, fonts embedded, ≤ 20 MB |
+| `screenshots/NN-<what>.png` **[TBC]** (needs the UI and the final runs) | Real captures of the UI, terminal and trace, numbered in demo order | PNG, ≥ 1600 px wide, ≤ 1 MB each |
+| `deck/tiresias-deck.pdf` | The slide deck, as submitted. Draft it now; slide 7 (product visuals) is **[TBC]**, and the sponsor-status wording is re-checked at freeze | PDF, 16:9, fonts embedded, ≤ 20 MB |
 | `deck/source/` | Deck source (Marp Markdown, HTML or the tool's native file) so the PDF can be rebuilt | text where possible |
-| `video/poster.png` | Video poster frame (may equal `brand/cover.png`) | 1920×1080 PNG |
-| `video/tiresias-demo.en.srt` | Captions for the demo video | SRT |
+| `video/poster.png` **[TBC]** (needs the recorded video) | Video poster frame (may equal `brand/cover.png`) | 1920×1080 PNG |
+| `video/tiresias-demo.en.srt` **[TBC]** (needs the recorded video) | Captions for the demo video | SRT |
 
 Keep the whole folder under about 30 MB; no Git LFS. The agent image never includes `assets/` (the root `.dockerignore` is an allow-list).
 
@@ -49,9 +49,9 @@ One slide or more per point, in this order, about 10–12 slides in total:
 2. The solution (an evidence-backed "5 Whys": ask why, get a why-tree where every link is SQL plus rows)
 3. The agent workflow or architecture (Loop A drill-down, Loop B source discovery, critic, human gates; `diagrams/architecture.svg`)
 4. The technical stack (Python/FastAPI agent, TypeScript H-MEM service, Zetaris Lightning SQL, Docker)
-5. How Zetaris and Meterless were used (from [docs/sponsor-technology.md](../docs/sponsor-technology.md), at the status it states)
+5. How Zetaris and Meterless were used (status wording **[TBC]** at feature freeze, 26 Oct; from [docs/sponsor-technology.md](../docs/sponsor-technology.md), at the status it states)
 6. What was unique about the sponsor tech use (registering a new Zetaris source while the agent runs; the counterfactual test on the returned rows)
-7. Product visuals (`screenshots/`)
+7. Product visuals (`screenshots/`) **[TBC]**: leave a placeholder slide; never mock up a UI as if it were real
 8. Future enhancements (from [BACKLOG.md](../BACKLOG.md) and the open CHECKLIST items)
 
 Plus a title slide (`brand/cover.png`) and a closing slide with the repo URL and track (*Reasoning Architecture*).
