@@ -11,7 +11,7 @@ paths:
       responses: {"200": {description: OK}}
   /run:
     post:
-      summary: Run an investigation synchronously (implemented; Loop A, sample mode by default)
+      summary: Run an investigation synchronously (implemented; Loop A then Loop B, sample mode by default)
       description: >
         Starts the run in the registry (so GET /runs/{run_id} and its events also work) and waits up
         to RUN_BUDGET_SECONDS + 30 s. A run that ends in a controlled failure is still 200 with
