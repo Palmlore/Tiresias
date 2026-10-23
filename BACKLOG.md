@@ -18,11 +18,12 @@ Found in: #<PR>  ·  Status: open | done (#<PR>)
 ---
 
 ## B-1: Agent Docker image can't see `data/sample/` or `zetaris/sql/`
-Found in: #5  ·  Status: open
+Found in: #5  ·  Status: done (#7)
 - Out of scope because: #5 builds the adapter; the Dockerfile and `docker-compose.yml` belong to the packaging task (judge setup and quickstart).
 - Safe to leave because: nothing calls the adapter inside the container yet (`/run` returns 501); the adapter reads `SAMPLE_DATA_DIR` and `ZETARIS_SQL_DIR`, so a mount or a `COPY` is enough.
 - Urgent if: `/run` is wired to the adapter, or before the first `docker compose up` test of sample mode.
 - Evidence: `services/agent/Dockerfile` copies only `src/`; `sample_dir()` and `sql_dir()` in `services/agent/src/tiresias_agent/adapters/zetaris.py`.
+- Resolved in #7: the agent is built from the repo root (`compose.yaml`, allow-list `.dockerignore`); the image copies `data/sample/`, `zetaris/sql/`, `catalog/`, `input_examples/` under `/app` and sets `SAMPLE_DATA_DIR`, `ZETARIS_SQL_DIR`, `LOGS_DIR`; checked by `services/agent/tests/test_packaging.py` and a `docker compose up --build` run (PR #7 Evidence).
 
 ## B-2: Rule-based hypothesiser knows a small, fixed rule set; `cyclic` is only a guard
 Found in: #6  ·  Status: open
