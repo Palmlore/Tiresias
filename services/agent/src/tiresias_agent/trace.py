@@ -63,10 +63,13 @@ class Tracer:
         run_id: str | None,
         parent_run_id: str | None = None,
         logs_dir: str | Path | None = None,
+        defaults: dict[str, Any] | None = None,
     ) -> None:
         self.run_id = run_id
         self.parent_run_id = parent_run_id
         self.logs_dir = Path(logs_dir if logs_dir is not None else os.getenv("LOGS_DIR", "logs"))
+        # Fields added to every line (e.g. mode="sample", ADR-0007); a call's own fields win.
+        self.defaults = dict(defaults or {})
 
     @property
     def trace_file(self) -> Path | None:
@@ -85,7 +88,7 @@ class Tracer:
         if self.parent_run_id:
             event["parent_run_id"] = self.parent_run_id
         event.update(agent=agent, action=action, status=status)
-        for key, value in redact(fields).items():
+        for key, value in redact({**self.defaults, **fields}).items():
             if key not in _RESERVED:
                 event[key] = value
         line = json.dumps(event, default=str)

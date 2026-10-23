@@ -166,3 +166,11 @@ def test_span_measured_duration_wins_over_caller_field(tmp_path):
     lines = [json.loads(x) for x in (tmp_path / "trace-run-dur.jsonl").read_text().splitlines()]
     assert [x["status"] for x in lines] == ["success", "error"]
     assert all(isinstance(x["duration_ms"], int) and x["duration_ms"] < 999_999 for x in lines)
+
+
+def test_defaults_are_added_to_every_line_and_fields_win(tmp_path):
+    tracer = Tracer("run-d", logs_dir=tmp_path, defaults={"mode": "sample"})
+    tracer.emit(agent="critic", action="prune", status="rejected")
+    tracer.emit(agent="critic", action="accept", mode="override")
+    first, second = _lines(tmp_path / "trace-run-d.jsonl")
+    assert first["mode"] == "sample" and second["mode"] == "override"

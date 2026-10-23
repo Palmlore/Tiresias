@@ -136,3 +136,23 @@ def test_models_match_contract_enums():
     assert set(schemas["RunRequest"]["required"]) <= {
         n for n, f in RunRequest.model_fields.items() if f.is_required()
     }
+
+
+def test_result_shapes_match_the_contract_field_for_field():
+    yaml = pytest.importorskip("yaml")
+    from tiresias_agent import models
+
+    schemas = yaml.safe_load(CONTRACT.read_text())["components"]["schemas"]
+    for name in (
+        "RunResult",
+        "Link",
+        "EvidenceItem",
+        "Observation",
+        "Effect",
+        "EntityHint",
+        "InformationNeed",
+    ):
+        model = getattr(models, name)
+        assert set(schemas[name]["properties"]) == set(model.model_fields), name
+    stats = set(schemas["RunStats"]["properties"])
+    assert {"retries", "prunes", "gate_decisions"} <= stats
