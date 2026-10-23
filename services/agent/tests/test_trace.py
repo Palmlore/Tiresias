@@ -174,3 +174,26 @@ def test_defaults_are_added_to_every_line_and_fields_win(tmp_path):
     tracer.emit(agent="critic", action="accept", mode="override")
     first, second = _lines(tmp_path / "trace-run-d.jsonl")
     assert first["mode"] == "sample" and second["mode"] == "override"
+
+
+def test_sink_gets_each_line_and_a_failing_sink_never_breaks_emit(tmp_path, capsys):
+    seen = []
+    tracer = Tracer("run-sink", logs_dir=tmp_path, sink=seen.append)
+    tracer.emit(agent="a", action="x", api_key="secret-value")
+    assert len(seen) == 1 and json.loads(seen[0])["api_key"] == "***"
+    assert tracer.trace_file.read_text().splitlines() == seen
+
+    def boom(_line):
+        raise RuntimeError("sink down")
+
+    broken = Tracer("run-sink2", logs_dir=tmp_path, sink=boom)
+    broken.emit(agent="a", action="y")
+    assert broken.trace_file.read_text().count("\n") == 1
+    assert "trace_sink_failed" in capsys.readouterr().err
+
+
+def test_tracer_without_sink_is_unchanged(tmp_path):
+    tracer = Tracer("run-nosink", logs_dir=tmp_path)
+    assert tracer.sink is None
+    tracer.emit(agent="a", action="x")
+    assert len(tracer.trace_file.read_text().splitlines()) == 1

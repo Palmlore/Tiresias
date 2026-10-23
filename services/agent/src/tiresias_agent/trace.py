@@ -9,7 +9,7 @@ import re
 import secrets
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -64,12 +64,16 @@ class Tracer:
         parent_run_id: str | None = None,
         logs_dir: str | Path | None = None,
         defaults: dict[str, Any] | None = None,
+        sink: Callable[[str], None] | None = None,
     ) -> None:
         self.run_id = run_id
         self.parent_run_id = parent_run_id
         self.logs_dir = Path(logs_dir if logs_dir is not None else os.getenv("LOGS_DIR", "logs"))
         # Fields added to every line (e.g. mode="sample", ADR-0007); a call's own fields win.
         self.defaults = dict(defaults or {})
+        # Optional extra consumer of each JSONL line (e.g. runs.py's live SSE feed). It gets
+        # the same redacted line as stdout and the file; a failing sink never breaks a run.
+        self.sink = sink
 
     @property
     def trace_file(self) -> Path | None:
@@ -94,6 +98,12 @@ class Tracer:
         line = json.dumps(event, default=str)
         sys.stdout.write(line + "\n")
         sys.stdout.flush()
+        if self.sink is not None:
+            try:
+                self.sink(line)
+            except Exception as err:  # noqa: BLE001 - observability must not end a run
+                failure = {"service": "agent", "event": "trace_sink_failed", "error": str(err)}
+                sys.stderr.write(json.dumps(failure) + "\n")
         path = self.trace_file
         if path is None:
             return
