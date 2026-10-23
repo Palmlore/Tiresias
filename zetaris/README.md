@@ -14,16 +14,18 @@ Tiresias runs against a **local Zetaris** (vendor bundle `zetaris-platform`, ima
 | `11_submissions_table.sql` | REST table `TIRESIAS_SEC.<ticker>_submissions_raw` over SEC submissions | entity |
 | `12_cache_table.sql` | `CACHE TABLE` on each raw table, so queries don't refetch the SEC response | raw table |
 | `13_tickers_table.sql` | Discovery: REST table `TIRESIAS_SEC.sec_tickers_raw` over SEC `company_tickers_exchange.json` (catalog `sec_tickers`) | once |
+| `14_fulltext_table.sql` | Discovery: REST table `TIRESIAS_SEC.fts_<hash>_raw` over one EDGAR full-text search (catalog `sec_fulltext`; `http_encoding "JSON"`, the search answers 415 to the form-encoded request) | scout search |
 | `20_concept_view.sql` | View `tiresias.<ticker>_<slug>` via the struct path `facts.us-gaap.<Concept>.units.USD` (no map explode) | entity × concept |
 | `21_filings_view.sql` | View `tiresias.<ticker>_filings` (10-K / 8-K history with 8-K item codes) | entity |
 | `22_tickers_view.sql` | Discovery: view `tiresias.sec_tickers` (cik, name, ticker, exchange), one row per ticker | once |
 | `30_concept_series.sql`, `39_order_facts.sql`, `31_filings.sql`, `32_entities.sql`, `33_views.sql` | Read-only queries the agent runs | call |
 | `34_tickers_by_symbol.sql`, `35_tickers_by_brand.sql`, `36_tickers_by_name.sql` | Discovery reads over `tiresias.sec_tickers`: by ticker/CIK (asked entity, scout's source), by brand word (scout's candidates), by name (asked entity) | call |
 | `37_submissions_profile.sql` | Discovery read: one candidate's profile and filing history from its `<ticker>_submissions_raw` (registered on demand from `11_submissions_table.sql`) | call |
+| `40_fulltext_total.sql`, `41_fulltext_hits.sql` | Discovery reads over one `fts_<hash>_raw`: the number of matching documents, then (only if non-zero) the filers, most documents first, with their forms and 8-K items | call |
 
 Showcase entities: `ge` (CIK 0000040545), `gehc` (0001932393), `gev` (0001996810). Concepts and their view slugs are `CONCEPT_SLUGS` in [`zetaris.py`](../services/agent/src/tiresias_agent/adapters/zetaris.py), the same seven concepts as the offline sample. `Revenues` and `RevenueFromContractWithCustomerExcludingAssessedTax` are aliases: a revenue query unions whichever of the two views exist.
 
-Placeholders: `{{ticker}}`, `{{cik10}}`, `{{concept}}`, `{{slug}}`, `{{table}}`, `{{forms}}`, `{{tickers}}`, `{{ciks}}`, `{{words}}`, `{{pattern}}`, `{{limit}}`, and `{{sec_user_agent}}` (from `SEC_USER_AGENT`, required by SEC fair access; masked as `***` in traces). Every value is checked against a strict pattern before it is substituted.
+Placeholders: `{{ticker}}`, `{{cik10}}`, `{{concept}}`, `{{slug}}`, `{{table}}`, `{{forms}}`, `{{tickers}}`, `{{ciks}}`, `{{words}}`, `{{pattern}}`, `{{limit}}`, `{{endpoint}}` (a percent-encoded `sec_fulltext` URL built by `adapters.catalog.fulltext_endpoint`), and `{{sec_user_agent}}` (from `SEC_USER_AGENT`, required by SEC fair access; masked as `***` in traces). Every value is checked against a strict pattern before it is substituted.
 
 ## Apply
 
@@ -39,6 +41,6 @@ uv run python -m tiresias_agent.adapters.zetaris smoke --sample   # same checks,
 
 The cache is a session cache: after a Zetaris restart, re-run `bootstrap` so the first query doesn't wait on the SEC fetch.
 
-**Discovery goes through Zetaris too** (ADR-0003). `bootstrap` registers the `sec_tickers` table and view; the live discovery adapter (`adapters/catalog.py`, `ZetarisDiscovery`) also registers them on first use. A REST table binds one URL, so reading one candidate's submissions means one `<ticker>_submissions_raw` table, registered on demand with the same template as bootstrap (CREATE + CACHE) and refused if an existing table of that name points at another CIK. These discovery objects are catalog reads, not evidence sources: they never count toward `MAX_NEW_SOURCES_PER_RUN`.
+**Discovery goes through Zetaris too** (ADR-0003). `bootstrap` registers the `sec_tickers` table and view; the live discovery adapter (`adapters/catalog.py`, `ZetarisDiscovery`) also registers them on first use. A REST table binds one URL, so reading one candidate's submissions means one `<ticker>_submissions_raw` table, registered on demand with the same template as bootstrap (CREATE + CACHE) and refused if an existing table of that name points at another CIK. The source scout's full-text searches work the same way: one `fts_<hash>_raw` table per search (at most two per scout run). These discovery objects are catalog reads, not evidence sources: they never count toward `MAX_NEW_SOURCES_PER_RUN`.
 
 **Runtime registration.** An asked entity outside the showcase set is registered while the run is going (`onboarder.onboard_entity`: both raw tables, caches, the concept views and the filings view, behind the source gate); Loop B registers a discovered entity's companyfacts table and the views for the variable (`onboarder.onboard`). Both use these templates and count toward `MAX_NEW_SOURCES_PER_RUN`. Measured timings: [docs/measurements/live-any-company.md](../docs/measurements/live-any-company.md).
