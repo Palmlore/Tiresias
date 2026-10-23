@@ -6,7 +6,7 @@
     "summary": "An evidence-backed 5 Whys root-cause agent for financial analysts: it explains why a company's reported figures changed between SEC filings, discovers the missing evidence, and stops at the first cause the asker can act on.",
     "licence": "Apache-2.0"
   },
-  "track": "The Agent That Can Explain Why",
+  "track": "Reasoning Architecture",
   "team": {
     "name": "Palmlore",
     "solo": true,

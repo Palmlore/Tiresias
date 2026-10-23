@@ -27,7 +27,7 @@ Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 2
 - [x] Registered on HackOS before 22 Oct 23:45 UTC, aged 16+, one account (OR §3)
 - [x] Solo team (1–5 members); member on one submission only (OR §5)
 - [ ] Roster final **before** creating the first submission, because the team locks at that point (OR §5.4, SF §2)
-- [ ] One primary track selected on HackOS: *The Agent That Can Explain Why* (OR §6)
+- [ ] One primary track selected on HackOS: *Reasoning Architecture* (OR §6; ADR-0009)
 
 ## B. Sponsor technology (required, and scored under Sponsor Tech, 10 pts)
 - [~] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10)

@@ -10,3 +10,4 @@
 | [ADR-0006](ADR-0006-hitl-gate-modes.md) | Human-in-the-loop gates with three modes, plus branching |
 | [ADR-0007](ADR-0007-offline-sample-mode.md) | Offline sample mode with no keys |
 | [ADR-0008](ADR-0008-local-first-cloud-ready.md) | Local first, ready for the cloud |
+| [ADR-0009](ADR-0009-track-reasoning-architecture.md) | Track: Reasoning Architecture |

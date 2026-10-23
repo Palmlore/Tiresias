@@ -1,6 +1,6 @@
 # AGENTS.md: handover for coding agents (Cursor, Claude Code, others)
 
-**Tiresias**: an evidence-backed "5 Whys" root-cause agent for financial analysts on SEC filings. Open Agent Hackathon 2026, track *The Agent That Can Explain Why*. Solo entry by Palmlore. Repo: github.com/Palmlore/Tiresias (public, Apache-2.0).
+**Tiresias**: an evidence-backed "5 Whys" root-cause agent for financial analysts on SEC filings. Open Agent Hackathon 2026, track *Reasoning Architecture* (ADR-0009). Solo entry by Palmlore. Repo: github.com/Palmlore/Tiresias (public, Apache-2.0).
 
 **Deadline: 27 Oct 2026 23:45 UTC (28 Oct 10:45 AEDT).** Hard deadline. Submit with hours to spare.
 
@@ -8,7 +8,7 @@
 0. `../workspace/HANDOVER.md`: **start here each session.** It is private, outside this repo (a local git repo with no remote), and covers environment state, how to start it, leftover tasks and next steps. Working data, pinned upstream clones and internal notes live in `../workspace/` too, never in this public repo and never in a temp scratchpad.
 1. [docs/CHECKLIST.md](docs/CHECKLIST.md): the progress checklist, cross-referenced to every event requirement. **Tick items only when evidence exists.**
 2. [docs/STATUS.md](docs/STATUS.md): open questions and who owns them.
-3. [docs/architecture.md](docs/architecture.md), [docs/causal-criteria.md](docs/causal-criteria.md), [docs/decisions/](docs/decisions/) (ADR-0001..0008): the agreed design. Don't re-decide these without a new ADR.
+3. [docs/architecture.md](docs/architecture.md), [docs/causal-criteria.md](docs/causal-criteria.md), [docs/decisions/](docs/decisions/) (ADR-0001..0009): the agreed design. Don't re-decide these without a new ADR.
 4. [docs/RUBRIC.md](docs/RUBRIC.md): judging criteria → evidence in the repo.
 5. Event reference pack (rules, sponsor guides, research notes): `../docs/` (outside this repo). Start with `../docs/MAP.md`, `../docs/SPONSOR_STACK.md`, `../docs/ideas/01-five-whys-feasibility.md`.
 

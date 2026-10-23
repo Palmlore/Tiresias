@@ -7,7 +7,7 @@
 | | |
 |---|---|
 | **Event** | Open Agent Hackathon 2026 (GenAI Works), 22–27 October 2026 |
-| **Track** | The Agent That Can Explain Why |
+| **Track** | Reasoning Architecture |
 | **Team** | Palmlore (solo) |
 | **Status** | 🚧 **In development during the build window.** Each section says what works today. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
 | **Licence** | Apache-2.0 |

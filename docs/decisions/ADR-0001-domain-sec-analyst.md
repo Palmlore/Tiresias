@@ -2,7 +2,7 @@
 
 Status: accepted (2026-10-22)
 
-Context: Track 2 needs evidence-backed answers across several sources. Feasibility probes on 2026-10-22 compared SEC EDGAR, Australian Bureau of Statistics CPI data and synthetic operations data. SEC data has organic conflicts: 631 conflicting facts across filings for IBM alone. A real level-4 hop was verified (IBM → Kyndryl, a $266M residual).
+Context: (Written for track 2; the entry moved to Reasoning Architecture in ADR-0009.) Track 2 needs evidence-backed answers across several sources. Feasibility probes on 2026-10-22 compared SEC EDGAR, Australian Bureau of Statistics CPI data and synthetic operations data. SEC data has organic conflicts: 631 conflicting facts across filings for IBM alone. A real level-4 hop was verified (IBM → Kyndryl, a $266M residual).
 
 Decision:
 - Domain: SEC filings. Primary user: financial analyst. Secondary askers: auditor, board/CEO.
