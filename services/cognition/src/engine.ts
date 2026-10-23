@@ -107,10 +107,10 @@ export class Memory {
   }
 
   feedback(memoryId: string, kind: FeedbackKind): Lesson {
+    // Check first: the engine throws a plain Error for an unknown id, which surfaced as a 500.
+    if (!this.hmem.store.get(memoryId)) throw new NotFound(`memory ${memoryId}`);
     this.hmem.feedback(memoryId, kind);
-    const record = this.hmem.store.get(memoryId);
-    if (!record) throw new NotFound(`memory ${memoryId}`);
-    return toLesson(record);
+    return toLesson(this.hmem.store.get(memoryId)!);
   }
 
   list(namespace?: string): Lesson[] {
