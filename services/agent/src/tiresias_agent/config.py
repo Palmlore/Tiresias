@@ -39,7 +39,7 @@ def _bounded_float(env: Mapping[str, str], name: str, default: float, low: float
 
 @dataclass(frozen=True)
 class LoopBudgets:
-    """Caps for one Loop A run (AGENTS.md rule 7; docs/architecture.md#budgets).
+    """Caps for one run, Loop A and Loop B (AGENTS.md rule 7; docs/architecture.md#budgets).
 
     Read at call time (not import time) so tests and the CLI can tune them through the
     environment. Out-of-range values are clamped, never trusted.
@@ -49,6 +49,7 @@ class LoopBudgets:
     max_branches_per_level: int = 3
     max_retries_per_node: int = 1
     run_seconds: float = 600.0
+    max_new_sources: int = 2  # Loop B: sources onboarded per run (MAX_NEW_SOURCES_PER_RUN)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "LoopBudgets":
@@ -58,4 +59,5 @@ class LoopBudgets:
             max_branches_per_level=_bounded_int(env, "MAX_BRANCHES_PER_LEVEL", 3, 1, 6),
             max_retries_per_node=_bounded_int(env, "MAX_RETRIES_PER_NODE", 1, 0, 3),
             run_seconds=_bounded_float(env, "RUN_BUDGET_SECONDS", 600.0, 1.0, 3600.0),
+            max_new_sources=_bounded_int(env, "MAX_NEW_SOURCES_PER_RUN", 2, 0, 5),
         )

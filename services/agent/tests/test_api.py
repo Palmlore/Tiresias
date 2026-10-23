@@ -48,6 +48,16 @@ def test_run_on_all_three_examples_returns_distinct_valid_results(client):
     assert len({(r.effect.delta, r.root_cause, r.end_state) for r in results}) == 3
 
 
+def test_run_goes_through_loop_b_for_a_restatement(client):
+    # /run calls run_investigation: case 01 leaves Loop A at the frontier and Loop B reconciles it.
+    response = client.post("/run", json=_body(EXAMPLES[0]))
+    assert response.status_code == 200, response.text
+    result = RunResult.model_validate(response.json())
+    assert result.end_state == "actionable"
+    assert any(link.rule == "reconcile" for link in result.why_tree)
+    assert result.residual is not None and abs(result.residual) < 0.05
+
+
 def test_bad_body_is_a_structured_422(client):
     response = client.post("/run", json={"question": "why?"})
     assert response.status_code == 422
@@ -91,7 +101,7 @@ def test_orchestrator_failure_is_a_structured_500(client, monkeypatch, tmp_path)
     def boom(*args, **kwargs):
         raise RuntimeError("injected failure")
 
-    monkeypatch.setattr(runs.orchestrator, "run_loop_a", boom)
+    monkeypatch.setattr(runs.orchestrator, "run_investigation", boom)
     response = client.post("/run", json=_body(EXAMPLES[0]), headers={"X-Run-Id": "crash-1"})
     assert response.status_code == 500
     body = response.json()
@@ -109,7 +119,7 @@ def test_run_that_outlives_the_budget_is_a_structured_504(client, monkeypatch):
         release.wait(5)
         raise RuntimeError("released")
 
-    monkeypatch.setattr(runs.orchestrator, "run_loop_a", slow)
+    monkeypatch.setattr(runs.orchestrator, "run_investigation", slow)
     monkeypatch.setattr(app_module, "_wait_budget", lambda: 0.2)
     response = client.post("/run", json=_body(EXAMPLES[0]))
     release.set()
@@ -121,13 +131,13 @@ def test_run_that_outlives_the_budget_is_a_structured_504(client, monkeypatch):
 
 def test_async_run_lifecycle(client, monkeypatch):
     gate = threading.Event()
-    real = runs.orchestrator.run_loop_a
+    real = runs.orchestrator.run_investigation
 
     def held(*args, **kwargs):
         gate.wait(10)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(runs.orchestrator, "run_loop_a", held)
+    monkeypatch.setattr(runs.orchestrator, "run_investigation", held)
     started = client.post("/runs", json=_body(EXAMPLES[1]), headers={"X-Run-Id": "async-1"})
     assert started.status_code == 202
     assert started.json()["run_id"] == "async-1" and started.headers["X-Run-Id"] == "async-1"

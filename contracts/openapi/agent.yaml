@@ -11,7 +11,7 @@ paths:
       responses: {"200": {description: OK}}
   /run:
     post:
-      summary: Run an investigation synchronously (implemented; Loop A, sample mode by default)
+      summary: Run an investigation synchronously (implemented; Loop A then Loop B, sample mode by default)
       description: >
         Starts the run in the registry (so GET /runs/{run_id} and its events also work) and waits up
         to RUN_BUDGET_SECONDS + 30 s. A run that ends in a controlled failure is still 200 with
@@ -150,12 +150,12 @@ components:
         label: {type: string, enum: [breakdown, causal, leverage, background]}
         evidence_status: {type: string, enum: [evidenced, partially-evidenced, hypothesis]}
         share_explained: {type: number}
-        residual: {type: number}
+        residual: {type: number, description: "Share of the effect left unexplained (1 - share_explained); on a Loop B reconcile link it is signed: 1 - raw share, negative when the add-back over-explains (offsetting items)"}
         sql: {type: string}
         rows_ref: {type: string}
         depth: {type: integer}
         verdict: {type: string, enum: [root, accepted, pruned, frontier], description: What the critic decided}
-        rule: {type: string, description: Hypothesiser rule that proposed it}
+        rule: {type: string, description: "Hypothesiser rule that proposed it, or reconcile for the Loop B add-back link"}
         reason: {type: string, description: The critic's reason}
         attempts: {type: integer, description: Analyst attempts (a critic retry adds one)}
         evidence: {type: array, items: {$ref: "#/components/schemas/EvidenceItem"}}
@@ -227,7 +227,7 @@ components:
       properties:
         hops: {type: integer}
         queries: {type: integer}
-        sources_onboarded: {type: integer}
+        sources_onboarded: {type: integer, description: "Sources registered by Loop B (at most MAX_NEW_SOURCES_PER_RUN)"}
         model_calls: {type: integer}
         tokens: {type: integer}
         seconds: {type: number}
@@ -242,7 +242,7 @@ components:
         end_state: {type: string, enum: [actionable, branched, cyclic, evidence-frontier, external-driver, budget], description: Absent when status is error}
         action: {type: [string, "null"], description: Recommended action for the asker}
         root_cause: {type: [string, "null"]}
-        residual: {type: [number, "null"], description: Share of the effect left unexplained}
+        residual: {type: [number, "null"], description: "Share of the effect left unexplained; when the chosen link is a Loop B reconciliation it is signed (negative = over-explained)"}
         run_id: {type: string}
         parent_run_id: {type: [string, "null"]}
         parent_node_id: {type: [string, "null"], description: Node branched from (branch runs only)}

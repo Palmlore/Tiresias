@@ -49,7 +49,7 @@ def valid_run_id(run_id: str) -> bool:
 
 def execute(request: RunRequest, *, tracer: Tracer, run_id: str, logs_dir: Path) -> RunResult:
     """The one place the API calls the investigation pipeline."""
-    return orchestrator.run_loop_a(request, tracer=tracer, run_id=run_id, logs_dir=logs_dir)
+    return orchestrator.run_investigation(request, tracer=tracer, run_id=run_id, logs_dir=logs_dir)
 
 
 class RegistryBusy(Exception):
