@@ -11,28 +11,100 @@ paths:
       responses: {"200": {description: OK}}
   /run:
     post:
-      summary: Run an investigation (planned)
+      summary: Run an investigation synchronously (implemented; Loop A, sample mode by default)
+      description: >
+        Starts the run in the registry (so GET /runs/{run_id} and its events also work) and waits up
+        to RUN_BUDGET_SECONDS + 30 s. A run that ends in a controlled failure is still 200 with
+        RunResult.status "error"; 5XX means the pipeline itself raised or the wait ran out.
+      parameters: [{$ref: "#/components/parameters/XRunId"}]
       requestBody:
         required: true
         content: {application/json: {schema: {$ref: "#/components/schemas/RunRequest"}}}
       responses:
-        "200": {description: Completed, content: {application/json: {schema: {$ref: "#/components/schemas/RunResult"}}}}
-        "4XX": {description: Invalid input, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
-        "5XX": {description: Structured failure (recoverable flag), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "200": {description: Completed (X-Run-Id echoed), content: {application/json: {schema: {$ref: "#/components/schemas/RunResult"}}}}
+        "409": {description: X-Run-Id already in the registry, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: Invalid body, JSON or X-Run-Id (type ValidationError), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "429": {description: MAX_CONCURRENT_RUNS already running (recoverable), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "500": {description: The pipeline raised (recoverable flag; never a stack trace), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "504": {description: "Not finished within the budget (type RunTimeout, recoverable; poll GET /runs/{run_id})", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs:
+    post:
+      summary: Start an investigation in the background (implemented)
+      parameters: [{$ref: "#/components/parameters/XRunId"}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/RunRequest"}}}
+      responses:
+        "202":
+          description: Started (X-Run-Id echoed)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run_id, status]
+                properties:
+                  run_id: {type: string}
+                  status: {const: running}
+                  events: {type: string, description: Path of the SSE stream}
+        "409": {description: X-Run-Id already in the registry, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: Invalid body, JSON or X-Run-Id, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "429": {description: MAX_CONCURRENT_RUNS already running (recoverable), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs/{run_id}:
+    get:
+      summary: Status of a run, with its RunResult once done (implemented; in-memory, last RUNS_REGISTRY_SIZE runs)
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Run status, content: {application/json: {schema: {$ref: "#/components/schemas/RunStatus"}}}}
+        "404": {description: Unknown or evicted (type RunNotFound), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs/{run_id}/events:
+    get:
+      summary: The run's trace lines as Server-Sent Events (implemented)
+      description: >
+        Replays every kept trace line from the start, then streams live ones. Each `event: trace`
+        carries one JSONL trace line (docs/architecture.md#tracing) as `data:`. A comment line
+        `: keepalive` is sent after 15 s without a line. The stream ends with one `event: end` whose
+        data is {run_id, status, run_status?, end_state?, error?}, or after RUN_BUDGET_SECONDS + 30 s.
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: Event stream, content: {text/event-stream: {schema: {type: string}}}}
+        "404": {description: Unknown or evicted (type RunNotFound), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /runs/{run_id}/branch:
     post:
-      summary: Branch from a node of a finished run with a new question or asker (planned)
+      summary: Branch from a node of a finished run with a new question or asker (planned; returns a structured 501)
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
       requestBody:
         content: {application/json: {schema: {$ref: "#/components/schemas/BranchRequest"}}}
       responses: {"200": {description: New run, content: {application/json: {schema: {$ref: "#/components/schemas/RunResult"}}}}}
   /memory/purge:
     post:
-      summary: Purge H-MEM lessons (proxied to cognition; recorded in the ledger) (planned)
+      summary: Purge H-MEM lessons (proxied to cognition; recorded in the ledger) (planned; returns a structured 501)
       parameters: [{name: namespace, in: query, schema: {type: string}}]
       responses: {"200": {description: Purged}}
 components:
+  parameters:
+    XRunId:
+      name: X-Run-Id
+      in: header
+      required: false
+      description: Run id to use (else one is generated); echoed in the X-Run-Id response header, on every trace line and in the trace file name
+      schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,100}$"}
   schemas:
+    RunStatus:
+      type: object
+      required: [run_id, status, created_at, events]
+      properties:
+        run_id: {type: string}
+        status: {type: string, enum: [running, done]}
+        created_at: {type: string, format: date-time}
+        finished_at: {type: [string, "null"], format: date-time}
+        events: {type: integer, description: Trace lines kept in memory}
+        dropped_events: {type: integer, description: Lines beyond MAX_TRACE_LINES_PER_RUN (still in the trace file)}
+        trace_file: {type: [string, "null"]}
+        result: {oneOf: [{$ref: "#/components/schemas/RunResult"}, {type: "null"}]}
+        error:
+          type: [object, "null"]
+          description: Set when the pipeline raised (the run is done without a RunResult)
+          properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}
     Asker:
       type: object
       required: [role]

@@ -15,7 +15,7 @@
 ## Layout
 | Path | What |
 |---|---|
-| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `agents/`, `adapters/` (see Building blocks). **Loop A runs as a library and CLI (sample mode); HTTP: only `/health`, and `/run` still returns a structured 501.** |
+| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `agents/`, `adapters/` (see Building blocks). **Loop A runs as a library, a CLI and over HTTP (sample mode): `POST /run` (sync), `POST /runs` + `GET /runs/{id}` (async) and `GET /runs/{id}/events` (SSE) work; `/runs/{id}/branch` and `/memory/purge` return a structured 501.** |
 | `services/cognition/` | TypeScript / Node ≥22.18, no npm dependencies. H-MEM memory over REST. **Working.** |
 | `services/cognition/engine/hmem/` | Vendored Meterless H-MEM reference (commit `1742dec`). **Never edit**; wrap it in `src/`. |
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |
@@ -33,10 +33,12 @@ All under `services/agent/src/tiresias_agent/`. Each sponsor client takes an opt
 
 | Module | Use it for |
 |---|---|
-| `trace.py` | `Tracer(run_id=…, defaults={…})` → `.emit(agent=, action=, status=, **fields)` writes one JSONL line (stdout + `logs/trace-<run_id>.jsonl`); `defaults` are added to every line (Loop A sets `mode="sample"`/`"live"`, ADR-0007); `.span(...)` times a block. Statuses: `success`, `error`, `rejected`, `degraded`. Secret-like keys and Bearer tokens are redacted. `NullTracer` for tests. |
+| `trace.py` | `Tracer(run_id=…, defaults={…}, sink=None)` → `.emit(agent=, action=, status=, **fields)` writes one JSONL line (stdout + `logs/trace-<run_id>.jsonl`); `defaults` are added to every line (Loop A sets `mode="sample"`/`"live"`, ADR-0007); `.span(...)` times a block. Statuses: `success`, `error`, `rejected`, `degraded`. Secret-like keys and Bearer tokens are redacted. `sink` (optional callable) also receives each redacted JSONL line; a failing sink is reported on stderr and never breaks the run. `NullTracer` for tests. |
 | `models.py` | Pydantic models for `contracts/openapi/agent.yaml`: `RunRequest`, `RunResult` (leads with `end_state`, `action`; carries `effect`, `information_need`, `why_tree` of `Link`s with `evidence: [EvidenceItem]`, `error`), `InformationNeed` + `EntityHint` (the Loop A → Loop B hand-off), `BranchRequest`, `RunStats`, `ErrorResponse`, … |
 | `config.py` | `settings` (env flags) and `LoopBudgets.from_env()`: `MAX_CAUSAL_DEPTH` (5), `MAX_BRANCHES_PER_LEVEL` (3), `MAX_RETRIES_PER_NODE` (1), `RUN_BUDGET_SECONDS` (600), read at call time and clamped. |
 | `orchestrator.py` | **Loop A.** `run_loop_a(request, *, source=None, tracer=None, gate=None, budgets=None, logs_dir=None)` → `RunResult`; never raises for a bad case (structured `error`, or end state `budget`). Framer → (hypothesiser → analyst ⇄ critic [→ gate])* → gap analyst → reporter; stops at the first accepted causal link the asker's levers can act on, digs under the strongest breakdown otherwise. CLI below. |
+| `runs.py` | Run registry behind the HTTP API. `RunRegistry().start(request, run_id=None)` → `RunRecord` (runs in a daemon thread; raises `RunConflict` for a duplicate id, `RegistryBusy` beyond `MAX_CONCURRENT_RUNS`, default 4); keeps the last `RUNS_REGISTRY_SIZE` runs (default 50, oldest finished evicted) and up to `MAX_TRACE_LINES_PER_RUN` lines each (default 5000; the trace file keeps all). `RunRecord.wait(timeout)`, `.follow()` (replay then live lines, for SSE), `.summary()` (the `GET /runs/{id}` body). Adds `api` trace lines `run_accepted` / `run_finished` / `run_failed`. **`runs.execute(...)` is the one place the API calls the pipeline** (today `orchestrator.run_loop_a`). |
+| `app.py` | FastAPI app. `POST /run` = `registry.start` + wait up to `RUN_BUDGET_SECONDS` + 30 s (`runs.wait_budget_seconds()`); `POST /runs` (202), `GET /runs/{id}`, `GET /runs/{id}/events` (SSE: `event: trace` per JSONL line, `: keepalive` every 15 s idle, one final `event: end`). Every error is the contract's `Error` shape via `error_response(...)`: 422 `ValidationError` (body, JSON or `X-Run-Id`), 404 `RunNotFound`, 409 `RunConflict`, 429 `TooManyRuns`, 500 (pipeline raised), 504 `RunTimeout`, 501 `NotImplemented`. `X-Run-Id` (`[A-Za-z0-9._-]{1,100}`) is honoured and echoed. CORS is off unless `CORS_ALLOW_ORIGINS` is set. |
 | `agents/framer.py` | `frame(request, source, tracer)` → `Frame`: a like-for-like effect. `restatement` when `compare.filing_a/filing_b` are `"<form> filed YYYY-MM-DD"` (same period, two filings), else `change` (period vs prior period, both from the first annual filing reporting the period). Raises `FrameFailure` (metric not in sources → evidence-frontier) or `LoopError`. |
 | `agents/hypothesiser.py` | Rule-based (ADR-0007). `propose(frame, parent, path_variables, max_branches=, tracer=, exclude=)` → `Candidate`s from generic rules in `agents/knowledge.py`: hierarchy children, event concepts (goodwill impairment), 8-K items (2.01 disposal, 4.02 non-reliance / 10-K/A), concept switch, restated comparative. No cycles, capped. |
 | `agents/analyst.py` | `measure(candidate, frame, source, attempt=, scope=, tracer=)` → `Measurement`: queries only through `EvidenceSource`, keeps SQL + filter + rows per query, computes the candidate's effect and the counterfactual (intervention re-query on the returned rows). Scopes: `broad` → `window` → `relaxed` (set by the critic). |
@@ -56,7 +58,13 @@ cd services/cognition && npm test && npm run conformance   # 6 tests; H-MEM conf
 # agent (Python)
 cd services/agent && uv sync && uv run --group dev pytest -q && uv run --group dev ruff check src tests
 # whole stack (sample mode by default)
-docker compose up --build            # agent :8000, cognition :8100
+docker compose up --build            # agent :8000, cognition :8100 (sample mode works with an empty .env)
+# HTTP API (Docker, or no Docker: cd services/agent && uv run python -m tiresias_agent.app)
+curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -H 'X-Run-Id: demo-1' \
+     -d @input_examples/01_ge_2022_revenue_restated.json            # RunResult JSON; trace in logs/trace-demo-1.jsonl
+curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' -d @input_examples/03_ge_2018_net_loss.json   # 202 {run_id}
+curl -s localhost:8000/runs/<run_id>                                 # {status: running|done, result, ...}
+curl -sN localhost:8000/runs/<run_id>/events                         # SSE: one trace line per event, then event: end
 # checks before every push
 ./scripts/check_secrets.sh && ./scripts/validate_metadata.sh
 # Zetaris (local, outside this repo)
@@ -102,7 +110,9 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 - SEC requires `User-Agent` with a contact email (`SEC_USER_AGENT`), at ≤10 requests/s.
 - Zetaris `CACHE TABLE` is lost when Zetaris restarts: re-run `bootstrap`, or the first uncached query takes ~15 s (the source timeout is 20 s).
 - A concept view that fails with `FIELD_NOT_FOUND` means SEC has no such concept for that entity; `bootstrap` reports it `absent` and the adapter skips it.
-- The agent Docker image copies only `src/`; `data/sample/` and `zetaris/sql/` must be mounted or copied, or pointed to with `SAMPLE_DATA_DIR` / `ZETARIS_SQL_DIR` (BACKLOG B-1).
+- The agent image is built from the **repo root** (`compose.yaml`: `context: .`, `dockerfile: services/agent/Dockerfile`) and mirrors the repo under `/app` (`/app/services/agent`, `/app/data/sample`, `/app/zetaris/sql`, `/app/catalog`, `/app/input_examples`), so the package's repo-relative defaults resolve; `SAMPLE_DATA_DIR`, `ZETARIS_SQL_DIR` and `LOGS_DIR=/app/logs` are also set. The root `.dockerignore` is an **allow-list**: a new directory the image needs must be added there and to the Dockerfile (`tests/test_packaging.py` checks both). The `RunResult.trace_file` path is the container path; on the host it is `logs/` (mounted).
+- The run registry is in memory and per process: `GET /runs/{id}` forgets runs after a restart or once `RUNS_REGISTRY_SIZE` newer runs finished (trace files stay in `logs/`). A run that outlives `POST /run`'s wait (504) keeps running in its thread; poll `GET /runs/{id}`.
+- `POST /run` returns 200 for any run that ended (including `RunResult.status: "error"` from a controlled `LoopError`); 500 only when the pipeline itself raised.
 - The Zetaris admin defaults to `admin@zetaris.com` (change the password in the UI).
 - Loop A only queries the **asked entity** (its concept series and filings). Evidence that lives in another entity (e.g. a spun-off business) is an `InformationNeed` for Loop B, even if that entity happens to be in `data/sample/` or registered in Zetaris.
 - A restatement of a closed period is caused by an event **after the period ends and no later than the restating filing** (`Frame.window()`); a change is caused during the period. The critic's temporal test uses this window.
@@ -110,7 +120,6 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 - The CLI resolves a relative request path against the cwd, then the repo root, and writes traces to `<repo>/logs/` unless `LOGS_DIR` or `--logs-dir` is set.
 
 ## Next work (see docs/CHECKLIST.md for the full list)
-1. Wire `POST /run` in `app.py` to `orchestrator.run_loop_a` (sample mode first), and BACKLOG B-1 (Docker image needs `data/sample/`, `zetaris/sql/`).
-2. Loop B: consume `RunResult.information_need` (gap analyst → source scout over `catalog/sources.yaml` → onboarder via `adapters.zetaris.bootstrap`, behind a `source` gate built on `gates.Gate`), then re-run the intervention test it names.
-3. Nightshift client in live mode once the VM's Runtime URL and token are in `.env` (model-backed hypothesiser/critic lanes).
-4. Memory demo (cold → warm → purge → cold) through `adapters.cognition` (recall must degrade to no memory), asker profiles, branching.
+1. Loop B: consume `RunResult.information_need` (gap analyst → source scout over `catalog/sources.yaml` → onboarder via `adapters.zetaris.bootstrap`, behind a `source` gate built on `gates.Gate`), then re-run the intervention test it names.
+2. Nightshift client in live mode once the VM's Runtime URL and token are in `.env` (model-backed hypothesiser/critic lanes).
+3. Memory demo (cold → warm → purge → cold) through `adapters.cognition` (recall must degrade to no memory), asker profiles, branching.

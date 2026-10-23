@@ -1,0 +1,12 @@
+# Build context for services/agent/Dockerfile is the repo root. Allow-list only what the
+# image needs, so .env, logs, .git and local worktrees never enter the context.
+*
+!services/agent/pyproject.toml
+!services/agent/uv.lock
+!services/agent/src
+!data/sample
+!zetaris/sql
+!catalog
+!input_examples
+**/__pycache__
+**/*.pyc

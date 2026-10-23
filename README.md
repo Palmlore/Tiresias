@@ -32,18 +32,42 @@ Every step (query, hypothesis, critique, human-in-the-loop gate, memory recall) 
 
 ## Quickstart (judges)
 
-> ⚠️ **Not runnable yet.** The commands below are the target interface, and [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks progress. Planned: **local first, offline, no API keys needed** (`SAMPLE_MODE=true`).
+**Works today: Loop A (the drill-down through registered sources) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. Loop B (finding and registering a new source), live Nightshift models, memory, branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
+
+Needs Docker with Compose v2.
 
 ```bash
 git clone https://github.com/Palmlore/Tiresias && cd Tiresias
-cp .env.example .env              # leave it empty for sample mode
-docker compose up --build         # agent :8000, cognition :8100
-curl -X POST localhost:8000/run -H 'Content-Type: application/json' \
-     -d @input_examples/01_ge_2022_revenue_restated.json
-ls logs/                          # JSONL trace of the run
+cp .env.example .env              # keep SAMPLE_MODE=true; no keys needed
+docker compose up --build         # agent :8000, cognition :8100 (add -d to run in the background)
+
+# in another terminal: run the three examples (each prints a RunResult JSON)
+for f in input_examples/*.json; do
+  curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d @"$f"; echo
+done
+ls logs/                          # one JSONL trace per run: logs/trace-<run_id>.jsonl
 ```
 
-Live mode adds a local Zetaris (Docker) and Meterless Nightshift. See [deploy/README.md](deploy/README.md).
+Each result leads with the decision: `end_state` (`actionable`, `evidence-frontier`, …) and the recommended `action`, then the `effect`, the `why_tree` (each link with its SQL, rows and the critic's verdict) and `stats`. Write your own question in the same shape as [input_examples/](input_examples/) (schema: `RunRequest` in [contracts/openapi/agent.yaml](contracts/openapi/agent.yaml)); a malformed body gets a structured 422.
+
+**Watch a run live.** Pass your own run id with `X-Run-Id` (it is echoed, stamped on every trace line and names the trace file), start the run in the background, and stream its trace as Server-Sent Events:
+
+```bash
+curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' \
+     -H 'X-Run-Id: my-run-1' -d @input_examples/03_ge_2018_net_loss.json   # 202 {"run_id": "my-run-1", ...}
+curl -sN localhost:8000/runs/my-run-1/events      # one trace line per event, then "event: end"
+curl -s  localhost:8000/runs/my-run-1             # {"status": "done", "result": {...RunResult...}}
+```
+
+**Without Docker** (Python 3.11+ and [uv](https://docs.astral.sh/uv/)):
+
+```bash
+cd services/agent && uv sync
+uv run python -m tiresias_agent.app                                                   # same API on :8000
+uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json   # CLI: RunResult on stdout
+```
+
+Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable; it has not yet been run end to end. See [deploy/README.md](deploy/README.md).
 
 ## Where to look (judging criteria → repository)
 
