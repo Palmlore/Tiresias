@@ -54,6 +54,7 @@ python3 scripts/zetaris_probe.py     # latency and registration probe (reads .en
 - On `MERGE_PERMITTED` with checks green, the coordinator merges (squash) and pushes. Escalations go to the human.
 - Real findings that are out of scope are **deferred** to [BACKLOG.md](BACKLOG.md) in the same commit, with all four fields.
 - Worker and reviewer rounds: commit to the PR branch only; don't push, open, approve or merge PRs.
+- Parallel PRs don't edit `docs/CHECKLIST.md`, `docs/STATUS.md` or `metadata.json` (they would conflict); the coordinator updates them right after each merge.
 
 ## Rules (non-negotiable)
 1. **No hardcoded or replayed outputs, no hand-written traces.** Judges test with their own inputs. Sample mode runs real logic on cached data.
