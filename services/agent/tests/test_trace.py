@@ -95,6 +95,20 @@ def test_secret_looking_fields_are_redacted(tmp_path, capsys):
     assert line["model"] == "meterless/deep"
 
 
+def test_embedded_bearer_credentials_are_redacted(tmp_path, capsys):
+    secret = "sk-SECRET-123"
+    Tracer("run-1", logs_dir=tmp_path).emit(
+        agent="nightshift",
+        action="chat",
+        note=f"prefix Bearer {secret} suffix",
+        nested=[f"curl -H 'authorization: bearer {secret}'"],
+    )
+    raw = (tmp_path / "trace-run-1.jsonl").read_text() + capsys.readouterr().out
+    assert secret not in raw
+    line = _lines(tmp_path / "trace-run-1.jsonl")[0]
+    assert line["note"] == "prefix Bearer *** suffix"
+
+
 def test_span_records_duration_and_extra_fields(tmp_path):
     tracer = Tracer("run-1", logs_dir=tmp_path)
     with tracer.span(agent="analyst", action="query", sql="SELECT 1") as extra:

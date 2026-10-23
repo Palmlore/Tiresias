@@ -19,6 +19,7 @@ STATUSES = frozenset({"success", "error", "rejected", "degraded"})
 RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 REDACTED = "***"
 _SECRET_KEY = re.compile(r"token|key|authorization|password", re.IGNORECASE)
+_BEARER = re.compile(r"\b(bearer)\s+[^\s'\"]+", re.IGNORECASE)
 _RESERVED = frozenset({"timestamp", "service", "run_id", "parent_run_id", "agent", "action"})
 
 
@@ -30,14 +31,17 @@ def new_run_id() -> str:
 def redact(value: Any) -> Any:
     """Replace values under secret-looking keys (token, key, authorization, password) with ***.
 
-    Numbers are kept, so counters such as tokens=1234 stay readable.
+    A string that is a bearer credential becomes ***; one embedded in a longer string is
+    masked in place. Numbers are kept, so counters such as tokens=1234 stay readable.
     """
     if isinstance(value, dict):
         return {k: REDACTED if _is_secret(k, v) else redact(v) for k, v in value.items()}
     if isinstance(value, list | tuple):
         return [redact(v) for v in value]
-    if isinstance(value, str) and value.lower().startswith("bearer "):
-        return REDACTED
+    if isinstance(value, str):
+        if value.lower().startswith("bearer "):
+            return REDACTED
+        return _BEARER.sub(lambda m: f"{m.group(1)} {REDACTED}", value)
     return value
 
 
