@@ -69,6 +69,8 @@ test("REST: health, remember, recall, purge, bad input", async () => {
     assert.equal(recall.lessons.length, 1);
     assert.equal((await (await post("/memory/purge", {})).json()).purged, 1);
     assert.equal((await post("/memory/remember", {})).status, 400);
+    const unknown = await post("/memory/feedback", { memory_id: "no-such-id", kind: "helpful" });
+    assert.equal(unknown.status, 404, "unknown memory id is a 404, not a 500");
   } finally {
     server.close();
   }
