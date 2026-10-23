@@ -4,7 +4,7 @@ The single list to work from. Every event requirement is merged and de-duplicate
 
 `[x]` done (evidence linked) · `[~]` in progress · `[ ]` not started
 
-Updated **2026-10-22 22:15 AEDT** (build day 1). Deadline **27 Oct 23:45 UTC = 28 Oct 10:45 AEDT**.
+Updated **2026-10-23 AEDT** (build day 2). Work now lands through DuelLoop-reviewed PRs (AGENTS.md → How work lands). Deadline **27 Oct 23:45 UTC = 28 Oct 10:45 AEDT**.
 
 **Source keys**
 

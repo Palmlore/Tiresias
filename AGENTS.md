@@ -1,4 +1,4 @@
-# AGENTS.md: handover for coding agents (Claude Code is the main driver; Cursor or others also fine)
+# AGENTS.md: handover for coding agents (Claude Code is the main driver; Codex reviews via DuelLoop)
 
 **Tiresias**: an evidence-backed "5 Whys" root-cause agent for financial analysts on SEC filings. Open Agent Hackathon 2026, track *Reasoning Architecture* (ADR-0009). Solo entry by Palmlore. Repo: github.com/Palmlore/Tiresias (public, Apache-2.0).
 
@@ -23,7 +23,9 @@
 | `zetaris/sql/` | Lightning SQL for registering sources (to fill) |
 | `input_examples/` | 3 GE cases (inputs) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
-| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py` |
+| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py` |
+| `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV), with `PROVENANCE.json` |
+| `BACKLOG.md` | Findings deferred out of a PR, with reason, bound and trigger |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |
 
 ## Commands
@@ -44,6 +46,14 @@ python3 scripts/zetaris_probe.py     # latency and registration probe (reads .en
 ## External services (live mode only; sample mode needs none)
 - **Zetaris**: local Docker bundle at `~/Repos/hackathon2026/zetaris/zetaris-platform` (2.4.3.1-hackathon). REST `http://localhost:8888/api/v1.0`, or `http://host.docker.internal:8888/api/v1.0` from containers. `POST /sql-editor/sqls/run` with `Authorization: Bearer`, `X-Org-ID: 1` and a fresh `X-Request-ID` UUID. Already registered: database `TIRESIAS_SEC`, container `tiresias`, views `tiresias.ge_revenue_cf` and `tiresias.gehc_revenue`.
 - **Meterless Nightshift**: runs in an isolated macOS VM, because the installer is ad-hoc signed and not notarized. It's an OpenAI-compatible Runtime reached through hotspot mode at the VM's IP. Headers: `meterless-app: tiresias`, `meterless-scope: user`. Models: `meterless/fast`, `meterless/deep`. Timeout 180 s. The NVIDIA key lives **only** in Nightshift.
+
+## How work lands (from 23 Oct 2026)
+- **Every change goes through a pull request**, one task per branch (`feat/<short-name>`), file-disjoint from other open PRs so they can run in parallel. Process and housekeeping commits may go straight to `main`.
+- The PR body follows [.github/pull_request_template.md](.github/pull_request_template.md): an `## ACCEPTANCE CRITERIA` section of `[C]` / `FALSIFIED-BY:` / `VERIFIER:` entries. Make each criterion testable by a named test or command.
+- Each PR is reviewed by **DuelLoop** (`~/Repos/duelloop`, outside this repo): Codex as adversarial reviewer, Claude Code as worker, up to 3 rounds. The coordinating session launches it backgrounded (`duelloop go --pr N --worker claude --reviewer codex --repo <worktree>`); run records live in `~/.duelloop/runs/`, never in this repo. The local `verdict.json` is the source of truth, not the PR label.
+- On `MERGE_PERMITTED` with checks green, the coordinator merges (squash) and pushes. Escalations go to the human.
+- Real findings that are out of scope are **deferred** to [BACKLOG.md](BACKLOG.md) in the same commit, with all four fields.
+- Worker and reviewer rounds: commit to the PR branch only; don't push, open, approve or merge PRs.
 
 ## Rules (non-negotiable)
 1. **No hardcoded or replayed outputs, no hand-written traces.** Judges test with their own inputs. Sample mode runs real logic on cached data.
