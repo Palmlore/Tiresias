@@ -67,8 +67,10 @@
     },
     "cursor": {
       "status": "planned",
-      "how": "Optional since the organizers' 23 Oct 2026 update. Tiresias is built mainly with Claude Code; Cursor is not a dependency of the product or the build.",
-      "surfaces": [],
+      "how": "Optional since the organizers' 23 Oct 2026 update. Tiresias is built mainly with Claude Code; the Cursor IDE was used for a few manual edits. Not a dependency of the product or the build.",
+      "surfaces": [
+        "ide"
+      ],
       "where": [],
       "evidence": [
         "docs/ai-usage.md#development-tools"
