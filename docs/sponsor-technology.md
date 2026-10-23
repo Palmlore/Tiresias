@@ -27,7 +27,7 @@ Status: **in-progress**. In live mode the agent drives Zetaris end to end, measu
 - Purge will be exposed for the demo (today `/memory/purge` on the agent returns 501); the purge is itself recorded in the append-only trust ledger.
 - Evidence: the official H-MEM conformance runner passes against our service module.
 
-**Nightshift (Power rule).** All model calls from the agent will go to the Meterless Runtime (OpenAI-compatible; `meterless-app` and `meterless-scope` headers). It is the primary provider.
+**Nightshift (Power rule).** All model calls from the agent will go to the Meterless Runtime (OpenAI-compatible; `meterless-app` and `meterless-scope` headers). It will be the primary provider.
 
 **Candidates for later:** the Markovian engine (each "why" as a bounded step with compressed carryover) and World Model (the why-tree as entities and edges with provenance).
 

@@ -1,6 +1,6 @@
 # Status and open questions
 
-Updated: 2026-10-23 (build day 2, after #6–#9). Submission deadline: **27 Oct 2026 23:45 UTC**.
+Updated: 2026-10-23 (build day 2, after #6–#13 and #15). Submission deadline: **27 Oct 2026 23:45 UTC**.
 
 Progress is tracked in **[CHECKLIST.md](CHECKLIST.md)**. This file holds only the open technical questions.
 

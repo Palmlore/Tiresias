@@ -148,3 +148,10 @@ Found in: #13  ·  Status: open
 - Safe to leave because: the run ends at `evidence-frontier` with the error in the reason; nothing is served from the sample, and a second run succeeds (registration is idempotent).
 - Urgent if: cold registrations fail this way more than occasionally, or during a demo.
 - Evidence: `adapters/zetaris.py` (`ZetarisClient.run_sql`, `recoverable=response.status_code >= 500`); DuPont cold row in `docs/measurements/live-any-company.md`.
+
+## B-19: Loop A's critic also proposes `accept-capped` for any over-explaining component
+Found in: #15  ·  Status: open
+- Out of scope because: #15 bounds Loop B's add-back, where an over-explanation means the wrong counterparty; in Loop A a component that explains more than 100% means offsetting factors inside the same entity (`agents/critic.py`, "it over-explains, so offsetting factors exist"), which can be legitimate, so the same bound needs its own reasoning and tests.
+- Safe to leave because: Loop A only measures the asked entity's own filed figures, so a gross over-explanation is real arithmetic on its own numbers, not a mismatched entity; the reason text and the `critic_escalation` trace line state the raw share, and a scripted or interactive gate can prune it.
+- Urgent if: a Loop A link ends `actionable` with a raw share far above 100% (for example over 150%) on a question a judge or the demo asks, or the 100%-capped share is shown without the raw one.
+- Evidence: `services/agent/src/tiresias_agent/agents/critic.py` (`"proposal": "accept-capped"` under `raw > OVER_EXPLAINED`); `MAX_OVER_EXPLAINED` in `config.py` (#15).

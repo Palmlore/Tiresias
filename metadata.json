@@ -53,7 +53,7 @@
     },
     "meterless": {
       "status": "in-progress",
-      "how": "H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service) stores lessons from past investigations, never answers, with a memory gate and an audited purge so judges can compare cold and warm runs; Nightshift is the primary model provider for all agent model calls (planned).",
+      "how": "H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) will store lessons from past investigations, never answers, with a memory gate and an audited purge so judges can compare cold and warm runs; the agent does not call it yet. Nightshift will be the primary model provider for all agent model calls; the client is built but not live, and the agents are rule-based for now.",
       "engines": [
         "H-MEM"
       ],
