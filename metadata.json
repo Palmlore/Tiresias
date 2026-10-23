@@ -24,7 +24,7 @@
   },
   "sponsors": {
     "zetaris": {
-      "status": "planned",
+      "status": "in-progress",
       "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned; in Loop B the agent registers a newly discovered entity's SEC filings as a Lightning REST table at runtime, and the critic re-queries counterfactually.",
       "interface": "rest",
       "deployment": "local-docker",

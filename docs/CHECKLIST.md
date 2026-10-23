@@ -33,27 +33,29 @@ Updated **2026-10-23 AEDT** (build day 2). Work now lands through DuelLoop-revie
 - [~] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10)
   - [x] Local Zetaris running; `verify.sh` 9/9; measured ([measurements/zetaris-local.md](measurements/zetaris-local.md))
   - [x] GE vs GE HealthCare reconciliation runs inside Zetaris (residual $114M), via `scripts/zetaris_probe.py`
-  - [ ] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9)
+  - [x] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9) (#5: live and sample sources, falls back to `data/sample/` on outage and traces `degraded`; live smoke row counts match sample mode)
   - [ ] Loop B registers a discovered entity's source at runtime from `catalog/sources.yaml`
-  - [ ] `zetaris/sql/` holds the registration SQL for the showcase entities
+  - [x] `zetaris/sql/` holds the registration SQL for the showcase entities (#5: 12 templates; `bootstrap` registered GE, GEHC, GEV and is idempotent)
 - [~] **Meterless Build rule: at least one engine in a working, user-facing feature, with test evidence** (SG §3.2)
   - [x] H-MEM in `services/cognition`; official conformance 13/13 (`npm run conformance`); 6 tests
   - [ ] User-facing feature: cold → warm → purge → cold memory demo through `/run`
 - [ ] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4)
   - [ ] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers
-  - [ ] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling)
+  - [~] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling) (merged #2; mock-tested; `python -m tiresias_agent.adapters.nightshift probe` pending the VM's Runtime URL)
 - [ ] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page)
 - [x] ~~**Developed in Cursor.**~~ Optional since the organizers' 23 Oct update ("Cursor is now optional … use any AI coding tool"). Claude Code is the main coding agent. Describe only the tools actually used ([ai-usage.md](ai-usage.md)) (OR §8.1 as amended; SP cursor).
 
 ## C. Agent system (Technical 20 · Innovation 15)
 - [ ] ≥2 named agents with distinct roles that interact more than once (OR §7.3; SC §9)
 - [ ] Critique / validation / retry / branching events in the traces (SC §9; AI §13)
+  - [x] Agent JSONL tracer (`trace.py`): same line format as cognition, secret redaction, spans with `duration_ms` (#1)
 - [ ] Critic implements [causal-criteria.md](causal-criteria.md): breakdown vs causal labels, intervention test, share explained, residual
 - [ ] Loop A (known sources) and Loop B (evidence frontier) both work on case 01
 - [ ] Six end states implemented, with the asker-relative stopping rule
 - [ ] Human-in-the-loop gates with `auto` / `interactive` / `scripted` modes, each decision traced (ADR-0006)
 - [ ] Branching from a node of a finished run (`/runs/{id}/branch`)
 - [ ] Memory gate and lesson write-back from the agent to cognition; recalled lessons seed the hypothesiser; the critic gives feedback on them
+  - [x] Agent-side cognition client: every endpoint, `X-Run-Id`, degrades to no-memory when cognition is down; purge never reports a purge that didn't happen (#3; live round trip in the PR)
 
 ## D. Running and reproducibility (any failure here can lose the whole Technical and Demo score)
 - [~] Programmatic entry point: `POST /run`, JSON in and out, bound to `0.0.0.0`, structured errors (TE §2; SC §5) (contract drafted; `/run` returns 501)
@@ -113,7 +115,7 @@ Updated **2026-10-23 AEDT** (build day 2). Work now lands through DuelLoop-revie
 | When (AEDT) | Gate | Status |
 |---|---|---|
 | Thu 22 Oct (day 1) | Zetaris up and measured; repo scaffolded; cognition service working | [x] |
-| Fri 23 Oct | Agent: Zetaris adapter, tracing, Loop A on case 01 in sample mode | [ ] |
+| Fri 23 Oct | Agent: Zetaris adapter, tracing, Loop A on case 01 in sample mode | [~] tracing, Zetaris adapter, model and memory clients merged; Loop A next |
 | Sat 24 Oct | Loop B live; critic rules; Nightshift client; 3 cases end to end | [ ] |
 | Sun 25 Oct (day-4 checkpoint) | Runs locally **and** in Docker; sample mode with an empty `.env`; memory demo; fresh-clone validation; first judge install test on the clean Tahoe VM. More than 3 gaps means cut scope. | [ ] |
 | Mon 26 Oct | Freeze architecture. Branching and asker profiles polish; outputs and traces committed; README final | [ ] |

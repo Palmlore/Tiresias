@@ -15,7 +15,7 @@
 ## Layout
 | Path | What |
 |---|---|
-| `services/agent/` | Python 3.11+ / FastAPI (uv). Orchestrator, agents, Zetaris adapter, Nightshift client. **Loop A runs as a library and CLI (sample mode); the HTTP `/run` still returns a structured 501.** |
+| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `agents/`, `adapters/` (see Building blocks). **Loop A runs as a library and CLI (sample mode); HTTP: only `/health`, and `/run` still returns a structured 501.** |
 | `services/cognition/` | TypeScript / Node ≥22.18, no npm dependencies. H-MEM memory over REST. **Working.** |
 | `services/cognition/engine/hmem/` | Vendored Meterless H-MEM reference (commit `1742dec`). **Never edit**; wrap it in `src/`. |
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |
@@ -76,9 +76,10 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 ## How work lands (from 23 Oct 2026)
 - **Every change goes through a pull request**, one task per branch (`feat/<short-name>`), file-disjoint from other open PRs so they can run in parallel. Process and housekeeping commits may go straight to `main`.
 - The PR body follows [.github/pull_request_template.md](.github/pull_request_template.md): an `## ACCEPTANCE CRITERIA` section of `[C]` / `FALSIFIED-BY:` / `VERIFIER:` entries. Make each criterion testable by a named test or command.
-- Each PR is reviewed by **DuelLoop** (`~/Repos/duelloop`, outside this repo): Codex as adversarial reviewer, Claude Code as worker, up to 3 rounds. The coordinating session launches it backgrounded (`duelloop go --pr N --worker claude --reviewer codex --repo <worktree>`); run records live in `~/.duelloop/runs/`, never in this repo. The local `verdict.json` is the source of truth, not the PR label.
-- On `MERGE_PERMITTED` with checks green, the coordinator merges (squash) and pushes. Escalations go to the human.
+- Each PR is reviewed by **DuelLoop** (`~/Repos/duelloop`, outside this repo): Codex as adversarial reviewer, Claude Code as worker, up to 5 rounds (`--rounds 5`). The coordinating session launches it backgrounded (`duelloop go --pr N --worker claude --reviewer codex --repo <worktree>`); run records live in `~/.duelloop/runs/`, never in this repo. The local `verdict.json` is the source of truth, not the PR label.
+- On `MERGE_PERMITTED` the coordinator re-runs every verifier itself and merges (squash) only if they pass: `uv` panics inside the reviewer's macOS sandbox, so the reviewer probes behaviour but often cannot run the suite. Escalations go to the human.
 - A PR that adds a feature, module, CLI or observability also updates **AGENTS.md** (Building blocks, Commands, gotchas) and, if a judge would see the change, **README**, in the same PR and as an acceptance criterion. Later tasks build on what is documented there.
+- Docs-only PRs (status, checklist, README) go through DuelLoop too. Their criteria test **accuracy** (every claim matches the code and git history; nothing is marked working that a judge can't run) and **logical consistency** (CHECKLIST, STATUS, README, metadata.json and AGENTS.md agree with each other).
 - Real findings that are out of scope are **deferred** to [BACKLOG.md](BACKLOG.md) in the same commit, with all four fields.
 - Worker and reviewer rounds: commit to the PR branch only; don't push, open, approve or merge PRs.
 - Parallel PRs don't edit `docs/CHECKLIST.md`, `docs/STATUS.md` or `metadata.json` (they would conflict); the coordinator updates them right after each merge.
