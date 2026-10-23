@@ -94,6 +94,17 @@ def test_run_sql_rejects_rows_not_keyed_by_response_headers(rows):
     assert caught.value.recoverable is False
 
 
+@pytest.mark.parametrize(
+    "payload",
+    [[{"headers": ["x"], "data": [["bad"]]}], "text", 42, {"headers": "x", "data": []}],
+)
+def test_run_sql_rejects_a_malformed_top_level_payload(payload):
+    client, _ = make_client(lambda request: httpx.Response(200, json=payload))
+    with pytest.raises(z.SourceError) as caught:
+        client.run_sql("SELECT 1", label="shape")
+    assert caught.value.recoverable is False
+
+
 def test_run_sql_retries_503_then_succeeds_with_fresh_request_ids():
     request_ids = []
 

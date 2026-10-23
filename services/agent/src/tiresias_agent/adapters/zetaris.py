@@ -422,22 +422,29 @@ class ZetarisClient:
             payload = response.json() if response.content else {}
         except ValueError:
             return SourceError(f"Zetaris {label}: response is not JSON", recoverable=False)
-        columns: list[str] = []
+        # An empty body (DDL) parses to {} and means no rows; anything that is not an
+        # object with list-valued headers and data is malformed, not an empty result.
+        headers = payload.get("headers") or [] if isinstance(payload, dict) else None
+        data = payload.get("data") or [] if isinstance(payload, dict) else None
+        if not isinstance(headers, list) or not isinstance(data, list):
+            return SourceError(
+                f"Zetaris {label}: response is not an object with headers and data lists",
+                recoverable=False,
+            )
+        columns: list[str] = [str(c) for c in headers]
         rows: list[dict[str, Any]] = []
-        if isinstance(payload, dict):
-            columns = [str(c) for c in payload.get("headers") or []]
-            for row in payload.get("data") or []:
-                # Every row must be keyed by exactly the response headers; a malformed
-                # payload is an error, not a silently mis-keyed result.
-                if isinstance(row, dict) and sorted(row) == sorted(columns):
-                    rows.append(dict(row))
-                elif isinstance(row, list) and len(row) == len(columns):
-                    rows.append(dict(zip(columns, row)))
-                else:
-                    return SourceError(
-                        f"Zetaris {label}: row does not match response headers {columns}",
-                        recoverable=False,
-                    )
+        for row in data:
+            # Every row must be keyed by exactly the response headers; a malformed
+            # payload is an error, not a silently mis-keyed result.
+            if isinstance(row, dict) and sorted(row) == sorted(columns):
+                rows.append(dict(row))
+            elif isinstance(row, list) and len(row) == len(columns):
+                rows.append(dict(zip(columns, row)))
+            else:
+                return SourceError(
+                    f"Zetaris {label}: row does not match response headers {columns}",
+                    recoverable=False,
+                )
         result = QueryResult(
             rows=rows,
             columns=columns,
