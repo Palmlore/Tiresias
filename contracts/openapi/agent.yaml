@@ -24,15 +24,7 @@ paths:
       summary: Branch from a node of a finished run with a new question or asker (planned)
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
       requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [node_id]
-              properties:
-                node_id: {type: string}
-                question: {type: string}
-                asker: {$ref: "#/components/schemas/Asker"}
+        content: {application/json: {schema: {$ref: "#/components/schemas/BranchRequest"}}}
       responses: {"200": {description: New run, content: {application/json: {schema: {$ref: "#/components/schemas/RunResult"}}}}}
   /memory/purge:
     post:
@@ -55,7 +47,10 @@ components:
         question: {type: string}
         entity: {type: object, properties: {ticker: {type: string}, cik: {type: string}}}
         metric: {type: string}
-        period: {type: object, properties: {start: {type: string, format: date}, end: {type: string, format: date}}}
+        period:
+          type: object
+          required: [start, end]
+          properties: {start: {type: string, format: date}, end: {type: string, format: date}}
         compare: {type: object}
         asker: {$ref: "#/components/schemas/Asker"}
         options:
@@ -65,11 +60,20 @@ components:
             memory: {type: string, enum: [warm, cold]}
             sample_mode: {type: boolean}
             decisions: {type: object, description: Scripted gate decisions}
-    Link:
+    BranchRequest:
       type: object
+      required: [node_id]
       properties:
         node_id: {type: string}
-        parent_id: {type: string}
+        question: {type: string}
+        asker: {$ref: "#/components/schemas/Asker"}
+    Link:
+      type: object
+      description: One node of the why-tree, a labelled link from its parent (docs/causal-criteria.md)
+      required: [node_id, claim, label]
+      properties:
+        node_id: {type: string}
+        parent_id: {type: [string, "null"]}
         claim: {type: string}
         label: {type: string, enum: [breakdown, causal, leverage, background]}
         evidence_status: {type: string, enum: [evidenced, partially-evidenced, hypothesis]}
@@ -77,22 +81,38 @@ components:
         residual: {type: number}
         sql: {type: string}
         rows_ref: {type: string}
+    RunStats:
+      type: object
+      properties:
+        hops: {type: integer}
+        queries: {type: integer}
+        sources_onboarded: {type: integer}
+        model_calls: {type: integer}
+        tokens: {type: integer}
+        seconds: {type: number}
     RunResult:
       type: object
+      required: [run_id, status]
       properties:
         run_id: {type: string}
         parent_run_id: {type: [string, "null"]}
+        parent_node_id: {type: [string, "null"], description: Node branched from (branch runs only)}
         status: {type: string, enum: [success, partial, error]}
         end_state: {type: string, enum: [actionable, branched, cyclic, evidence-frontier, external-driver, budget]}
         root_cause: {type: string}
-        action: {type: string}
+        action: {type: string, description: Recommended action for the asker}
+        residual: {type: number, description: Share of the effect left unexplained}
         why_tree: {type: array, items: {$ref: "#/components/schemas/Link"}}
-        stats: {type: object, description: hops, queries, sources_onboarded, model_calls, tokens, seconds}
+        stats: {$ref: "#/components/schemas/RunStats"}
         trace_file: {type: string}
         sample_mode: {type: boolean}
     Error:
       type: object
+      required: [status, error]
       properties:
         run_id: {type: string}
         status: {const: error}
-        error: {type: object, properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}}
+        error:
+          type: object
+          required: [type, message]
+          properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}
