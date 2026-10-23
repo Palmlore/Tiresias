@@ -1,36 +1,203 @@
 openapi: 3.1.0
 info:
   title: Tiresias cognition API (Meterless H-MEM)
-  version: 0.2.0
-  description: Draft contract (ADR-0002, ADR-0005). It wraps the Meterless H-MEM reference engine.
+  version: 0.2.1
+  description: >-
+    Contract for services/cognition/src/server.ts (ADR-0002, ADR-0005). It wraps the Meterless
+    H-MEM reference engine. Every request may carry X-Run-Id; the server writes it into its trace
+    and, for remember, prefers it over body.run_id. Python client:
+    services/agent/src/tiresias_agent/adapters/cognition.py.
 servers: [{url: http://localhost:8100}]
+components:
+  parameters:
+    RunId: {name: X-Run-Id, in: header, required: false, schema: {type: string}}
+  schemas:
+    Gate:
+      type: object
+      required: [mode, decision]
+      properties:
+        mode: {type: string, enum: [auto, interactive, scripted]}
+        decision: {type: string, enum: [approve, reject]}
+        decidedBy: {type: string, description: "camelCase; defaults to \"unknown\""}
+        reason: {type: string}
+    Lesson:
+      type: object
+      required: [id, content, namespace, confidence, tags]
+      properties:
+        id: {type: string}
+        content: {type: string}
+        namespace: {type: string}
+        confidence: {type: number}
+        tags: {type: array, items: {type: string}}
+        runId: {type: string}
+        relevance: {type: number, description: Only on recall}
+    Error:
+      type: object
+      properties:
+        status: {const: error}
+        error:
+          type: object
+          properties:
+            type: {type: string, enum: [BadRequest, NotFound, Internal]}
+            message: {type: string}
+            recoverable: {type: boolean}
+  responses:
+    BadRequest: {description: Invalid body, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
 paths:
   /health:
-    get: {summary: Liveness and engine source (implemented), responses: {"200": {description: OK}}}
+    get:
+      summary: Liveness and engine source
+      parameters: [{$ref: "#/components/parameters/RunId"}]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service: {const: cognition}
+                  version: {type: string}
+                  engine: {type: object, properties: {name: {type: string}, source: {type: string}}}
+                  lessons: {type: integer}
   /memory/recall:
     post:
-      summary: Ranked lessons for a task, with a reinjection trace (implemented)
-      requestBody: {content: {application/json: {schema: {type: object, properties: {query: {type: string}, namespace: {type: string}, top_n: {type: integer}}}}}}
-      responses: {"200": {description: Structured reinjection payload}}
+      summary: Ranked lessons for a task, with a reinjection trace
+      parameters: [{$ref: "#/components/parameters/RunId"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: {type: string}
+                namespace: {type: string, default: lessons}
+                top_n: {type: integer}
+                threshold: {type: number, description: Defaults to the server's RECALL_THRESHOLD (0.25)}
+      responses:
+        "200":
+          description: Structured reinjection payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lessons: {type: array, items: {$ref: "#/components/schemas/Lesson"}}
+                  context: {type: string}
+                  trace:
+                    type: object
+                    properties:
+                      retrievalReason: {type: string}
+                      strategy: {type: string, enum: [minimal, personal, comprehensive]}
+                      scores: {type: object, additionalProperties: {type: number}}
+        "400": {$ref: "#/components/responses/BadRequest"}
   /memory/remember:
     post:
-      summary: Store a lesson after the memory gate (implemented)
-      requestBody: {content: {application/json: {schema: {type: object, properties: {content: {type: string}, type: {type: string}, namespace: {type: string}, run_id: {type: string}, agent_id: {type: string}, gate: {type: object}}}}}}
-      responses: {"200": {description: Memory id}}
+      summary: Store a lesson after the memory gate (a rejected lesson is ledgered, not stored)
+      parameters: [{$ref: "#/components/parameters/RunId"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content]
+              properties:
+                content: {type: string}
+                namespace: {type: string, default: lessons}
+                run_id: {type: string, description: Used only when X-Run-Id is absent}
+                agent_id: {type: string}
+                tags: {type: array, items: {type: string}}
+                confidence: {type: number, default: 0.7}
+                gate: {$ref: "#/components/schemas/Gate"}
+      responses:
+        "200":
+          description: Stored, or rejected at the gate (stored false, no lesson)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  stored: {type: boolean}
+                  lesson: {$ref: "#/components/schemas/Lesson"}
+                  gate: {$ref: "#/components/schemas/Gate"}
+        "400": {$ref: "#/components/responses/BadRequest"}
   /memory/feedback:
     post:
-      summary: Critic feedback on a recalled lesson (helpful, not_helpful, wrong) (implemented)
-      responses: {"200": {description: OK}}
+      summary: Critic feedback on a recalled lesson
+      parameters: [{$ref: "#/components/parameters/RunId"}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [memory_id, kind]
+              properties:
+                memory_id: {type: string}
+                kind: {type: string, enum: [helpful, not_helpful, wrong]}
+      responses:
+        "200":
+          description: The lesson after the confidence update
+          content:
+            application/json:
+              schema: {type: object, properties: {lesson: {$ref: "#/components/schemas/Lesson"}}}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "404": {description: Unknown memory id, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /memory/purge:
     post:
-      summary: Clear lessons (all or by namespace); the ledger keeps the purge event (implemented)
-      responses: {"200": {description: Purged count}}
+      summary: Clear lessons (all or by namespace); the ledger keeps the purge event
+      parameters:
+        - {$ref: "#/components/parameters/RunId"}
+        - {name: namespace, in: query, schema: {type: string}, description: Overrides body.namespace}
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                namespace: {type: string, description: Omit to purge every namespace}
+                requested_by: {type: string, default: api}
+      responses:
+        "200":
+          description: Purged count
+          content:
+            application/json:
+              schema: {type: object, required: [purged], properties: {purged: {type: integer}}}
   /memory:
     get:
-      summary: List lessons, optionally by namespace (implemented)
-      parameters: [{name: namespace, in: query, schema: {type: string}}]
-      responses: {"200": {description: Lessons}}
+      summary: List lessons, optionally by namespace
+      parameters:
+        - {$ref: "#/components/parameters/RunId"}
+        - {name: namespace, in: query, schema: {type: string}}
+      responses:
+        "200":
+          description: Lessons
+          content:
+            application/json:
+              schema: {type: object, properties: {lessons: {type: array, items: {$ref: "#/components/schemas/Lesson"}}}}
   /ledger:
     get:
-      summary: Append-only trust ledger, as JSONL (implemented)
-      responses: {"200": {description: Ledger entries}}
+      summary: Append-only trust ledger (persisted as JSONL; served as a JSON array)
+      parameters:
+        - {$ref: "#/components/parameters/RunId"}
+        - {name: memory_id, in: query, schema: {type: string}, description: One memory's history}
+      responses:
+        "200":
+          description: Ledger entries, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        memoryId: {type: string}
+                        action: {type: string}
+                        actor: {type: string}
+                        timestamp: {type: integer}
+                        previousState: {type: object}
+                        newState: {type: object}
+                        details: {type: object}
