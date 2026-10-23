@@ -35,7 +35,7 @@ Status: **in-progress**. The H-MEM service works and passes conformance 13/13, b
 
 ## NVIDIA
 
-Nemotron models served through Nightshift lanes: a fast lane for the hypothesiser and a deep lane for the critic. Runs pin a Nemotron-backed lane so the evidence is unambiguous. The NVIDIA key lives only in Nightshift's Providers tab.
+Nemotron models to be served through Nightshift lanes: a fast lane for the hypothesiser and a deep lane for the critic. Runs will pin a Nemotron-backed lane so the evidence is unambiguous. The NVIDIA key lives only in Nightshift's Providers tab.
 
 Status: **planned**
 

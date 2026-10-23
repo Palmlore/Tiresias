@@ -112,9 +112,9 @@ metadata.json         Sponsor and submission metadata (community schema 0.1)
 | Sponsor | Role in Tiresias | Status |
 |---|---|---|
 | **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | in progress: in live mode the agent drives Zetaris end to end (resolves the asked company, registers it and the spun-off business at runtime when Zetaris lacks them; discovery and evidence are SQL), measured in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md); the default quickstart is sample mode, which runs the same logic on cached rows without Zetaris |
-| **Meterless** | **H-MEM** stores lessons from past investigations (purgeable). **Nightshift** is the primary model provider. | in progress: H-MEM service working (conformance 13/13), not yet used by the agent (memory demo planned); Nightshift client built, not live (agents are rule-based for now) |
+| **Meterless** | **H-MEM** will store lessons from past investigations (purgeable). **Nightshift** will be the primary model provider. | in progress: H-MEM service working (conformance 13/13), not yet used by the agent (memory demo planned); Nightshift client built, not live (agents are rule-based for now) |
 | **Cursor** | Optional since 23 Oct (organizer update); Claude Code is the main coding agent | optional |
-| **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser, deep critic) | planned |
+| **NVIDIA** | Nemotron models to be served through Nightshift lanes (fast hypothesiser, deep critic) | planned |
 
 Details are in [docs/sponsor-technology.md](docs/sponsor-technology.md). Status is only `working` when a judge can see it run.
 
