@@ -40,28 +40,28 @@ Found in: #6  ·  Status: open
 - Evidence: `services/agent/src/tiresias_agent/agents/analyst.py` (`except SourceError`); `orchestrator.main --live`.
 
 ## B-4: Live Loop B discovery reads SEC directly, not through Zetaris
-Found in: Loop B PR  ·  Status: open
+Found in: #8  ·  Status: open
 - Out of scope because: the scout's two discovery reads (`sec_tickers`, `sec_submissions` per candidate) would each need a Zetaris REST table per candidate, which would spend the source budget (`MAX_NEW_SOURCES_PER_RUN`) on discovery instead of evidence. This PR is sample mode first.
 - Safe to leave because: discovery only picks *which* entity to onboard; every number the critic reconciles is queried through `EvidenceSource` (Zetaris in live mode, with sample fallback). Live discovery uses only catalog endpoints, with `SEC_USER_AGENT`, a 20 s timeout, bounded retries and the catalog rate limit; an outage degrades to the sample (traced `degraded`), a non-recoverable error is raised.
 - Urgent if: ADR-0003 ("Zetaris is the only path to evidence in live mode") is read as covering discovery, or a judge's live run must show discovery SQL.
 - Evidence: `services/agent/src/tiresias_agent/adapters/catalog.py` (`LiveDiscovery`, `FallbackDiscovery`).
 
 ## B-5: Source scout resolves only separations into a new, same-brand registrant
-Found in: Loop B PR  ·  Status: open
+Found in: #8  ·  Status: open
 - Out of scope because: the rules (brand pre-filter; registrant by the disposal date, no annual report before it, own 8-K within 7 days, item 5.01 preferred) cover spin-offs and split-offs. A sale to an existing company needs the 8-K exhibit text (the counterparty's name), which is not in the catalog's structured data.
 - Safe to leave because: an unmatched or ambiguous hint is refused and the run stays at `evidence-frontier` with the reason in `information_need.reason`; nothing is guessed by name.
 - Urgent if: a judge's restatement comes from a sale to an existing company, or from a spin-off with a new brand.
 - Evidence: `services/agent/src/tiresias_agent/agents/source_scout.py` (`assess`, `_resolve`); `tests/test_loop_b.py::test_scout_refuses_a_tie_and_an_unmatched_disposal`.
 
 ## B-6: The add-back test is defined for restatements only
-Found in: Loop B PR  ·  Status: open
+Found in: #8  ·  Status: open
 - Out of scope because: for a period-over-period change, the disposed business's contribution to each period depends on the completion date, which needs quarterly data that the sample slice and the concept views do not hold.
 - Safe to leave because: for a `change` frame, `reconciler.measure` records the missing test and the critic returns `frontier`, so the run ends at `evidence-frontier` with the need recorded, never with an invented share.
 - Urgent if: an input asks why a metric changed year on year because of a disposal and Loop A hands it to Loop B.
 - Evidence: `services/agent/src/tiresias_agent/agents/reconciler.py` (`frame.kind != "restatement"`); `tests/test_loop_b.py::test_reconcile_small_share_is_pruned_and_missing_data_is_a_frontier`.
 
 ## B-7: Loop B not yet run against live Zetaris
-Found in: Loop B PR  ·  Status: open
+Found in: #8  ·  Status: open
 - Out of scope because: this PR is sample mode first; the live registration path (`bootstrap(..., tables=("facts",))`, view refresh, outage → degraded, non-recoverable → failed) is exercised with a mocked Zetaris transport only.
 - Safe to leave because: sample mode is the default and what judges run; in live mode a failed registration ends the run at `evidence-frontier` (non-recoverable) or degrades to the sample with a `degraded` trace line (outage).
 - Urgent if: the demo uses `--live`, or `/run` is switched to `run_investigation` with `SAMPLE_MODE=false`.
