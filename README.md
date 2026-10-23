@@ -25,10 +25,10 @@ You ask *"why did this figure change?"* and say **who is asking** (analyst, audi
 1. **Drills down** through the sources it knows (filings, restated values, filing events), using SQL through **Zetaris**.
 2. **Goes looking for missing evidence** when the known sources run out. It finds the entity it needs (for example the spun-off company), registers that company's filings as a new Zetaris source while it runs, and reconciles the numbers.
 3. **Challenges every link** with a critic. Is it causal, or just a breakdown of the total? Would the effect disappear without it? How much does it explain, and what's left over?
-4. **Stops at the first cause the asker can act on**, which can be before or after level 5. It always reports the end state: `actionable`, `branched`, `cyclic`, `evidence-frontier`, `external-driver` or `budget`.
-5. **Remembers lessons, not answers** (Meterless **H-MEM**). The next similar investigation takes fewer steps. The memory can be **purged**, so you can watch the difference.
+4. **Stops at the first cause the asker can act on**, which can be before or after level 5. It always reports the end state: `actionable`, `branched`, `cyclic`, `evidence-frontier`, `external-driver` or `budget` (`cyclic` is not produced yet, [BACKLOG](BACKLOG.md) B-2).
+5. **Remembers lessons, not answers** (Meterless **H-MEM**), *planned*: the H-MEM service runs, but the agent does not use it yet. The goal is that the next similar investigation takes fewer steps and the memory can be **purged**, so you can watch the difference.
 
-Every step (query, hypothesis, critique, human-in-the-loop gate, memory recall) is written to a JSONL trace.
+Every step (query, hypothesis, critique, human-in-the-loop gate, source registration) is written to a JSONL trace; memory recall will be too once memory is wired in.
 
 ## Quickstart (judges)
 
