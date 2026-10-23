@@ -49,11 +49,12 @@ Found in: #8  ·  Status: done (#9)
 - Resolved in #9: `LiveDiscovery` (httpx GETs to SEC) is gone. Live discovery is `ZetarisDiscovery`, Lightning SQL through `ZetarisClient` only: `sec_tickers` is a Zetaris REST table + view (`zetaris/sql/13_tickers_table.sql`, `22_tickers_view.sql`, registered by `bootstrap` or on first use) queried with `34`..`36_tickers_by_*.sql`; a candidate's `sec_submissions` is the same per-ticker REST table as bootstrap's (`11_submissions_table.sql`, CREATE + CACHE on demand) read with `37_submissions_profile.sql`. A REST table binds one URL, so a per-CIK table is the Zetaris-only way to read one registrant's submissions; these are discovery objects (at most one tickers table and `MAX_CANDIDATES` submissions tables per scout run), not evidence sources, so they never count toward `MAX_NEW_SOURCES_PER_RUN`. Guarded by `tests/test_any_company.py::test_only_the_sponsor_adapters_import_an_http_client_and_no_code_names_sec` and the live tests that refuse any non-mocked HTTP.
 
 ## B-5: Source scout resolves only separations into a new, same-brand registrant
-Found in: #8  ·  Status: open
+Found in: #8  ·  Status: done (#13)
 - Out of scope because: the rules (brand pre-filter; registrant by the disposal date, no annual report before it, own 8-K within 7 days, item 5.01 preferred) cover spin-offs and split-offs. A sale to an existing company needs the 8-K exhibit text (the counterparty's name), which is not in the catalog's structured data.
 - Safe to leave because: an unmatched or ambiguous hint is refused and the run stays at `evidence-frontier` with the reason in `information_need.reason`; nothing is guessed by name.
 - Urgent if: a judge's restatement comes from a sale to an existing company, or from a spin-off with a new brand.
 - Evidence: `services/agent/src/tiresias_agent/agents/source_scout.py` (`assess`, `_resolve`); `tests/test_loop_b.py::test_scout_refuses_a_tie_and_an_unmatched_disposal`.
+- Resolved in #13: the counterparty now comes from filing evidence. A new catalog template, `sec_fulltext` (EDGAR full-text search, queried through Zetaris: `zetaris/sql/14_fulltext_table.sql`, `40_fulltext_total.sql`, `41_fulltext_hits.sql`), finds the filers whose **Form 10** (10-12B/10-12G) in the 540 days before the disposal contains the source's name as it was at that date; those are the first candidates, whatever their own name, and the brand is only a ranking signal. If nothing qualifies, a second search looks at **8-Ks within 7 days** of the disposal that name the source: an existing registrant there with item 2.01 is reported as *a sale to an existing company* and refused, with the buyer and the reason. Live (`docs/measurements/live-any-company.md`, 2026-10-23 section): IBM FY2020 → Kyndryl, 3M FY2023 → Solventum and Crane NXT FY2022 → Crane Co now reconcile within 5% and end `actionable`; DuPont FY2020 (N&B merged into IFF) is refused as a sale to IFF. Tests: `tests/test_spinoff_match.py`. Remaining limits: B-15..B-18.
 
 ## B-6: The add-back test is defined for restatements only
 Found in: #8  ·  Status: open
@@ -118,3 +119,31 @@ Found in: #12  ·  Status: open
 - Safe to leave because: false positives are kept low by design and tested (`tests/test_scope.py`); a missed forward question still runs and ends on the evidence (usually `MetricNotFound` or `NoEffect` for a future period, which the period-after-today rule also catches); an unmatched name just yields no alternative.
 - Urgent if: judges type free-form questions in other phrasings, or the UI accepts questions without a structured entity.
 - Evidence: `services/agent/src/tiresias_agent/agents/scope.py` (`_STRONG`, `_WEAK`, `_PAST_FRAME`, `_NOT_A_NAME`); `tests/test_scope.py` (`FORWARD`, `IN_SCOPE`).
+
+## B-15: Loop B accepts an add-back that over-explains far beyond tolerance
+Found in: #13  ·  Status: open
+- Out of scope because: the reconciler and its `critic_escalation` proposal (`accept-capped`) are the reconcile step's design (#8); this PR changes only who is reconciled. Found while a scout rule was too loose: DuPont FY2020 was matched to Dow Inc. (an earlier spin-off), the add-back explained 636% of the restatement, and the auto gate accepted it capped at 100% (`actionable`). The scout rule was fixed in the same PR (a Form 10 older than the lookback no longer excuses an annual report), so that run now ends at the frontier.
+- Safe to leave because: the reason text and the trace state the over-explanation ("explains 636% … over-explains beyond tolerance"), and a scripted or interactive gate can prune it; with the scout's rules a gross mismatch needs a wrong counterparty that also passes every new-registrant test.
+- Urgent if: any live run shows an `actionable` Loop B link with a share far above 100% (for example over 150%), or a judge reads the 100%-capped share without the residual.
+- Evidence: `services/agent/src/tiresias_agent/agents/reconciler.py` (`"proposal": "accept-capped"`); trace of the DuPont run before the fix (scratch, not committed).
+
+## B-16: One counterparty per disposal
+Found in: #13  ·  Status: open
+- Out of scope because: the onboarder and reconciler take one entity per scout result; following two separations at one date (Hilton 2017: Hilton Grand Vacations and Park Hotels & Resorts, both new registrants named by Hilton's name in their Form 10s) needs a multi-entity add-back and two registrations against `MAX_NEW_SOURCES_PER_RUN`.
+- Safe to leave because: the scout ranks the qualifying candidates (Form 10 naming, item 5.01, brand, distance), follows the best and says which also qualified ("also qualified, ranked lower: PK"); the unexplained part stays as the residual (Hilton: 63%) and a tie on every signal ends at `evidence-frontier`.
+- Urgent if: a judge's restatement comes from two or more simultaneous spin-offs and the residual is read as unexplained.
+- Evidence: `source_scout.Assessment.rank`; Hilton rows in `docs/measurements/live-any-company.md`.
+
+## B-17: Full-text search bounds and blind spots
+Found in: #13  ·  Status: open
+- Out of scope because: each search is one Zetaris REST table over one page (at most 100 matching documents, `FULLTEXT_LIMIT` = 20 filers), and only the source's name in force at the disposal is searched. Separations registered on another form (an IPO carve-out on S-1, an exchange offer or Reverse Morris Trust on S-4) are found only by the 8-K fallback; a counterparty no longer in `sec_tickers` (delisted, acquired) cannot be registered; sample mode has no full-text data, so it keeps the brand rule only.
+- Safe to leave because: every miss is a refusal with the searched phrase and the candidates checked in `information_need.reason` and the trace (`source_scout` `candidates`); nothing is guessed, and every registration still goes through the `source` gate.
+- Urgent if: a judge asks about a carve-out IPO or a split-off by exchange offer, a spin-off whose company was later acquired, or a parent with a very common name (the page fills with passing mentions).
+- Evidence: `catalog/sources.yaml` (`sec_fulltext`); `source_scout._named`, `REGISTRATION_FORMS`; `tests/test_spinoff_match.py`.
+
+## B-18: A registration that fails with an empty HTTP 400 is not retried
+Found in: #13  ·  Status: open
+- Out of scope because: in the 2026-10-23 live pass, DuPont's first registration (`bootstrap:submissions_table`) took 79 s and Zetaris answered HTTP 400 with an empty message; the client treats every 4xx as non-recoverable, so the run ended at `evidence-frontier` while the next run registered it fine. Telling a Zetaris-side fetch timeout from a bad statement needs a look at Zetaris's error shapes, unrelated to this PR's scout change.
+- Safe to leave because: the run ends at `evidence-frontier` with the error in the reason; nothing is served from the sample, and a second run succeeds (registration is idempotent).
+- Urgent if: cold registrations fail this way more than occasionally, or during a demo.
+- Evidence: `adapters/zetaris.py` (`ZetarisClient.run_sql`, `recoverable=response.status_code >= 500`); DuPont cold row in `docs/measurements/live-any-company.md`.

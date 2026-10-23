@@ -1,5 +1,7 @@
 # Live latency: any company, through Zetaris
 
+> Update: the scout change that closes BACKLOG B-5 (counterparty from filing evidence) was measured the same evening; see [the last section](#2026-10-23-evening-source-scout-by-filing-evidence-b-5). It changes the end states of IBM, 3M and Crane NXT below.
+
 Measured **2026-10-23** with `scripts/perf_smoke.py` (live mode, `run_investigation`, real Zetaris, real SEC data fetched by Zetaris). Every number below comes from the run's own trace (`orchestrator` `phase_done` lines); nothing is estimated. Raw JSON lines and traces stayed in a scratch directory (not committed: rule 1, no replayed outputs).
 
 ## Setup
@@ -97,3 +99,58 @@ Reproduce (needs a running Zetaris and `ZETARIS_API_KEY`, `SEC_USER_AGENT` in `.
 ```bash
 cd services/agent && uv run python ../../scripts/perf_smoke.py ../../input_examples/*.json path/to/your_request.json --runs 2
 ```
+
+## 2026-10-23 (evening): source scout by filing evidence (B-5)
+
+Same machine, same Zetaris bundle (not restarted). Branch `feat/spinoff-match`, pass 3 ran at commit `a54daec`, before the branch was rebased onto #12 (the same scout code is `8504ca8` after the rebase; the fixes listed under pass A are in it). Defaults as above, gates `auto`. Every number below comes from the run's own trace; raw JSON lines and traces stayed in a scratch directory (not committed).
+
+**What changed:** the scout now asks EDGAR full-text search (catalog `sec_fulltext`, one Zetaris REST table per search) which filers' Form 10 (10-12B/10-12G) in the 540 days before the disposal contains the source's name, and checks those first, whatever their name; the brand only ranks. If nothing qualifies it searches 8-Ks within 7 days of the disposal for a buyer and refuses a sale to an existing company with the buyer named.
+
+**Inputs.** IBM's dates (`10-K filed 2021-02-23` / `2022-02-22`) match IBM's submissions. The earlier 3M input `s3b` had dates written from memory (`2024-02-01`, `2025-01-15`); 3M's 10-Ks were filed **2024-02-07** and **2025-02-05**, so this pass uses `s3c` with those dates. Hilton (`2017-02-01` / `2018-02-01`; actual 2017-02-15 / 2018-02-14) and Crane NXT (`2023-02-01` / `2024-02-01`; actual 2023-03-01 / 2024-02-22) were left as written: the framer takes the first 10-K on or up to 31 days after the given date, which is the actual one in each case. New: `s8_dd_2020_revenue_restated` (DuPont FY2020, `10-K filed 2021-02-12` / `2022-02-11`, both actual), whose disposal (8-K item 2.01 filed 2021-02-04) is the merger of its Nutrition & Biosciences business into International Flavors & Fragrances, an existing registrant.
+
+### Pass 3: final code
+
+All entities were already registered in Zetaris from earlier passes, so run 1 is "registered", not cold (no `register_entity`). Seconds.
+
+| Case | Run | Resolve | First query | Frame | Loop A | Scout | Onboard | Reconcile | Loop B | Total | Max silence | End state |
+|---|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|
+| s1_ibm_2020_revenue_restated | run 1 | 0.2 | 12.1 | 12.1 | 21.2 | 4.7 | 1.1 | 1.2 | 7.0 | 28.4 | 5.0 | actionable |
+| s1_ibm_2020_revenue_restated | run 2 | 0.3 | 6.7 | 6.7 | 14.6 | 2.8 | 1.2 | 0.8 | 4.8 | 19.6 | 5.0 | actionable |
+| s3c_mmm_2023_revenue_restated | run 1 | 0.3 | 14.9 | 14.9 | 24.6 | 4.0 | 1.0 | 0.5 | 5.5 | 30.4 | 5.0 | actionable |
+| s3c_mmm_2023_revenue_restated | run 2 | 0.1 | 10.6 | 10.6 | 19.2 | 2.4 | 0.5 | 0.9 | 3.8 | 23.2 | 5.0 | actionable |
+| s8_dd_2020_revenue_restated | run 1 | 0.3 | 1.3 | 1.3 | 3.5 | 2.3 | - | - | 2.3 | 6.0 | 1.4 | evidence-frontier |
+| s8_dd_2020_revenue_restated | run 2 | 0.1 | 1.6 | 1.6 | 3.5 | 2.4 | - | - | 2.4 | 6.0 | 1.6 | evidence-frontier |
+| 01_ge_2022_revenue_restated | run 1 | 0.4 | 19.8 | 19.8 | 39.2 | 4.8 | 0.8 | 0.6 | 6.2 | 45.7 | 5.0 | actionable |
+| 01_ge_2022_revenue_restated | run 2 | 0.1 | 13.5 | 13.5 | 31.8 | 3.1 | 0.7 | 0.6 | 4.4 | 36.4 | 5.0 | actionable |
+| 02_ge_2023_revenue_restated | run 1 | 0.3 | 12.7 | 12.7 | 30.6 | 3.9 | 1.3 | 0.9 | 6.1 | 37.0 | 5.0 | actionable |
+| 02_ge_2023_revenue_restated | run 2 | 0.3 | 13.6 | 13.6 | 31.5 | 3.6 | 0.7 | 0.8 | 5.2 | 37.0 | 5.0 | actionable |
+| 03_ge_2018_net_loss | run 1 | 0.3 | 7.8 | 7.8 | 40.3 | - | - | - | - | 40.6 | 5.0 | actionable |
+| 03_ge_2018_net_loss | run 2 | 0.3 | 8.1 | 8.1 | 40.2 | - | - | - | - | 40.5 | 5.0 | actionable |
+| s5b_hilton_2016_revenue_restated | run 1 | 1.2 | 11.8 | 11.8 | 18.0 | 4.6 | 0.7 | 0.8 | 6.2 | 25.4 | 5.0 | actionable |
+| s5b_hilton_2016_revenue_restated | run 2 | 1.0 | 7.5 | 7.5 | 13.6 | 4.4 | 0.7 | 1.3 | 6.5 | 21.0 | 5.0 | actionable |
+| s7_cxt_2022_revenue_restated | run 1 | 0.3 | 12.2 | 12.2 | 24.3 | 4.2 | 0.6 | 0.6 | 5.5 | 30.0 | 5.0 | actionable |
+| s7_cxt_2022_revenue_restated | run 2 | 0.1 | 8.0 | 8.0 | 19.4 | 3.1 | 0.6 | 0.6 | 4.3 | 23.9 | 5.0 | actionable |
+
+No run had a `degraded` line. **Zetaris was much slower in this pass than earlier in the day**: the first evidence query (`concept_series` on the asked entity, the slowest statement in every run) took 6.7–19.8 s for the entities registered before this evening (DuPont, registered an hour earlier: 1.3–1.6 s), against 1.2–2.6 s in pass 2 above and 1.3–2.3 s for the same cases in an earlier pass of this evening (pass A below); `docker stats` during the pass showed the Zetaris driver container at 3.4 GB and ~76% CPU. The cause was not investigated (the pattern fits Zetaris evicting older `CACHE TABLE`s and refetching from SEC as more tables are cached, but that was not checked; the scout's own statements are not in that query). The scout phase took 2.3–4.8 s here; in pass A, the first search of each case (registering its full-text table, 0.9–1.5 s) took 2.5–4.6 s and a repeat 0.9–1.7 s.
+
+### End states (pass 3)
+
+| Case | End state | What the scout found |
+|---|---|---|
+| s1 IBM FY2020 restated | `actionable` | Kyndryl Holdings (CIK 0001867072), named in 25 of its own Form 10 documents; registrant since 2021-06-22, no 10-K before the 2021-11-04 disposal, own 8-K that day with item 5.01. Add-back: restated $55.18B + Kyndryl $19.35B = $74.53B vs original $73.62B (gap $911M, within the 5% tolerance of $3.68B; over-explains by 5%). Was `evidence-frontier` (B-5). |
+| s3c 3M FY2023 restated | `actionable` | Solventum (CIK 0001964738), named in 33 Form 10 documents; own 8-K on the 2024-04-04 disposal date (no item 5.01). Add-back $24.61B + $8.20B = $32.81B vs $32.68B, explains 102%. Was `evidence-frontier` (B-5). |
+| s8 DuPont FY2020 restated | `evidence-frontier` | No Form 10 filer qualifies (one, not in `sec_tickers`, named twice). The 8-K search finds International Flavors & Fragrances (CIK 0000051253) with item 2.01 on the disposal date and annual reports before it: "sale to an existing company: … its reported figures combine its own business with the acquired one, so they cannot measure the disposed business". Dow Inc. (an earlier DowDuPont spin-off) was checked and refused (an annual report before the disposal). |
+| 01, 02 GE | `actionable` | As before (GE HealthCare; GE Vernova), now also named by GE's name in their Form 10s; for 02, GE HealthCare (named in 32 documents) is refused for its annual reports before 2024-04-02. Same reconciliations as sample mode. |
+| 03 GE | `actionable` | Goodwill impairment, Loop A only. |
+| s5b Hilton FY2016 restated | `actionable` | Hilton Grand Vacations (44 documents) and Park Hotels & Resorts (39) both qualify (new registrants, item 5.01 on 2017-01-04); HGV ranks first on the brand and the reason says "also qualified, ranked lower: PK". HGV explains $1.58B of the restatement; the rest stays as the residual (one counterparty per disposal, BACKLOG B-16). |
+| s7 Crane NXT FY2022 restated | `actionable` | Crane Co (CIK 0001944013), named in 13 Form 10 documents; it filed one 10-K (2023-03-31) after its own Form 10 (2022-12-15) and before the 2023-04-03 separation, which the scout now allows. Add-back $1.34B + $2.04B = $3.37B vs $3.37B, explains 100%. Was `evidence-frontier`. |
+
+J&J (Loop A only), Caterpillar and ExxonMobil (no disposal hint, so the scout's searches never run) were not re-run; their end states above are unchanged by this change.
+
+### Pass A and the fixes it led to (same evening, earlier code)
+
+Pass A ran at commit-in-progress code (Form 10 search and brand ranking, no annual-report allowance) on IBM, 3M, GE 01–03, Hilton and Crane NXT: IBM, 3M, GE and Hilton ended `actionable` as above with first queries of 1.3–2.3 s and totals of 7.3–19.0 s (onboarding Kyndryl and Solventum cold: 8.2 s and 5.8 s); Crane NXT ended `evidence-frontier` because Crane Co had one 10-K before the separation. Three fixes followed, each re-run live:
+1. **One annual report after the candidate's own Form 10 is allowed** (at most one, and the Form 10 within the 540-day lookback): Crane NXT then reconciled exactly (above).
+2. **DuPont matched the wrong company before the lookback bound**: with fix 1 alone, Dow Inc. (Form 10 in 2018–19, one 10-K before 2021-02-04) qualified through the 8-K search, the add-back explained 636% of the restatement and the auto gate accepted it capped (`actionable`). Bounding the allowance to a Form 10 inside the lookback refused Dow (BACKLOG B-15 records the reconciler side). That run also showed a cold registration failing: DuPont's `bootstrap:submissions_table` took 79 s and Zetaris answered HTTP 400 with an empty message, so that run ended at `evidence-frontier`; the next run registered it (BACKLOG B-18).
+3. **The 8-K search returned nothing** with `forms=8-K,8-K/A` (any `/A` form empties the result); it now sends root forms only, and amendments still match.
+

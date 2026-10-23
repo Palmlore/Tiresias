@@ -9,22 +9,28 @@ a catalog template and, in live mode, **only through Zetaris** (ADR-0003; BACKLO
   (zetaris/sql/13_tickers_table.sql, 22_tickers_view.sql, 34..36_tickers_by_*.sql);
 - ``submissions(cik10, ticker)``: the ``sec_submissions`` profile and filing history of one
   registrant, read from its REST table ``TIRESIAS_SEC.<ticker>_submissions_raw``
-  (11_submissions_table.sql), registered on demand (37_submissions_profile.sql).
+  (11_submissions_table.sql), registered on demand (37_submissions_profile.sql);
+- ``filers_naming(phrase, forms, start, end)``: the filers whose filings of those forms in that
+  date range contain the phrase (catalog ``sec_fulltext``, EDGAR full-text search), one
+  ``TIRESIAS_SEC.fts_<hash>_raw`` table per search registered on demand (14_fulltext_table.sql,
+  40_fulltext_total.sql, 41_fulltext_hits.sql). Sample mode has no full-text data: it returns no
+  rows and says so.
 
 Sample mode reads ``data/sample/`` (company_tickers.json, <ticker>_submissions.json) and reports
 the SQL live mode would have run. Live mode falls back to the sample per call on an outage
 (recoverable SourceError), traced ``degraded``; a non-recoverable error (bad SQL, auth, a table
 bound to another CIK) is raised, never served from the sample.
 
-Discovery objects are not evidence sources: the ``sec_tickers`` table/view (registered once) and
-the per-candidate submissions tables (at most MAX_CANDIDATES per scout run) never count toward
-MAX_NEW_SOURCES_PER_RUN. Only the onboarder registers evidence sources. Nothing in this module
+Discovery objects are not evidence sources: the ``sec_tickers`` table/view (registered once), the
+per-candidate submissions tables (at most MAX_CANDIDATES per scout run) and the full-text search
+tables (at most two per scout run) never count toward MAX_NEW_SOURCES_PER_RUN. Only the onboarder registers evidence sources. Nothing in this module
 opens an HTTP connection of its own: every live read is a Lightning SQL statement sent by
 ``adapters.zetaris.ZetarisClient``, and Zetaris fetches SEC with ``SEC_USER_AGENT``.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -33,6 +39,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from .zetaris import (
     BOOTSTRAP_TIMEOUT_SECONDS,
@@ -59,15 +66,20 @@ _USER_AGENT = re.compile(r"^[A-Za-z0-9 .@_+-]{3,200}$")
 _SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,11}$")
 _WORD = re.compile(r"^[a-z0-9&.-]{1,40}$")
 _NAME = re.compile(r"^[a-z0-9 &.,()-]{2,80}$")
+_PHRASE = re.compile(r"^[a-z0-9][a-z0-9 &.,'-]{0,79}$")
+_FORM = re.compile(r"^[0-9A-Z][0-9A-Z/-]{0,15}$")
+_DAY = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _LINE = re.compile(
     r"^(?P<indent> *)(?P<dash>- )?(?P<key>[A-Za-z_][A-Za-z0-9_]*):(?: (?P<val>.*))?$"
 )
 
 TICKERS = "sec_tickers"
 SUBMISSIONS = "sec_submissions"
+FULLTEXT = "sec_fulltext"
 SYMBOL_LIMIT = 20
 BRAND_LIMIT = 50
 NAME_LIMIT = 20
+FULLTEXT_LIMIT = 20  # filers per search (one SEC page holds at most 100 hits)
 
 
 class CatalogError(ValueError):
@@ -227,6 +239,20 @@ class Profile:
     sic: str = ""  # SEC standard industry code ("" when the registrant has none)
 
 
+@dataclass(frozen=True)
+class NamingRow:
+    """One filer in a full-text search: how many of its documents contain the phrase."""
+
+    cik10: str
+    name: str
+    hits: int
+    first_date: str
+    last_date: str
+    forms: tuple[str, ...]
+    items: tuple[str, ...]
+    total: int  # hits of the whole search (all filers)
+
+
 class Discovery(Protocol):
     name: str
     catalog: Catalog
@@ -242,6 +268,10 @@ class Discovery(Protocol):
     def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]: ...
 
     def registrant(self, cik10: str, ticker: str) -> Evidence[Profile]: ...
+
+    def filers_naming(
+        self, phrase: str, forms: Sequence[str], start: str, end: str
+    ) -> Evidence[NamingRow]: ...
 
 
 # --- SQL (the same text in sample and live mode) -----------------------------------------------
@@ -334,6 +364,66 @@ def registrant_sql(ticker: str, directory: Path | None = None) -> str:
 def _first_word(text: str) -> str:
     parts = text.strip().split()
     return parts[0].lower() if parts else ""
+
+
+def fulltext_endpoint(catalog: Catalog, phrase: str, forms: Sequence[str], start: str, end: str):
+    """The sec_fulltext URL for an exact-phrase search, percent-encoded (no quote or space can
+    reach the SQL string). Raises ValueError for a phrase, form or date outside its pattern."""
+    text = " ".join(str(phrase or "").lower().split())
+    if not _PHRASE.match(text) or len(text.replace(" ", "")) < 2:
+        raise ValueError(f"invalid search phrase {phrase!r}")
+    clean = [str(f).strip().upper() for f in forms]
+    if not clean or not all(_FORM.match(f) for f in clean):
+        raise ValueError(f"invalid forms {forms!r}")
+    # Root forms only: the search matches amendments (10-12B/A) under their root form, and a
+    # form with "/A" in the list makes it return nothing at all (measured 2026-10-23).
+    clean = list(dict.fromkeys(f.split("/")[0] for f in clean))
+    for day in (start, end):
+        if not _DAY.match(str(day)):
+            raise ValueError(f"invalid date {day!r}")
+    return catalog.get(FULLTEXT).url(
+        phrase=quote(f'"{text}"', safe=""),
+        forms=",".join(clean),
+        start=start,
+        end=end,
+    )
+
+
+def fulltext_table(endpoint: str) -> str:
+    """One REST table per search, named after its endpoint (the same search reuses it)."""
+    return f"fts_{hashlib.sha256(endpoint.encode()).hexdigest()[:16]}_raw"
+
+
+def fulltext_total_sql(table: str, directory: Path | None = None) -> str:
+    return render_file("40_fulltext_total.sql", directory, table=table)
+
+
+def fulltext_hits_sql(table: str, directory: Path | None = None) -> str:
+    return render_file("41_fulltext_hits.sql", directory, table=table, limit=str(FULLTEXT_LIMIT))
+
+
+def _naming_rows(result: QueryResult) -> list[NamingRow]:
+    """41_fulltext_hits.sql rows -> NamingRow, most hits first."""
+    out = []
+    for r in result.rows:
+        try:
+            out.append(
+                NamingRow(
+                    cik10=f"{int(r['cik']):010d}",
+                    name=str(r.get("name") or ""),
+                    hits=int(r.get("hits") or 0),
+                    first_date=str(r.get("first_date") or ""),
+                    last_date=str(r.get("last_date") or ""),
+                    forms=tuple(f for f in str(r.get("forms") or "").split(",") if f),
+                    items=tuple(i for i in str(r.get("items") or "").split(",") if i),
+                    total=int(r.get("total") or 0),
+                )
+            )
+        except (KeyError, TypeError, ValueError) as err:
+            raise SourceError(
+                f"{FULLTEXT}: malformed row ({type(err).__name__})", recoverable=False
+            ) from err
+    return out
 
 
 # --- row parsing ---------------------------------------------------------------------------------
@@ -543,6 +633,17 @@ class SampleDiscovery:
         result.sql = registrant_sql(ticker)
         return result
 
+    def filers_naming(
+        self, phrase: str, forms: Sequence[str], start: str, end: str
+    ) -> Evidence[NamingRow]:
+        """The slice holds no full-text search results: no rows, and the note says so. The SQL
+        is what live mode would run."""
+        t0 = time.perf_counter()
+        endpoint = fulltext_endpoint(self.catalog, phrase, forms, start, end)
+        sql = fulltext_hits_sql(fulltext_table(endpoint))
+        note = "not in sample: full-text search (live mode only)"
+        return self._emit("fulltext", Evidence([], sql=sql, source=self.name, note=note), t0)
+
 
 # --- live: Zetaris only --------------------------------------------------------------------------
 
@@ -740,6 +841,65 @@ class ZetarisDiscovery:
         self._emit("registrant", out, start)
         return out
 
+    def _ensure_fulltext(self, endpoint: str) -> str:
+        table = fulltext_table(endpoint)
+        if self._tables is None:
+            self._tables = lightning_tables(self.client, self.directory)
+        if table in self._tables:
+            return table
+        self._check_ua(FULLTEXT)
+        ua = self.user_agent
+        start = time.perf_counter()
+        create = render_file(
+            "14_fulltext_table.sql",
+            self.directory,
+            table=table,
+            endpoint=endpoint,
+            sec_user_agent=ua,
+        )
+        cache = render_file("12_cache_table.sql", self.directory, table=table)
+        timeout = max(self.client.config.timeout_seconds, BOOTSTRAP_TIMEOUT_SECONDS)
+        for label, sql in (("discovery_fulltext_table", create), ("discovery_cache", cache)):
+            self._pace(FULLTEXT)
+            try:
+                self.client.run_sql(sql, label=label, timeout=timeout, redact=[ua])
+            except SourceError as err:
+                if "already exist" not in err.detail.lower():
+                    raise
+        self._tables[table] = endpoint
+        self.registered.append(table)
+        self.tracer.emit(
+            agent=AGENT,
+            action="register_fulltext",
+            status="success",
+            source=self.name,
+            sql=create.replace(ua, "***") if ua else create,
+            rows=0,
+            duration_ms=round((time.perf_counter() - start) * 1000),
+            output_summary=f"discovery table TIRESIAS_SEC.{table} for one full-text search "
+            "(catalog read, not counted in MAX_NEW_SOURCES_PER_RUN)",
+        )
+        return table
+
+    def filers_naming(
+        self, phrase: str, forms: Sequence[str], start: str, end: str
+    ) -> Evidence[NamingRow]:
+        t0 = time.perf_counter()
+        endpoint = fulltext_endpoint(self.catalog, phrase, forms, start, end)
+        table = self._ensure_fulltext(endpoint)
+        head = self.client.run_sql(
+            fulltext_total_sql(table, self.directory), label="discovery_fulltext_total"
+        )
+        total = int((head.rows[0].get("total") if head.rows else 0) or 0)
+        sql = fulltext_hits_sql(table, self.directory)
+        rows: list[NamingRow] = []
+        if total:
+            rows = _naming_rows(self.client.run_sql(sql, label="discovery_fulltext"))
+        note = f"{total} matching document(s); {len(rows)} filer(s) shown"
+        out = Evidence(rows, sql=sql, source=self.name, note=note)
+        self._emit("fulltext", out, t0)
+        return out
+
 
 class FallbackDiscovery:
     """Live first; on a recoverable error serve the sample, traced degraded. A non-recoverable
@@ -763,7 +923,9 @@ class FallbackDiscovery:
             result.error = str(err)
             self.tracer.emit(
                 agent=AGENT,
-                action="tickers" if method in {"lookup", "brand", "search"} else method,
+                action={"lookup": "tickers", "brand": "tickers", "search": "tickers"}.get(
+                    method, "fulltext" if method == "filers_naming" else method
+                ),
                 status="degraded",
                 sql=result.sql,
                 rows=len(result),
@@ -789,6 +951,11 @@ class FallbackDiscovery:
 
     def registrant(self, cik10: str, ticker: str) -> Evidence[Profile]:
         return self._call("registrant", cik10, ticker)
+
+    def filers_naming(
+        self, phrase: str, forms: Sequence[str], start: str, end: str
+    ) -> Evidence[NamingRow]:
+        return self._call("filers_naming", phrase, forms, start, end)
 
 
 def make_discovery(
@@ -816,10 +983,13 @@ __all__ = [
     "Discovery",
     "FallbackDiscovery",
     "FilingRow",
+    "NamingRow",
     "Profile",
     "SampleDiscovery",
     "TickerRow",
     "ZetarisDiscovery",
+    "fulltext_endpoint",
+    "fulltext_table",
     "load_catalog",
     "make_discovery",
     "name_pattern",

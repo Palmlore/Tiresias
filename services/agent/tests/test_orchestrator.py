@@ -233,6 +233,13 @@ FORBIDDEN = [
     r"(?i)gigabyte",
     r"0001375365",
     r"0001045810",
+    # live spin-off cases (docs/measurements/live-any-company.md)
+    r"Kyndryl",
+    r"Solventum",
+    r"0001867072",
+    r"0001964738",
+    r"2021-11-04",
+    r"2024-04-04",
 ]
 LOGIC_FILES = sorted(
     [
