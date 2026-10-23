@@ -25,6 +25,11 @@ class Asker(BaseModel):
 class Entity(BaseModel):
     ticker: str | None = None
     cik: str | None = None
+    name: str | None = Field(
+        default=None,
+        description="Registrant name, used only when neither ticker nor CIK is given (live mode "
+        "resolves it through the Zetaris sec_tickers view)",
+    )
 
 
 class Period(BaseModel):

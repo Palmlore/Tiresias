@@ -111,17 +111,19 @@ def test_scout_resolves_the_disposed_business_from_the_data(prefix, cik):
     assert [c.cik10 for c in qualifying] == [cik]  # the other registrant fails a rule
     line = next(e for e in tracer.events if e["agent"] == "source_scout")
     assert line["status"] == "success" and line["entity"]["cik"] == cik
-    assert line["template"] == "sec_companyfacts" and line["sql"].startswith("GET https://")
+    assert line["template"] == "sec_companyfacts" and "FROM tiresias.sec_tickers" in line["sql"]
 
 
-def test_scout_reads_only_catalog_endpoints():
+def test_scout_reads_only_catalog_objects_as_zetaris_sql():
     tracer = RecordingTracer()
     source_scout.resolve(
         _need("01"), discovery=SampleDiscovery(CATALOG, tracer=tracer), tracer=tracer
     )
     reads = [e for e in tracer.events if e["agent"] == "catalog"]
-    prefixes = [e.endpoint.split("{")[0] for e in CATALOG.entries]
-    assert reads and all(any(r["sql"][4:].startswith(p) for p in prefixes) for r in reads)
+    assert {r["action"] for r in reads} == {"tickers", "submissions"}
+    for r in reads:  # the SQL live mode runs through Zetaris, over catalog-backed objects
+        assert r["sql"].startswith("SELECT ")
+        assert "FROM tiresias.sec_tickers" in r["sql"] or "_submissions_raw" in r["sql"]
 
 
 def test_scout_refuses_a_hint_without_a_disposal_filing():
@@ -146,10 +148,20 @@ class FakeDiscovery:
         self.catalog = CATALOG
         self._tickers, self._profiles = tickers, profiles
 
-    def tickers(self):
-        return Evidence(self._tickers, sql="GET tickers", source=self.name)
+    def _rows(self, keep):
+        return Evidence([t for t in self._tickers if keep(t)], sql="SELECT tickers", source="fake")
 
-    def submissions(self, cik10):
+    def lookup(self, *, tickers=(), ciks=()):
+        up = {t.upper() for t in tickers}
+        return self._rows(lambda t: t.ticker.upper() in up or t.cik10 in set(ciks))
+
+    def brand(self, words):
+        return self._rows(lambda t: t.title.split()[0].lower() in set(words))
+
+    def search(self, name):
+        return self._rows(lambda t: name.lower() in t.title.lower())
+
+    def submissions(self, cik10, ticker):
         p = self._profiles.get(cik10)
         return Evidence([p] if p else [], sql=f"GET {cik10}", source=self.name)
 
@@ -206,6 +218,21 @@ def test_scout_assessment_rules_on_synthetic_registrants():
     assert {c.cik10 for c in scout.candidates} == {"0000000005", "0000000006", "0000000007"}
     reasons = {c.cik10: c.reason for c in scout.candidates}
     assert "annual report" in reasons["0000000005"] and "not a registrant" in reasons["0000000006"]
+
+
+def test_scout_never_uses_a_generic_first_word_as_the_brand():
+    tickers = [
+        TickerRow("AAA", "0000000001", "International Alpha Corp"),
+        TickerRow("IMAQ", "0000000009", "International Media Acquisition Corp."),  # coincidence
+        TickerRow("AAAS", "0000000007", "AAA Spin Inc"),  # carries the ticker: a candidate
+    ]
+    near = [("8-K", "2030-06-02", "5.01")]
+    profiles = {c: _profile(c, "2030-01-15", near) for c in ("0000000009", "0000000007")}
+    scout = source_scout.resolve(
+        _hint_need(), discovery=FakeDiscovery(tickers, profiles), tracer=RecordingTracer()
+    )
+    assert scout.resolved and scout.entity.cik == "0000000007"
+    assert {c.cik10 for c in scout.candidates} == {"0000000007"}
 
 
 def test_scout_refuses_a_tie_and_an_unmatched_disposal():

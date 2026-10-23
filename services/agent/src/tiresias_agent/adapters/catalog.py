@@ -1,17 +1,26 @@
-"""The bounded source catalog (catalog/sources.yaml) and discovery reads over it (Loop B).
+"""The bounded source catalog (catalog/sources.yaml) and discovery reads over it (Loop B, and
+the asked-entity resolver).
 
 The source scout may only read and instantiate templates listed in the catalog (ADR-0003,
-docs/architecture.md). This module loads the catalog and serves the two discovery reads the
-scout needs, each from a catalog template:
-- ``tickers()``: the ``sec_tickers`` map (ticker, CIK, name);
-- ``submissions(cik10)``: the ``sec_submissions`` profile and filing history of one registrant.
+docs/architecture.md). This module loads the catalog and serves the discovery reads, each from
+a catalog template and, in live mode, **only through Zetaris** (ADR-0003; BACKLOG B-4 closed):
+- ``lookup(tickers=, ciks=)``, ``brand(words)``, ``search(name)``: rows of the ``sec_tickers``
+  map (ticker, CIK, name), queried from the Zetaris view ``tiresias.sec_tickers``
+  (zetaris/sql/13_tickers_table.sql, 22_tickers_view.sql, 34..36_tickers_by_*.sql);
+- ``submissions(cik10, ticker)``: the ``sec_submissions`` profile and filing history of one
+  registrant, read from its REST table ``TIRESIAS_SEC.<ticker>_submissions_raw``
+  (11_submissions_table.sql), registered on demand (37_submissions_profile.sql).
 
-Sample mode reads ``data/sample/`` (company_tickers.json, <ticker>_submissions.json). Live mode
-GETs the catalog endpoint with ``SEC_USER_AGENT`` (timeout, bounded retries, <= the catalog's
-rate limit) and falls back to the sample per call on an outage, traced ``degraded``; a
-non-recoverable error (bad request, missing user agent, malformed body) is raised, never served
-from the sample. Discovery reads are not registered sources: they never count toward
-MAX_NEW_SOURCES_PER_RUN (only the onboarder registers sources).
+Sample mode reads ``data/sample/`` (company_tickers.json, <ticker>_submissions.json) and reports
+the SQL live mode would have run. Live mode falls back to the sample per call on an outage
+(recoverable SourceError), traced ``degraded``; a non-recoverable error (bad SQL, auth, a table
+bound to another CIK) is raised, never served from the sample.
+
+Discovery objects are not evidence sources: the ``sec_tickers`` table/view (registered once) and
+the per-candidate submissions tables (at most MAX_CANDIDATES per scout run) never count toward
+MAX_NEW_SOURCES_PER_RUN. Only the onboarder registers evidence sources. Nothing in this module
+opens an HTTP connection of its own: every live read is a Lightning SQL statement sent by
+``adapters.zetaris.ZetarisClient``, and Zetaris fetches SEC with ``SEC_USER_AGENT``.
 """
 
 from __future__ import annotations
@@ -20,25 +29,45 @@ import json
 import os
 import re
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-import httpx
-
-from .zetaris import Evidence, SourceError, _NullTracer, sample_dir
+from .zetaris import (
+    BOOTSTRAP_TIMEOUT_SECONDS,
+    TICKERS_VIEW,
+    Evidence,
+    QueryResult,
+    SourceError,
+    ZetarisClient,
+    ZetarisConfig,
+    _NullTracer,
+    bootstrap,
+    endpoint_cik,
+    lightning_tables,
+    load_template,
+    object_ticker,
+    render_file,
+    sample_dir,
+)
 
 AGENT = "catalog"
 _REPO_ROOT = Path(__file__).resolve().parents[5]
 _CIK10 = re.compile(r"^\d{10}$")
 _USER_AGENT = re.compile(r"^[A-Za-z0-9 .@_+-]{3,200}$")
+_SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9.-]{0,11}$")
+_WORD = re.compile(r"^[a-z0-9&.-]{1,40}$")
+_NAME = re.compile(r"^[a-z0-9 &.,()-]{2,80}$")
 _LINE = re.compile(
     r"^(?P<indent> *)(?P<dash>- )?(?P<key>[A-Za-z_][A-Za-z0-9_]*):(?: (?P<val>.*))?$"
 )
 
 TICKERS = "sec_tickers"
 SUBMISSIONS = "sec_submissions"
+SYMBOL_LIMIT = 20
+BRAND_LIMIT = 50
+NAME_LIMIT = 20
 
 
 class CatalogError(ValueError):
@@ -200,12 +229,109 @@ class Discovery(Protocol):
     name: str
     catalog: Catalog
 
-    def tickers(self) -> Evidence[TickerRow]: ...
+    def lookup(
+        self, *, tickers: Sequence[str] = (), ciks: Sequence[str] = ()
+    ) -> Evidence[TickerRow]: ...
 
-    def submissions(self, cik10: str) -> Evidence[Profile]: ...
+    def brand(self, words: Sequence[str]) -> Evidence[TickerRow]: ...
+
+    def search(self, name: str) -> Evidence[TickerRow]: ...
+
+    def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]: ...
+
+
+# --- SQL (the same text in sample and live mode) -----------------------------------------------
+
+
+def _symbols(tickers: Sequence[str]) -> list[str]:
+    out = []
+    for t in tickers:
+        t = str(t or "").strip().upper()
+        if t and not _SYMBOL.match(t):
+            raise ValueError(f"invalid ticker {t!r}")
+        if t:
+            out.append(t)
+    return out
+
+
+def _ciks(ciks: Sequence[str]) -> list[int]:
+    out = []
+    for c in ciks:
+        c = str(c or "").strip()
+        if c and not c.isdigit():
+            raise ValueError(f"invalid CIK {c!r}")
+        if c:
+            out.append(int(c))
+    return out
+
+
+def _brand_words(words: Sequence[str]) -> list[str]:
+    return sorted({w.strip().lower() for w in words if _WORD.match(w.strip().lower())})
+
+
+def name_pattern(name: str) -> str:
+    """A lower-case LIKE pattern for a company name; an apostrophe becomes the one-character
+    wildcard (Spark SQL has no doubled-quote escape). Raises ValueError for anything else."""
+    text = " ".join(str(name or "").lower().replace("'", "_").split())
+    if not _NAME.match(text.replace("_", "")) or "%" in text:
+        raise ValueError(f"invalid company name {name!r}")
+    return f"%{text}%"
+
+
+def tickers_by_symbol_sql(
+    tickers: Sequence[str], ciks: Sequence[str], directory: Path | None = None
+) -> str:
+    syms, nums = _symbols(tickers), _ciks(ciks)
+    if not syms and not nums:
+        raise ValueError("a ticker or a CIK is required")
+    return render_file(
+        "34_tickers_by_symbol.sql",
+        directory,
+        tickers=", ".join(f"'{s}'" for s in syms) or "NULL",
+        ciks=", ".join(str(n) for n in nums) or "NULL",
+        limit=str(SYMBOL_LIMIT),
+    )
+
+
+def tickers_by_brand_sql(words: Sequence[str], directory: Path | None = None) -> str:
+    clean = _brand_words(words)
+    if not clean:
+        raise ValueError("no usable brand word")
+    return render_file(
+        "35_tickers_by_brand.sql",
+        directory,
+        words=", ".join(f"'{w}'" for w in clean),
+        limit=str(BRAND_LIMIT),
+    )
+
+
+def tickers_by_name_sql(name: str, directory: Path | None = None) -> str:
+    return render_file(
+        "36_tickers_by_name.sql",
+        directory,
+        pattern=f"'{name_pattern(name)}'",
+        limit=str(NAME_LIMIT),
+    )
+
+
+def submissions_table(ticker: str) -> str:
+    return f"{object_ticker(ticker)}_submissions_raw"
+
+
+def submissions_sql(ticker: str, directory: Path | None = None) -> str:
+    return render_file("37_submissions_profile.sql", directory, table=submissions_table(ticker))
+
+
+def _first_word(text: str) -> str:
+    parts = text.strip().split()
+    return parts[0].lower() if parts else ""
+
+
+# --- row parsing ---------------------------------------------------------------------------------
 
 
 def _ticker_rows(data: Any) -> list[TickerRow]:
+    """company_tickers.json (object of {cik_str, ticker, title}) -> rows."""
     rows = data.values() if isinstance(data, Mapping) else (data or [])
     out = []
     for r in rows:
@@ -217,7 +343,21 @@ def _ticker_rows(data: Any) -> list[TickerRow]:
     return out
 
 
+def _query_rows(result: QueryResult) -> list[TickerRow]:
+    """tiresias.sec_tickers rows (cik, name, ticker, exchange) -> rows."""
+    out = []
+    for r in result.rows:
+        try:
+            out.append(TickerRow(str(r["ticker"]), f"{int(r['cik']):010d}", str(r.get("name", ""))))
+        except (KeyError, TypeError, ValueError) as err:
+            raise SourceError(
+                f"sec_tickers: malformed row ({type(err).__name__})", recoverable=False
+            ) from err
+    return out
+
+
 def _profile(data: Any, cik10: str) -> Profile:
+    """A submissions JSON document (sample) -> Profile."""
     if not isinstance(data, Mapping):
         raise SourceError("sec_submissions: body is not an object", recoverable=False)
     recent = (data.get("filings") or {}).get("recent") or {}
@@ -248,8 +388,51 @@ def _profile(data: Any, cik10: str) -> Profile:
     )
 
 
+def _json_list(text: Any) -> list[Any]:
+    if isinstance(text, list):
+        return text
+    try:
+        value = json.loads(text) if text not in (None, "", "null") else []
+    except (TypeError, ValueError):
+        raise SourceError("sec_submissions: column is not JSON", recoverable=False) from None
+    return value if isinstance(value, list) else []
+
+
+def _profile_rows(result: QueryResult, cik10: str) -> Profile | None:
+    """37_submissions_profile.sql rows (profile columns repeated per filing) -> Profile."""
+    if not result.rows:
+        return None
+    head = result.rows[0]
+    former = tuple(
+        {k: str(v) for k, v in f.items()}
+        for f in _json_list(head.get("former_names"))
+        if isinstance(f, Mapping)
+    )
+    filings = tuple(
+        FilingRow(
+            form=str(r.get("form") or ""),
+            filing_date=str(r.get("filing_date") or ""),
+            items=str(r.get("items") or ""),
+            accession_number=str(r["accession_number"]),
+        )
+        for r in result.rows
+        if r.get("accession_number") not in (None, "", "null")
+    )
+    return Profile(
+        cik10=cik10,
+        name=str(head.get("name") or ""),
+        tickers=tuple(str(t) for t in _json_list(head.get("tickers"))),
+        former_names=former,
+        filings=filings,
+    )
+
+
+# --- sample ------------------------------------------------------------------------------------
+
+
 class SampleDiscovery:
-    """Catalog reads served from data/sample/ (sample mode, and the live fallback)."""
+    """Discovery served from data/sample/ (sample mode, and the live fallback). Filters the
+    same way as the live SQL and reports that SQL."""
 
     name = "sample"
 
@@ -283,23 +466,51 @@ class SampleDiscovery:
         )
         return result
 
-    def tickers(self) -> Evidence[TickerRow]:
-        start = time.perf_counter()
-        url = self.catalog.get(TICKERS).url()
+    def _tickers(self, sql: str, keep: Callable[[TickerRow], bool], limit: int, start: float):
+        self.catalog.get(TICKERS)
         data = self._read("company_tickers.json")
-        rows = _ticker_rows(data) if data is not None else []
+        rows = [r for r in (_ticker_rows(data) if data is not None else []) if keep(r)]
+        rows.sort(key=lambda r: r.cik10, reverse=True)
         note = (
             "served from data/sample/company_tickers.json"
             if data is not None
-            else ("not in sample: company_tickers.json")
+            else "not in sample: company_tickers.json"
         )
         return self._emit(
-            "tickers", Evidence(rows, sql=f"GET {url}", source=self.name, note=note), start
+            "tickers", Evidence(rows[:limit], sql=sql, source=self.name, note=note), start
         )
 
-    def submissions(self, cik10: str) -> Evidence[Profile]:
+    def lookup(
+        self, *, tickers: Sequence[str] = (), ciks: Sequence[str] = ()
+    ) -> Evidence[TickerRow]:
         start = time.perf_counter()
-        url = self.catalog.get(SUBMISSIONS).url(cik10=cik10)
+        sql = tickers_by_symbol_sql(tickers, ciks)
+        syms, nums = set(_symbols(tickers)), set(_ciks(ciks))
+        return self._tickers(
+            sql,
+            lambda r: r.ticker.upper() in syms or int(r.cik10) in nums,
+            SYMBOL_LIMIT,
+            start,
+        )
+
+    def brand(self, words: Sequence[str]) -> Evidence[TickerRow]:
+        start = time.perf_counter()
+        sql = tickers_by_brand_sql(words)
+        wanted = set(_brand_words(words))
+        return self._tickers(sql, lambda r: _first_word(r.title) in wanted, BRAND_LIMIT, start)
+
+    def search(self, name: str) -> Evidence[TickerRow]:
+        start = time.perf_counter()
+        sql = tickers_by_name_sql(name)
+        rx = re.compile(re.escape(name_pattern(name).strip("%")).replace("_", "."))
+        return self._tickers(sql, lambda r: bool(rx.search(r.title.lower())), NAME_LIMIT, start)
+
+    def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]:
+        start = time.perf_counter()
+        if not _CIK10.match(cik10):
+            raise CatalogError(f"{SUBMISSIONS}: invalid cik10 {cik10!r}")
+        self.catalog.get(SUBMISSIONS)
+        sql = submissions_sql(ticker)
         found: list[Profile] = []
         note = f"not in sample: submissions for CIK {cik10}"
         for path in sorted(self.data_dir.glob("*_submissions.json")):
@@ -309,85 +520,65 @@ class SampleDiscovery:
                 note = f"served from data/sample/{path.name}"
                 break
         return self._emit(
-            "submissions", Evidence(found, sql=f"GET {url}", source=self.name, note=note), start
+            "submissions", Evidence(found, sql=sql, source=self.name, note=note), start
         )
 
 
-class LiveDiscovery:
-    """GETs the catalog endpoints (SEC) with SEC_USER_AGENT, a timeout and bounded retries."""
+# --- live: Zetaris only --------------------------------------------------------------------------
 
-    name = "sec"
-    BACKOFF_SECONDS = 0.5
+
+class ZetarisDiscovery:
+    """Discovery reads as Lightning SQL through ``ZetarisClient`` (no HTTP of its own).
+
+    - The ``sec_tickers`` table and view are registered on first use if bootstrap has not
+      registered them (catalog objects, not evidence sources; never counted in the cap).
+    - ``submissions(cik10, ticker)`` registers ``<ticker>_submissions_raw`` on demand (CREATE +
+      CACHE, the same template as bootstrap) and refuses a table bound to another CIK.
+      Statements that make Zetaris fetch SEC are paced at the catalog rate limit.
+    """
+
+    name = "zetaris"
 
     def __init__(
         self,
         catalog: Catalog,
+        client: ZetarisClient,
         *,
         tracer: Any = None,
         user_agent: str | None = None,
-        timeout_seconds: float | None = None,
-        max_retries: int = 2,
-        transport: httpx.BaseTransport | None = None,
+        directory: Path | None = None,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.catalog = catalog
+        self.client = client
         self.tracer = tracer or _NullTracer()
         self.user_agent = (
             user_agent if user_agent is not None else os.getenv(catalog.user_agent_env, "")
         )
-        self.timeout = timeout_seconds or float(os.getenv("SOURCE_TIMEOUT_SECONDS") or 20)
-        self.max_retries = max(0, min(max_retries, 5))
-        self._http = httpx.Client(timeout=self.timeout, transport=transport)
+        self.directory = directory
         self._sleep = sleep
         self._clock = clock
         self._last = 0.0
+        self._tickers_ready = False
+        self._tables: dict[str, str] | None = None
+        self.registered: list[str] = []  # discovery objects this instance registered
 
-    def _get(self, entry: CatalogEntry, url: str, label: str) -> Any:
+    def _check_ua(self, label: str) -> None:
         if not _USER_AGENT.match(self.user_agent or ""):
             raise SourceError(
                 f"{label}: {self.catalog.user_agent_env} is missing or invalid (SEC fair access)",
                 recoverable=False,
             )
-        gap = 1.0 / (entry.rate_limit_per_second or 10)
-        error: SourceError | None = None
-        for attempt in range(self.max_retries + 1):
-            wait = self._last + gap - self._clock()
-            if wait > 0:
-                self._sleep(wait)
-            self._last = self._clock()
-            try:
-                response = self._http.get(url, headers={"User-Agent": self.user_agent})
-            except httpx.TimeoutException:
-                error = SourceError(
-                    f"{label}: timed out after {self.timeout:g} s", recoverable=True
-                )
-            except httpx.TransportError as exc:
-                error = SourceError(
-                    f"{label}: connection failed ({type(exc).__name__})", recoverable=True
-                )
-            else:
-                if response.status_code == 404:
-                    return None
-                if response.status_code < 400:
-                    try:
-                        return response.json()
-                    except ValueError:
-                        raise SourceError(f"{label}: body is not JSON", recoverable=False) from None
-                error = SourceError(
-                    f"{label}: HTTP {response.status_code}",
-                    recoverable=response.status_code >= 500 or response.status_code == 429,
-                    status_code=response.status_code,
-                )
-            error.retry_count = attempt
-            if not error.recoverable:
-                break
-            if attempt < self.max_retries:
-                self._sleep(self.BACKOFF_SECONDS * 2**attempt)
-        assert error is not None
-        raise error
 
-    def _emit(self, action: str, result: Evidence[Any], start: float) -> Evidence[Any]:
+    def _pace(self, entry_id: str) -> None:
+        rate = self.catalog.get(entry_id).rate_limit_per_second or 10
+        wait = self._last + 1.0 / rate - self._clock()
+        if wait > 0:
+            self._sleep(wait)
+        self._last = self._clock()
+
+    def _emit(self, action: str, result: Evidence[Any], start: float, **extra: Any) -> None:
         result.duration_ms = round((time.perf_counter() - start) * 1000)
         self.tracer.emit(
             agent=AGENT,
@@ -397,27 +588,123 @@ class LiveDiscovery:
             rows=len(result),
             duration_ms=result.duration_ms,
             source=self.name,
+            output_summary=result.note,
+            **extra,
         )
-        return result
 
-    def tickers(self) -> Evidence[TickerRow]:
-        start = time.perf_counter()
-        entry = self.catalog.get(TICKERS)
-        url = entry.url()
-        data = self._get(entry, url, TICKERS)
-        rows = _ticker_rows(data) if data is not None else []
-        return self._emit("tickers", Evidence(rows, sql=f"GET {url}", source=self.name), start)
-
-    def submissions(self, cik10: str) -> Evidence[Profile]:
-        start = time.perf_counter()
-        entry = self.catalog.get(SUBMISSIONS)
-        url = entry.url(cik10=cik10)
-        data = self._get(entry, url, SUBMISSIONS)
-        found = [_profile(data, cik10)] if data is not None else []
-        note = None if found else f"no submissions for CIK {cik10}"
-        return self._emit(
-            "submissions", Evidence(found, sql=f"GET {url}", source=self.name, note=note), start
+    def _ensure_tickers(self) -> None:
+        if self._tickers_ready:
+            return
+        views = self.client.run_sql(
+            load_template("33_views.sql", self.directory), label="list_views"
         )
+        names = {str(r.get("table_identifier") or "").lower() for r in views.rows}
+        if TICKERS_VIEW not in names:
+            self._check_ua(TICKERS)
+            self._pace(TICKERS)
+            start = time.perf_counter()
+            report = bootstrap(
+                self.client, sec_user_agent=self.user_agent, entities=(), discovery=True
+            )
+            bad = [e for e in report if e["status"] in {"failed", "skipped"}]
+            self.tracer.emit(
+                agent=AGENT,
+                action="register_tickers",
+                status="error" if bad else "success",
+                source=self.name,
+                rows=len(report),
+                duration_ms=round((time.perf_counter() - start) * 1000),
+                output_summary="; ".join(
+                    f"{e['step']} {e['object']}: {e['status']}" for e in report
+                )[:400],
+            )
+            if bad:
+                raise SourceError(
+                    f"{TICKERS}: registration failed ({bad[0].get('error', bad[0]['status'])})",
+                    recoverable=bool(bad[0].get("recoverable")),
+                )
+            self.registered.append(TICKERS_VIEW)
+        self._tickers_ready = True
+
+    def _tickers(self, sql: str, start: float) -> Evidence[TickerRow]:
+        self._ensure_tickers()
+        result = self.client.run_sql(sql, label="discovery_tickers")
+        out = Evidence(_query_rows(result), sql=sql, source=self.name)
+        self._emit("tickers", out, start)
+        return out
+
+    def lookup(
+        self, *, tickers: Sequence[str] = (), ciks: Sequence[str] = ()
+    ) -> Evidence[TickerRow]:
+        start = time.perf_counter()
+        return self._tickers(tickers_by_symbol_sql(tickers, ciks, self.directory), start)
+
+    def brand(self, words: Sequence[str]) -> Evidence[TickerRow]:
+        start = time.perf_counter()
+        return self._tickers(tickers_by_brand_sql(words, self.directory), start)
+
+    def search(self, name: str) -> Evidence[TickerRow]:
+        start = time.perf_counter()
+        return self._tickers(tickers_by_name_sql(name, self.directory), start)
+
+    def _ensure_submissions(self, cik10: str, ticker: str) -> str:
+        table = submissions_table(ticker)
+        if self._tables is None:
+            self._tables = lightning_tables(self.client, self.directory)
+        if table in self._tables:
+            bound = endpoint_cik(self._tables[table])
+            if bound != cik10:
+                raise SourceError(
+                    f"{SUBMISSIONS}: {table} is bound to CIK {bound}, not {cik10}",
+                    recoverable=False,
+                )
+            return table
+        self._check_ua(SUBMISSIONS)
+        ua = self.user_agent
+        start = time.perf_counter()
+        create = render_file(
+            "11_submissions_table.sql",
+            self.directory,
+            ticker=object_ticker(ticker),
+            cik10=cik10,
+            sec_user_agent=ua,
+        )
+        cache = render_file("12_cache_table.sql", self.directory, table=table)
+        timeout = max(self.client.config.timeout_seconds, BOOTSTRAP_TIMEOUT_SECONDS)
+        for label, sql in (("discovery_submissions_table", create), ("discovery_cache", cache)):
+            self._pace(SUBMISSIONS)
+            try:
+                self.client.run_sql(sql, label=label, timeout=timeout, redact=[ua])
+            except SourceError as err:
+                if "already exist" not in err.detail.lower():
+                    raise
+        self._tables[table] = self.catalog.get(SUBMISSIONS).url(cik10=cik10)
+        self.registered.append(table)
+        self.tracer.emit(
+            agent=AGENT,
+            action="register_submissions",
+            status="success",
+            source=self.name,
+            sql=create.replace(ua, "***") if ua else create,
+            rows=0,
+            duration_ms=round((time.perf_counter() - start) * 1000),
+            output_summary=f"discovery table TIRESIAS_SEC.{table} for CIK {cik10} "
+            "(catalog read, not counted in MAX_NEW_SOURCES_PER_RUN)",
+        )
+        return table
+
+    def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]:
+        start = time.perf_counter()
+        if not _CIK10.match(cik10):
+            raise CatalogError(f"{SUBMISSIONS}: invalid cik10 {cik10!r}")
+        self._ensure_submissions(cik10, ticker)
+        sql = submissions_sql(ticker, self.directory)
+        result = self.client.run_sql(sql, label="discovery_submissions")
+        profile = _profile_rows(result, cik10)
+        note = None if profile else f"no submissions for CIK {cik10}"
+        out = Evidence([profile] if profile else [], sql=sql, source=self.name, note=note)
+        self._emit("submissions", out, start)
+        return out
 
 
 class FallbackDiscovery:
@@ -431,32 +718,40 @@ class FallbackDiscovery:
         self.tracer = tracer or _NullTracer()
         self.name = primary.name
 
-    def _call(self, method: str, *args: Any) -> Evidence[Any]:
+    def _call(self, method: str, *args: Any, **kwargs: Any) -> Evidence[Any]:
         try:
-            return getattr(self.primary, method)(*args)
+            return getattr(self.primary, method)(*args, **kwargs)
         except SourceError as err:
             if not err.recoverable:
                 raise
-            result = getattr(self.fallback, method)(*args)
+            result = getattr(self.fallback, method)(*args, **kwargs)
             result.degraded = True
             result.error = str(err)
             self.tracer.emit(
                 agent=AGENT,
-                action=method,
+                action="tickers" if method in {"lookup", "brand", "search"} else method,
                 status="degraded",
                 sql=result.sql,
                 rows=len(result),
                 retry_count=err.retry_count,
                 source=result.source,
-                output_summary=f"live catalog read failed, served from sample: {err}",
+                output_summary=f"Zetaris discovery read failed, served from sample: {err}",
             )
             return result
 
-    def tickers(self) -> Evidence[TickerRow]:
-        return self._call("tickers")
+    def lookup(
+        self, *, tickers: Sequence[str] = (), ciks: Sequence[str] = ()
+    ) -> Evidence[TickerRow]:
+        return self._call("lookup", tickers=tickers, ciks=ciks)
 
-    def submissions(self, cik10: str) -> Evidence[Profile]:
-        return self._call("submissions", cik10)
+    def brand(self, words: Sequence[str]) -> Evidence[TickerRow]:
+        return self._call("brand", words)
+
+    def search(self, name: str) -> Evidence[TickerRow]:
+        return self._call("search", name)
+
+    def submissions(self, cik10: str, ticker: str) -> Evidence[Profile]:
+        return self._call("submissions", cik10, ticker)
 
 
 def make_discovery(
@@ -465,13 +760,16 @@ def make_discovery(
     *,
     catalog: Catalog | None = None,
     data_dir: Path | None = None,
+    client: ZetarisClient | None = None,
 ) -> Discovery:
-    """Sample mode: SampleDiscovery. Live: the catalog endpoints, falling back to the sample."""
+    """Sample mode: SampleDiscovery. Live: Zetaris (the given client, else one from the
+    environment), falling back to the sample per call on an outage."""
     catalog = catalog or load_catalog()
     sample = SampleDiscovery(catalog, data_dir, tracer=tracer)
     if sample_mode:
         return sample
-    return FallbackDiscovery(LiveDiscovery(catalog, tracer=tracer), sample, tracer)
+    client = client or ZetarisClient(ZetarisConfig.from_env(), tracer=tracer)
+    return FallbackDiscovery(ZetarisDiscovery(catalog, client, tracer=tracer), sample, tracer)
 
 
 __all__ = [
@@ -481,11 +779,12 @@ __all__ = [
     "Discovery",
     "FallbackDiscovery",
     "FilingRow",
-    "LiveDiscovery",
     "Profile",
     "SampleDiscovery",
     "TickerRow",
+    "ZetarisDiscovery",
     "load_catalog",
     "make_discovery",
+    "name_pattern",
     "parse_catalog",
 ]

@@ -64,6 +64,11 @@ paths:
         carries one JSONL trace line (docs/architecture.md#tracing) as `data:`. A comment line
         `: keepalive` is sent after 15 s without a line. The stream ends with one `event: end` whose
         data is {run_id, status, run_status?, end_state?, error?}, or after RUN_BUDGET_SECONDS + 30 s.
+        For progress UIs, slow phases are bracketed by trace lines with agent `orchestrator` and
+        action `phase_start` / `phase_done` (field `phase`: resolve_entity, register_entity,
+        loop_a, frame, loop_b, scout, onboard, reconcile; `phase_done` carries duration_ms), and
+        action `heartbeat` (same `phase`, `elapsed_ms`) every PHASE_HEARTBEAT_SECONDS (default 5)
+        while a phase runs (AGENTS.md "Run phases (for UI)").
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Event stream, content: {text/event-stream: {schema: {type: string}}}}
@@ -117,7 +122,16 @@ components:
       required: [question, entity, metric, period, asker]
       properties:
         question: {type: string}
-        entity: {type: object, properties: {ticker: {type: string}, cik: {type: string}}}
+        entity:
+          type: object
+          description: >-
+            The asked registrant. Sample mode covers only the offline slice (GE, GEHC, GEV);
+            live mode resolves any SEC registrant through the Zetaris sec_tickers view and
+            registers it behind the source gate.
+          properties:
+            ticker: {type: string}
+            cik: {type: string}
+            name: {type: string, description: "Used only when neither ticker nor CIK is given"}
         metric: {type: string}
         period:
           type: object
