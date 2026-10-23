@@ -15,7 +15,7 @@
 ## Layout
 | Path | What |
 |---|---|
-| `services/agent/` | Python 3.11+ / FastAPI (uv). Orchestrator, agents, Zetaris adapter, Nightshift client. **Only `/health` so far; `/run` returns a structured 501.** |
+| `services/agent/` | Python 3.11+ / FastAPI (uv). Orchestrator, agents, Zetaris adapter, Nightshift client. **Loop A runs as a library and CLI (sample mode); the HTTP `/run` still returns a structured 501.** |
 | `services/cognition/` | TypeScript / Node ≥22.18, no npm dependencies. H-MEM memory over REST. **Working.** |
 | `services/cognition/engine/hmem/` | Vendored Meterless H-MEM reference (commit `1742dec`). **Never edit**; wrap it in `src/`. |
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |
@@ -33,8 +33,18 @@ All under `services/agent/src/tiresias_agent/`. Each sponsor client takes an opt
 
 | Module | Use it for |
 |---|---|
-| `trace.py` | `Tracer(run_id=…)` → `.emit(agent=, action=, status=, **fields)` writes one JSONL line (stdout + `logs/trace-<run_id>.jsonl`); `.span(...)` times a block. Statuses: `success`, `error`, `rejected`, `degraded`. Secret-like keys and Bearer tokens are redacted. `NullTracer` for tests. |
-| `models.py` | Pydantic models for `contracts/openapi/agent.yaml`: `RunRequest`, `RunResult`, `BranchRequest`, `RunStats`, `ErrorResponse`, … |
+| `trace.py` | `Tracer(run_id=…, defaults={…})` → `.emit(agent=, action=, status=, **fields)` writes one JSONL line (stdout + `logs/trace-<run_id>.jsonl`); `defaults` are added to every line (Loop A sets `mode="sample"`/`"live"`, ADR-0007); `.span(...)` times a block. Statuses: `success`, `error`, `rejected`, `degraded`. Secret-like keys and Bearer tokens are redacted. `NullTracer` for tests. |
+| `models.py` | Pydantic models for `contracts/openapi/agent.yaml`: `RunRequest`, `RunResult` (leads with `end_state`, `action`; carries `effect`, `information_need`, `why_tree` of `Link`s with `evidence: [EvidenceItem]`, `error`), `InformationNeed` + `EntityHint` (the Loop A → Loop B hand-off), `BranchRequest`, `RunStats`, `ErrorResponse`, … |
+| `config.py` | `settings` (env flags) and `LoopBudgets.from_env()`: `MAX_CAUSAL_DEPTH` (5), `MAX_BRANCHES_PER_LEVEL` (3), `MAX_RETRIES_PER_NODE` (1), `RUN_BUDGET_SECONDS` (600), read at call time and clamped. |
+| `orchestrator.py` | **Loop A.** `run_loop_a(request, *, source=None, tracer=None, gate=None, budgets=None, logs_dir=None)` → `RunResult`; never raises for a bad case (structured `error`, or end state `budget`). Framer → (hypothesiser → analyst ⇄ critic [→ gate])* → gap analyst → reporter; stops at the first accepted causal link the asker's levers can act on, digs under the strongest breakdown otherwise. CLI below. |
+| `agents/framer.py` | `frame(request, source, tracer)` → `Frame`: a like-for-like effect. `restatement` when `compare.filing_a/filing_b` are `"<form> filed YYYY-MM-DD"` (same period, two filings), else `change` (period vs prior period, both from the first annual filing reporting the period). Raises `FrameFailure` (metric not in sources → evidence-frontier) or `LoopError`. |
+| `agents/hypothesiser.py` | Rule-based (ADR-0007). `propose(frame, parent, path_variables, max_branches=, tracer=, exclude=)` → `Candidate`s from generic rules in `agents/knowledge.py`: hierarchy children, event concepts (goodwill impairment), 8-K items (2.01 disposal, 4.02 non-reliance / 10-K/A), concept switch, restated comparative. No cycles, capped. |
+| `agents/analyst.py` | `measure(candidate, frame, source, attempt=, scope=, tracer=)` → `Measurement`: queries only through `EvidenceSource`, keeps SQL + filter + rows per query, computes the candidate's effect and the counterfactual (intervention re-query on the returned rows). Scopes: `broad` → `window` → `relaxed` (set by the critic). |
+| `agents/critic.py` | Pure rules over a `Measurement`: `judge(candidate, m, frame, retries_left=)` → `Verdict` (`accept` / `prune` / `retry` / `frontier`, label, evidence status, share vs the root effect); `apply_gate(verdict, choice)`. Thresholds in `agents/common.py` (`MOST_OF_EFFECT`, `MIN_SHARE`, …). |
+| `agents/gap_analyst.py` | `for_candidate(frame, node, tracer)` / `for_variable(...)` → `InformationNeed` (variable + aliases, entity hint from the run's own evidence, period, join key, expected magnitude, the intervention test to run). **Loop B consumes this.** |
+| `agents/reporter.py` | `build(...)` → `RunResult`; action text per (cause category, asker lever family) from `agents/knowledge.py`. |
+| `agents/knowledge.py` | Generic SEC/US-GAAP knowledge only (concept families and components, event concepts, 8-K item codes, lever families, action templates). Never entity-specific; a guard test greps agent logic for case literals. |
+| `gates.py` | `Gate(mode, tracer=, policies=, scripted=, ask=)` → `.decide(GateRequest(gate=, question=, options=, proposal=, node_id=, requested_by=))` → `GateDecision`. Modes `auto` (policy, default: follow the proposal), `scripted` (`RunOptions.decisions["<gate>:<node_id>"]` or `["<gate>"]`), `interactive` (`ask` callable). Traced with `gate`, `gate_mode`, `decided_by`. Loop A uses `critic_escalation`; source and memory gates should reuse it. |
 | `adapters/zetaris.py` | Evidence. `make_source(sample_mode, tracer)` returns an `EvidenceSource`: `SampleSource` (reads `data/sample/`) or, live, `FallbackSource(LiveZetarisSource, SampleSource)`, which falls back to the sample per call on an outage (timeout, connection error, 5xx after retries) and traces `degraded`; a non-recoverable `SourceError` (bad SQL, auth, malformed reply) is raised, never served from the sample. Methods return `Evidence` (a list of `Fact` / `Filing` / `Entity` carrying `.sql`, `.source`, `.degraded`). Concept aliases (`Revenues` ↔ `RevenueFromContract…`) resolve automatically. `bootstrap(client)` registers sources from `zetaris/sql/` (idempotent, never drops); Loop B should reuse it. CLI: `bootstrap`, `smoke [--sample]`. |
 | `adapters/nightshift.py` | Models. `NightshiftClient(NightshiftConfig.from_env())` → `.chat(...)`, `.chat_json(...)` on lanes `fast` / `deep`; raises `ModelUnavailable(recoverable=…)` when offline; the receipt says which model served the call. CLI: `probe`. |
 | `adapters/cognition.py` | Memory. `CognitionClient` → `.recall`, `.remember`, `.feedback`, `.purge`, `.health` against `services/cognition`; raises `CognitionUnavailable` so the caller can run without memory. |
@@ -54,6 +64,9 @@ cd ~/Repos/hackathon2026/zetaris/zetaris-platform && ./verify.sh   # UI localhos
 python3 scripts/zetaris_probe.py     # latency and registration probe (reads .env)
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris bootstrap   # register sources (needs ZETARIS_* and SEC_USER_AGENT)
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris smoke [--sample]   # entities, revenue facts, filings
+# Loop A on one request (sample mode by default; --live queries Zetaris with sample fallback)
+cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--logs-dir DIR]
+#   stdout: the RunResult JSON only; trace lines go to stderr and <repo>/logs/trace-<run_id>.jsonl
 ```
 
 ## External services (live mode only; sample mode needs none)
@@ -90,9 +103,13 @@ cd services/agent && uv run python -m tiresias_agent.adapters.zetaris smoke [--s
 - A concept view that fails with `FIELD_NOT_FOUND` means SEC has no such concept for that entity; `bootstrap` reports it `absent` and the adapter skips it.
 - The agent Docker image copies only `src/`; `data/sample/` and `zetaris/sql/` must be mounted or copied, or pointed to with `SAMPLE_DATA_DIR` / `ZETARIS_SQL_DIR` (BACKLOG B-1).
 - The Zetaris admin defaults to `admin@zetaris.com` (change the password in the UI).
+- Loop A only queries the **asked entity** (its concept series and filings). Evidence that lives in another entity (e.g. a spun-off business) is an `InformationNeed` for Loop B, even if that entity happens to be in `data/sample/` or registered in Zetaris.
+- A restatement of a closed period is caused by an event **after the period ends and no later than the restating filing** (`Frame.window()`); a change is caused during the period. The critic's temporal test uses this window.
+- Shares are measured against the **root** effect and capped at 100%; a candidate that over-explains (offsetting factors) goes through the critic-escalation gate.
+- The CLI resolves a relative request path against the cwd, then the repo root, and writes traces to `<repo>/logs/` unless `LOGS_DIR` or `--logs-dir` is set.
 
 ## Next work (see docs/CHECKLIST.md for the full list)
-1. Agent: Loop A on `input_examples/01` (sample mode first, then live), built on the blocks above.
-2. Rule-based hypothesiser and critic (sample mode); Loop B onboarding of GE HealthCare.
-3. Nightshift client (live mode) once the VM's Runtime URL and token are in `.env`.
-4. Memory demo (cold → warm → purge → cold), asker profiles, branching.
+1. Wire `POST /run` in `app.py` to `orchestrator.run_loop_a` (sample mode first), and BACKLOG B-1 (Docker image needs `data/sample/`, `zetaris/sql/`).
+2. Loop B: consume `RunResult.information_need` (gap analyst → source scout over `catalog/sources.yaml` → onboarder via `adapters.zetaris.bootstrap`, behind a `source` gate built on `gates.Gate`), then re-run the intervention test it names.
+3. Nightshift client in live mode once the VM's Runtime URL and token are in `.env` (model-backed hypothesiser/critic lanes).
+4. Memory demo (cold → warm → purge → cold) through `adapters.cognition` (recall must degrade to no memory), asker profiles, branching.

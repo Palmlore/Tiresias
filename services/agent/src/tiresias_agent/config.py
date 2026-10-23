@@ -1,6 +1,7 @@
 """Runtime configuration, read from the environment only (no secrets in code)."""
 
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 
@@ -18,3 +19,43 @@ class Settings:
 
 
 settings = Settings()
+
+
+def _bounded_int(env: Mapping[str, str], name: str, default: int, low: int, high: int) -> int:
+    try:
+        value = int(env.get(name) or default)
+    except ValueError:
+        value = default
+    return max(low, min(value, high))
+
+
+def _bounded_float(env: Mapping[str, str], name: str, default: float, low: float, high: float):
+    try:
+        value = float(env.get(name) or default)
+    except ValueError:
+        value = default
+    return max(low, min(value, high))
+
+
+@dataclass(frozen=True)
+class LoopBudgets:
+    """Caps for one Loop A run (AGENTS.md rule 7; docs/architecture.md#budgets).
+
+    Read at call time (not import time) so tests and the CLI can tune them through the
+    environment. Out-of-range values are clamped, never trusted.
+    """
+
+    max_causal_depth: int = 5
+    max_branches_per_level: int = 3
+    max_retries_per_node: int = 1
+    run_seconds: float = 600.0
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "LoopBudgets":
+        env = os.environ if env is None else env
+        return cls(
+            max_causal_depth=_bounded_int(env, "MAX_CAUSAL_DEPTH", 5, 1, 10),
+            max_branches_per_level=_bounded_int(env, "MAX_BRANCHES_PER_LEVEL", 3, 1, 6),
+            max_retries_per_node=_bounded_int(env, "MAX_RETRIES_PER_NODE", 1, 0, 3),
+            run_seconds=_bounded_float(env, "RUN_BUDGET_SECONDS", 600.0, 1.0, 3600.0),
+        )

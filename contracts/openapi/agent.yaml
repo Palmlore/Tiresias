@@ -81,6 +81,75 @@ components:
         residual: {type: number}
         sql: {type: string}
         rows_ref: {type: string}
+        depth: {type: integer}
+        verdict: {type: string, enum: [root, accepted, pruned, frontier], description: What the critic decided}
+        rule: {type: string, description: Hypothesiser rule that proposed it}
+        reason: {type: string, description: The critic's reason}
+        attempts: {type: integer, description: Analyst attempts (a critic retry adds one)}
+        evidence: {type: array, items: {$ref: "#/components/schemas/EvidenceItem"}}
+    EvidenceItem:
+      type: object
+      description: One query behind a claim; in sample mode the SQL that live mode would run
+      required: [sql, source, row_count]
+      properties:
+        sql: {type: string}
+        filter: {type: [string, "null"], description: Predicate applied to the returned rows}
+        source: {type: string}
+        row_count: {type: integer, description: Rows the query returned}
+        matched: {type: integer, description: Rows that passed the filter (before the cap)}
+        rows: {type: array, items: {type: object}, description: Relevant rows (capped)}
+        degraded: {type: boolean}
+        note: {type: [string, "null"]}
+    Observation:
+      type: object
+      required: [value, concept, end]
+      properties:
+        value: {type: number}
+        concept: {type: string}
+        start: {type: [string, "null"]}
+        end: {type: string}
+        form: {type: [string, "null"]}
+        filed: {type: [string, "null"]}
+        accn: {type: [string, "null"]}
+    Effect:
+      type: object
+      description: What the run explains (target minus baseline, like-for-like)
+      required: [entity, metric, kind, period, baseline, target, delta, summary]
+      properties:
+        entity: {type: string}
+        metric: {type: string}
+        kind: {type: string, enum: [restatement, change]}
+        period: {type: object, properties: {start: {type: string, format: date}, end: {type: string, format: date}}}
+        baseline: {$ref: "#/components/schemas/Observation"}
+        target: {$ref: "#/components/schemas/Observation"}
+        delta: {type: number}
+        relative_change: {type: [number, "null"]}
+        summary: {type: string}
+    EntityHint:
+      type: object
+      required: [relation, description]
+      properties:
+        relation: {type: string}
+        source_ticker: {type: [string, "null"]}
+        source_cik: {type: [string, "null"]}
+        filing_accession: {type: [string, "null"]}
+        filing_date: {type: [string, "null"]}
+        filing_items: {type: array, items: {type: string}}
+        description: {type: string}
+    InformationNeed:
+      type: object
+      description: Loop A to Loop B hand-off when no registered source can test a candidate
+      required: [node_id, variable, entity_hint, period, join_key, test, reason]
+      properties:
+        node_id: {type: string}
+        variable: {type: string}
+        variable_aliases: {type: array, items: {type: string}}
+        entity_hint: {$ref: "#/components/schemas/EntityHint"}
+        period: {type: object, properties: {start: {type: string, format: date}, end: {type: string, format: date}}}
+        join_key: {type: array, items: {type: string}}
+        expected_magnitude: {type: [number, "null"]}
+        test: {type: string}
+        reason: {type: string}
     RunStats:
       type: object
       properties:
@@ -90,22 +159,32 @@ components:
         model_calls: {type: integer}
         tokens: {type: integer}
         seconds: {type: number}
+        retries: {type: integer, description: Critic send-backs to the analyst}
+        prunes: {type: integer}
+        gate_decisions: {type: integer}
     RunResult:
       type: object
       required: [run_id, status]
+      description: Leads with the decision (ADR-0009) - end state and recommended action - then the evidence
       properties:
+        end_state: {type: string, enum: [actionable, branched, cyclic, evidence-frontier, external-driver, budget], description: Absent when status is error}
+        action: {type: [string, "null"], description: Recommended action for the asker}
+        root_cause: {type: [string, "null"]}
+        residual: {type: [number, "null"], description: Share of the effect left unexplained}
         run_id: {type: string}
         parent_run_id: {type: [string, "null"]}
         parent_node_id: {type: [string, "null"], description: Node branched from (branch runs only)}
         status: {type: string, enum: [success, partial, error]}
-        end_state: {type: string, enum: [actionable, branched, cyclic, evidence-frontier, external-driver, budget]}
-        root_cause: {type: string}
-        action: {type: string, description: Recommended action for the asker}
-        residual: {type: number, description: Share of the effect left unexplained}
+        effect: {$ref: "#/components/schemas/Effect"}
+        information_need: {$ref: "#/components/schemas/InformationNeed"}
         why_tree: {type: array, items: {$ref: "#/components/schemas/Link"}}
         stats: {$ref: "#/components/schemas/RunStats"}
         trace_file: {type: string}
         sample_mode: {type: boolean}
+        error:
+          type: [object, "null"]
+          description: Set when status is error (a controlled failure, never a stack trace)
+          properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}
     Error:
       type: object
       required: [status, error]
