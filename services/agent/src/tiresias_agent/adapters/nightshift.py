@@ -408,8 +408,10 @@ class NightshiftClient:
         receipt = _redact(extract_receipt(body, response.headers), self.config.token)
         routed, provider = routed_from_receipt(receipt)
         usage = body.get("usage") if isinstance(body.get("usage"), dict) else {}
+        # Mask values only: the secret-key filter would drop `*_tokens` counts.
+        usage = {k: self._safe(v) if isinstance(v, str) else v for k, v in usage.items()}
         return ModelReply(
-            text=text,
+            text=self._safe(text),
             lane=lane,
             requested_model=requested,
             routed_model=routed,

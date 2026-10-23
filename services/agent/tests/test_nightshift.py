@@ -87,6 +87,18 @@ def test_sends_meterless_headers_and_lane_model_without_leaking_token():
     )
 
 
+def test_echoed_token_is_masked_in_reply_text_usage_and_repr():
+    def handler(request):
+        return httpx.Response(
+            200, json=completion("echo " + TOKEN, usage={"note": TOKEN, "total_tokens": 4})
+        )
+
+    tracer = RecordingTracer()
+    reply = make_client(handler, tracer).chat([{"role": "user", "content": "x"}], lane="fast")
+    assert reply.text == "echo ***"
+    assert_no_token(reply.text, reply.usage, repr(reply), tracer.events)
+
+
 def test_routed_model_and_provider_come_from_receipt():
     def handler(request):
         return httpx.Response(200, json=completion("ok", meterless=RECEIPT))
