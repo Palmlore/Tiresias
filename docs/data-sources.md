@@ -14,7 +14,7 @@ The **bounded source catalog** the agent may draw on is [`catalog/sources.yaml`]
 
 ## Offline sample (`data/sample/`)
 
-The sample is a trimmed slice of the responses above for the showcase entities (GE, GE HealthCare, GE Vernova) and only the concepts the cases use. Each file records its source URL, fetch timestamp and SHA-256. `scripts/fetch_sample.py` regenerates it (planned). The sample is **fetched during the build window**; nothing was prepared beforehand.
+The sample is a trimmed slice of the responses above for the showcase entities (GE, GE HealthCare, GE Vernova) and only the concepts the cases use. `PROVENANCE.json` records each file's source URL, fetch timestamp and SHA-256 (raw and trimmed). `scripts/fetch_sample.py` regenerates it (see [data/README.md](../data/README.md)). The sample is **fetched during the build window**; nothing was prepared beforehand.
 
 ## Entities (checked on 2026-10-22)
 

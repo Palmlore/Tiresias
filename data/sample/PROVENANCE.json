@@ -1,0 +1,62 @@
+{
+  "generated_by": "scripts/fetch_sample.py",
+  "generated_at": "2026-10-23T07:33:52Z",
+  "files": [
+    {
+      "file": "ge_companyfacts.json",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000040545.json",
+      "fetched_at": "2026-10-23T07:18:36Z",
+      "raw_sha256": "95ed2ee4383e17c8c50ea84b475a90b8172dc9d1728a330787ec0b7fada60216",
+      "sha256": "31609c90fbb0f15d52b6bd8f321b4f772ac2d03e7f26cf7b142250f9b2d5a074",
+      "trim": "us-gaap USD concepts: Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, NetIncomeLoss, IncomeLossFromContinuingOperations, IncomeLossFromDiscontinuedOperationsNetOfTax, DisposalGroupIncludingDiscontinuedOperationRevenue, GoodwillImpairmentLoss"
+    },
+    {
+      "file": "ge_submissions.json",
+      "source_url": "https://data.sec.gov/submissions/CIK0000040545.json",
+      "fetched_at": "2026-10-23T07:18:36Z",
+      "raw_sha256": "95dbece6e11c2d213e2edf681fd101f08e7de808b9d33930d47b53e22ce05a6b",
+      "sha256": "e286a7230b69d636cc72cc9eab390446f475eb0def02a9aec5eb0b54c46ebfe5",
+      "trim": "recent filings, forms ['10-K', '10-K/A', '8-K', '8-K/A']"
+    },
+    {
+      "file": "gehc_companyfacts.json",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001932393.json",
+      "fetched_at": "2026-10-23T07:18:36Z",
+      "raw_sha256": "670aeb159a39f3b0c930fc2b13b5fdc5907dd1dd696ac74e900838717cbbee57",
+      "sha256": "2a22b534973c5eafbd7c62dc918442147410e49e5a193523ae8c57060ebb6e13",
+      "trim": "us-gaap USD concepts: Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, NetIncomeLoss, IncomeLossFromContinuingOperations, IncomeLossFromDiscontinuedOperationsNetOfTax, DisposalGroupIncludingDiscontinuedOperationRevenue, GoodwillImpairmentLoss"
+    },
+    {
+      "file": "gehc_submissions.json",
+      "source_url": "https://data.sec.gov/submissions/CIK0001932393.json",
+      "fetched_at": "2026-10-23T07:18:37Z",
+      "raw_sha256": "9158645258a9985c0c0f5b479d6e25f06c7b2b029e0108805f0d5b3302caced3",
+      "sha256": "b0644a4314f2eb12180dd63ebf694b8aee5f5d8e2420d4d0776a693b597f3bb5",
+      "trim": "recent filings, forms ['10-K', '10-K/A', '8-K', '8-K/A']"
+    },
+    {
+      "file": "gev_companyfacts.json",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001996810.json",
+      "fetched_at": "2026-10-23T07:18:37Z",
+      "raw_sha256": "415f0708adf7da6b46d636a2ee1ef3aae173800a4be1d2b5a493fdfa59b1a453",
+      "sha256": "17da055cc98cec3992b03c7c4c1766e7f9f4fb15a475f902ed36b5673c1c2e78",
+      "trim": "us-gaap USD concepts: Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, NetIncomeLoss, IncomeLossFromContinuingOperations, IncomeLossFromDiscontinuedOperationsNetOfTax, DisposalGroupIncludingDiscontinuedOperationRevenue, GoodwillImpairmentLoss"
+    },
+    {
+      "file": "gev_submissions.json",
+      "source_url": "https://data.sec.gov/submissions/CIK0001996810.json",
+      "fetched_at": "2026-10-23T07:18:38Z",
+      "raw_sha256": "f8eb5a8119423c811385726321e96d6ed0c6cc4b18acf821edbbc595be7c63dc",
+      "sha256": "3532c0f9d6a921ff2ab718c4a909086caad92cf0ccdf163ba0a9c3a4ec267811",
+      "trim": "recent filings, forms ['10-K', '10-K/A', '8-K', '8-K/A']"
+    },
+    {
+      "file": "company_tickers.json",
+      "source_url": "https://www.sec.gov/files/company_tickers.json",
+      "fetched_at": "2026-10-23T07:18:35Z",
+      "raw_sha256": "93050f93c3540af9af80a05885d562fcf4e7de4e8e5acce0944a2891bcfbec48",
+      "sha256": "9a6e17ec0bfd46c2e4e54b598a118995e064a13e1b21ff1750202c9b1cf32444",
+      "trim": "titles matching ^(GE\\b|General Electric)"
+    }
+  ]
+}
