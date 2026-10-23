@@ -328,6 +328,8 @@ class ZetarisClient:
         self._sleep = sleep
         self._row_limit = row_limit
         self._http = httpx.Client(timeout=config.timeout_seconds, transport=transport)
+        # X-Run-Id is always sent: without a caller or tracer run id, one is minted per client.
+        self._default_run_id = getattr(self.tracer, "run_id", None) or f"run-{uuid.uuid4()}"
 
     def __repr__(self) -> str:
         return f"ZetarisClient(rest_url={self.config.rest_url!r}, org_id={self.config.org_id!r})"
@@ -352,7 +354,7 @@ class ZetarisClient:
     ) -> QueryResult:
         """Run one statement. `redact` values are masked in the returned/traced SQL and errors."""
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
-        run_id = run_id or getattr(self.tracer, "run_id", None)
+        run_id = run_id or getattr(self.tracer, "run_id", None) or self._default_run_id
         shown_sql = self._scrub(sql, redact)
         wait = timeout or self.config.timeout_seconds
         start = time.perf_counter()
@@ -363,9 +365,8 @@ class ZetarisClient:
                 "X-Org-ID": str(self.config.org_id),
                 "X-Request-ID": str(uuid.uuid4()),
                 "Content-Type": "application/json",
+                "X-Run-Id": run_id,
             }
-            if run_id:
-                headers["X-Run-Id"] = run_id
             body = {
                 "queryId": str(uuid.uuid4()),
                 "sql": sql,

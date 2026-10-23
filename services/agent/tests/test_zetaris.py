@@ -68,6 +68,20 @@ def test_run_sql_sends_auth_org_request_id_and_run_id_headers():
     assert {"sql", "rows", "duration_ms", "retry_count", "source"} <= event.keys()
 
 
+def test_run_sql_sends_a_run_id_even_without_one_supplied():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return ok(["one"], [["1"]])
+
+    client, _ = make_client(handler)
+    client.run_sql("SELECT 1", label="a")
+    client.run_sql("SELECT 1", label="b")
+    run_ids = [request.headers.get("X-Run-Id") for request in seen]
+    assert run_ids[0] and run_ids[0] == run_ids[1]
+
+
 def test_run_sql_retries_503_then_succeeds_with_fresh_request_ids():
     request_ids = []
 
