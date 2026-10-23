@@ -31,7 +31,7 @@ Updated **2026-10-23 AEDT** (build day 2, after #6–#9). Work now lands through
 
 ## B. Sponsor technology (required, and scored under Sponsor Tech, 10 pts)
 - [~] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10) (live mode: every read, discovery included, is Zetaris SQL (#9); sample mode, the judge default, runs the same logic on cached rows, so a judge sees Zetaris only by running `--live` against a local bundle; no live trace committed yet)
-  - [x] Local Zetaris running; `verify.sh` 9/9; measured ([measurements/zetaris-local.md](measurements/zetaris-local.md))
+  - [x] Local Zetaris running and measured ([measurements/zetaris-local.md](measurements/zetaris-local.md); reproduce with `scripts/zetaris_probe.py`)
   - [x] GE vs GE HealthCare reconciliation runs inside Zetaris (residual $114M), via `scripts/zetaris_probe.py`
   - [x] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9) (#5: live and sample sources, falls back to `data/sample/` on outage and traces `degraded`; live smoke row counts match sample mode)
   - [x] Loop B registers a discovered entity's source at runtime from `catalog/sources.yaml` (#8: `agents/onboarder.py` dry run → `source` gate → `bootstrap(..., tables=("facts",))` one statement at a time, `tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views`; #9: run live against local Zetaris, e.g. Hilton's spun-off HGV registered cold in 8.1 s, [measurements/live-any-company.md](measurements/live-any-company.md))
