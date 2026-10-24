@@ -1,7 +1,9 @@
 """Run registry: runs Loop A in background threads and feeds their trace lines to subscribers.
 
 Used by app.py for POST /run (synchronous: start, then wait within the run budget), POST /runs
-(asynchronous), GET /runs/{run_id} and GET /runs/{run_id}/events (Server-Sent Events).
+(asynchronous), GET /runs/{run_id} and GET /runs/{run_id}/events (Server-Sent Events). A run
+whose hitl_mode is interactive gets a gates.GateChannel (RunRecord.gates): its gates wait on the
+run's own thread for GET/POST /runs/{run_id}/gates[/{gate_id}].
 
 Bounded (AGENTS.md rule 7): at most RUNS_REGISTRY_SIZE runs are kept (the oldest finished run
 is evicted first), at most MAX_CONCURRENT_RUNS run at once, and each run keeps at most
@@ -21,6 +23,7 @@ from pathlib import Path
 
 from . import orchestrator
 from .config import LoopBudgets, settings
+from .gates import GateChannel
 from .models import ErrorDetail, RunRequest, RunResult
 from .trace import RUN_ID_PATTERN, Tracer, new_run_id
 
@@ -47,9 +50,19 @@ def valid_run_id(run_id: str) -> bool:
     return len(run_id) <= MAX_RUN_ID_LENGTH and bool(RUN_ID_PATTERN.match(run_id))
 
 
-def execute(request: RunRequest, *, tracer: Tracer, run_id: str, logs_dir: Path) -> RunResult:
-    """The one place the API calls the investigation pipeline."""
-    return orchestrator.run_investigation(request, tracer=tracer, run_id=run_id, logs_dir=logs_dir)
+def execute(
+    request: RunRequest, *, tracer: Tracer, run_id: str, logs_dir: Path, ask=None
+) -> RunResult:
+    """The one place the API calls the investigation pipeline. ``ask`` is the run's
+    GateChannel.ask when its hitl_mode is interactive."""
+    return orchestrator.run_investigation(
+        request, tracer=tracer, run_id=run_id, logs_dir=logs_dir, ask=ask
+    )
+
+
+def hitl_mode(request: RunRequest) -> str:
+    """The run's gate mode: RunOptions.hitl_mode, else HITL_MODE (default auto)."""
+    return request.options.hitl_mode or settings.hitl_mode
 
 
 class RegistryBusy(Exception):
@@ -75,6 +88,8 @@ class RunRecord:
     lines: list[str] = field(default_factory=list)
     dropped_lines: int = 0
     trace_file: str | None = None
+    hitl_mode: str = "auto"
+    gates: GateChannel | None = None  # set when hitl_mode is interactive
     _cond: threading.Condition = field(default_factory=threading.Condition, repr=False)
 
     @property
@@ -139,6 +154,8 @@ class RunRecord:
             "events": len(self.lines),
             "dropped_events": self.dropped_lines,
             "trace_file": self.trace_file,
+            "hitl_mode": self.hitl_mode,
+            "waiting_gate": self.gates.waiting() if self.gates else None,
             "result": self.result.model_dump(mode="json") if self.result else None,
             "error": self.error.model_dump() if self.error else None,
         }
@@ -178,7 +195,7 @@ class RunRegistry:
     def start(self, request: RunRequest, run_id: str | None = None) -> RunRecord:
         """Register a run and start it in a daemon thread. Raises RegistryBusy or RunConflict."""
         run_id = run_id or new_run_id()
-        record = RunRecord(run_id=run_id, max_lines=self.max_lines)
+        record = RunRecord(run_id=run_id, max_lines=self.max_lines, hitl_mode=hitl_mode(request))
         with self._lock:
             if run_id in self._runs:
                 raise RunConflict(run_id)
@@ -216,7 +233,16 @@ class RunRegistry:
         error: ErrorDetail | None = None
         try:
             runner = self._runner or execute
-            result = runner(request, tracer=tracer, run_id=record.run_id, logs_dir=directory)
+            kwargs = {"tracer": tracer, "run_id": record.run_id, "logs_dir": directory}
+            if record.hitl_mode == "interactive":
+                # The run's gates wait on its own thread for POST /runs/{id}/gates/{gate_id},
+                # each at most GATE_TIMEOUT_SECONDS and never past the run budget.
+                record.gates = GateChannel(
+                    tracer=tracer,
+                    run_deadline=time.monotonic() + LoopBudgets.from_env().run_seconds,
+                )
+                kwargs["ask"] = record.gates.ask
+            result = runner(request, **kwargs)
         except Exception as err:  # noqa: BLE001 - a crash becomes a structured error, not a trace
             error = ErrorDetail(type=type(err).__name__, message=str(err)[:500], recoverable=False)
             tracer.emit(

@@ -58,6 +58,7 @@ curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -H 'X-Run
 curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' -d @input_examples/03_ge_2018_net_loss.json   # 202 {run_id}
 curl -s localhost:8000/runs/<run_id>                                 # {status: running|done, result, ...}
 curl -sN localhost:8000/runs/<run_id>/events                         # SSE: one trace line per event, then event: end
+curl -s localhost:8000/runs/<run_id>/gates/g1 -H 'Content-Type: application/json' -d '{"choice":"frontier"}'   # answer-a-gate (hitl_mode=interactive)
 python3 scripts/memory_demo.py [--agent URL]                         # H-MEM demo (stack up, sample mode): purge, 04, 01 warm (fewer hops), 03 (lesson rejected), purge, 01
 # Entity directory (sample: the slice only; live adds sec_tickers type-ahead)
 curl -s 'localhost:8000/entities?q=ge'                              # EntityList: ready/searchable, expected_first_run
@@ -75,7 +76,7 @@ cd services/agent && uv run python -m tiresias_agent.adapters.zetaris bootstrap 
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris smoke [--sample]   # entities, revenue facts, filings
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris warm   # after a Zetaris restart: re-cache the ZETARIS_WARM_ENTITIES raw tables (zetaris/README.md#apply)
 # Investigation (Loop A, then Loop B) on one request (sample mode by default; --live queries Zetaris with sample fallback; --loop-a stops after Loop A)
-cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--loop-a] [--logs-dir DIR] [--depth quick|thorough|deep]
+cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--loop-a] [--logs-dir DIR] [--depth quick|thorough|deep] [--interactive]
 #   --depth (ADR-0011): quick = rules only (default); thorough/deep add model lanes live (minutes); sample mode never calls a model
 #   MAX_NEW_SOURCES_PER_RUN=0 shows the source cap (end state budget); scripted {"source": "deny"} shows the source gate
 #   stdout: the RunResult JSON only; trace lines go to stderr and <repo>/logs/trace-<run_id>.jsonl

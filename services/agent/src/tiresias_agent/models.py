@@ -480,3 +480,50 @@ class PurgeResult(BaseModel):
     purged: int = Field(description="Lessons the memory service confirmed deleted")
     namespace: str | None = Field(default=None, description="None: every namespace")
     requested_by: str
+
+
+GateName = Literal["framing", "source", "critic_escalation", "memory"]
+
+
+class GateAnswer(BaseModel):
+    """POST /runs/{run_id}/gates/{gate_id} body: one of the gate's options and an optional note
+    (scrubbed, kept in the trace)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    choice: str = Field(min_length=1, max_length=64)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class GateWaiting(BaseModel):
+    """One interactive gate of a run (gates.PendingGate.public): the ``gate``/``waiting`` trace
+    line's fields, then its outcome once answered (decided_by human) or expired (timeout)."""
+
+    gate_id: str
+    gate: GateName
+    status: Literal["waiting", "answered", "expired"]
+    question: str
+    options: list[str]
+    proposal: str
+    node_id: str | None = None
+    requested_by: str = ""
+    context: dict[str, Any] = Field(
+        default_factory=dict, description="The evidence the decision rests on, scrubbed"
+    )
+    created_at: str
+    deadline: str = Field(description="UTC; past it the policy's proposal applies")
+    timeout_seconds: float
+    choice: str | None = None
+    note: str | None = None
+    decided_by: Literal["human", "timeout"] | None = None
+    answered_at: str | None = None
+
+
+class GateList(BaseModel):
+    """GET /runs/{run_id}/gates: the run's interactive gates, oldest first (empty unless its
+    hitl_mode is interactive)."""
+
+    run_id: str
+    hitl_mode: str
+    waiting_gate: GateWaiting | None = None
+    gates: list[GateWaiting] = Field(default_factory=list)

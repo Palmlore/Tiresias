@@ -80,7 +80,7 @@ from .agents.knowledge import (
     ruled_out_text,
 )
 from .config import DEPTHS, LoopBudgets, expected_seconds, max_over_explained, settings
-from .gates import Gate, GateRequest
+from .gates import Answer, Gate, GateRequest
 from .models import Entity as EntityRef
 from .models import (
     ErrorDetail,
@@ -98,6 +98,8 @@ from .trace import Tracer, new_run_id, phase
 
 AGENT = "orchestrator"
 REPO_ROOT = Path(__file__).resolve().parents[4]
+# An interactive gate channel (gates.py): runs.py's GateChannel.ask, or the CLI's stdin prompt.
+Ask = Callable[[GateRequest], "str | Answer | None"]
 
 
 class CountingSource:
@@ -196,7 +198,12 @@ class LoopA:
                         proposal=v.escalation["proposal"],
                         node_id=cand.node_id,
                         requested_by=critic.AGENT,
-                        context={"share": v.raw_share},
+                        context={
+                            "share": v.raw_share,
+                            "label": v.label,
+                            "variable": cand.variable,
+                            "claim": cand.claim,
+                        },
                     )
                 )
                 self.gate_decisions += 1
@@ -534,6 +541,7 @@ def _start(
     logs_dir: str | Path | None,
     clock: Callable[[], float],
     lanes: model_lanes.ModelLanes | None = None,
+    ask: Ask | None = None,
 ) -> tuple[_Run, EvidenceSource | None]:
     sample = request.options.sample_mode
     sample = settings.sample_mode if sample is None else sample
@@ -570,6 +578,7 @@ def _start(
             request.options.hitl_mode or settings.hitl_mode,
             tracer=tracer,
             scripted=request.options.decisions,
+            ask=ask,
         )
         source = source or make_source(sample, tracer)
     except Exception as err:  # noqa: BLE001 - a run must end in a structured result
@@ -878,9 +887,11 @@ def run_loop_a(
     logs_dir: str | Path | None = None,
     clock: Callable[[], float] = time.monotonic,
     lanes: model_lanes.ModelLanes | None = None,
+    ask: Ask | None = None,
 ) -> RunResult:
     """Run Loop A for one request. Never raises for a bad case: failures become a RunResult
-    with status "error" (structured) or end state "budget"."""
+    with status "error" (structured) or end state "budget". ``ask`` is the interactive gates'
+    channel (used only when hitl_mode is interactive and no ``gate`` is given)."""
     run, source = _start(
         request,
         source=source,
@@ -892,6 +903,7 @@ def run_loop_a(
         logs_dir=logs_dir,
         clock=clock,
         lanes=lanes,
+        ask=ask,
     )
     try:
         if run.error is None and source is not None:
@@ -917,6 +929,7 @@ def run_investigation(
     data_dir: Path | None = None,
     lanes: model_lanes.ModelLanes | None = None,
     memory_client: Any | None = None,
+    ask: Ask | None = None,
 ) -> RunResult:
     """Loop A, then Loop B when Loop A ends at the evidence frontier with an information need.
 
@@ -934,6 +947,7 @@ def run_investigation(
         logs_dir=logs_dir,
         clock=clock,
         lanes=lanes,
+        ask=ask,
     )
     owned = _attach_memory(run, memory_client)
     try:
@@ -1224,7 +1238,16 @@ class LoopB:
                     proposal=v.escalation["proposal"],
                     node_id=node_id,
                     requested_by=critic.AGENT,
-                    context={"share": v.raw_share, "bound": bound},
+                    context={
+                        "share": v.raw_share,
+                        "bound": bound,
+                        "residual": residual,
+                        "entity": entity.name,
+                        "cik": entity.cik,
+                        "value": r.value,
+                        "metric": frame.metric,
+                        "period": frame.period_label,
+                    },
                 )
             )
             self.loop.gate_decisions += 1
@@ -1313,6 +1336,24 @@ def _resolve(path: str) -> Path:
     return REPO_ROOT / p
 
 
+def stdin_ask(request: GateRequest, *, stdin=None, stderr=None) -> Answer:
+    """The CLI's interactive channel: print the gate to stderr, read one line from stdin. An
+    empty line takes the proposal; at end of input (no answer) the policy decides."""
+    stdin, stderr = stdin or sys.stdin, stderr or sys.stderr
+    print(
+        f"\n[gate {request.gate}] {request.question}\n"
+        f"  options: {', '.join(request.options)} (Enter = {request.proposal}) > ",
+        end="",
+        file=stderr,
+        flush=True,
+    )
+    line = stdin.readline()
+    if not line:
+        return Answer(choice=None)  # not an option: the Gate falls back to its policy
+    choice = line.strip() or request.proposal
+    return Answer(choice=choice, note="answered on stdin")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="python -m tiresias_agent.orchestrator",
@@ -1338,6 +1379,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="H-MEM memory (ADR-0005): warm = recall and store lessons through COGNITION_URL, "
         "cold = no memory call; overrides options.memory (default MEMORY_MODE, warm)",
     )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="answer each human-in-the-loop gate on stdin (hitl_mode interactive; an empty line "
+        "takes the proposal); prompts go to stderr",
+    )
     args = parser.parse_args(argv)
     try:
         data = json.loads(_resolve(args.request).read_text(encoding="utf-8"))
@@ -1351,10 +1398,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         request.options.depth = args.depth
     if args.memory:
         request.options.memory = args.memory
+    ask = None
+    if args.interactive:
+        request.options.hitl_mode = "interactive"
+        ask = stdin_ask
     logs_dir = args.logs_dir or os.getenv("LOGS_DIR") or REPO_ROOT / "logs"
     with contextlib.redirect_stdout(sys.stderr):  # keep stdout for the result only
         run = run_loop_a if args.loop_a else run_investigation
-        result = run(request, logs_dir=logs_dir)
+        result = run(request, logs_dir=logs_dir, ask=ask)
     print(result.model_dump_json(indent=2))
     return 0 if result.status != "error" else 1
 

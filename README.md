@@ -67,6 +67,20 @@ curl -sN localhost:8000/runs/my-run-1/events      # one trace line per event, th
 curl -s  localhost:8000/runs/my-run-1             # {"status": "done", "result": {...RunResult...}}
 ```
 
+**Answer a gate.** With `"options": {"hitl_mode": "interactive"}` the run stops at each human-in-the-loop gate (critic escalation, source registration, memory) and waits for you; the stream shows a `gate`/`waiting` line, and with no answer within `GATE_TIMEOUT_SECONDS` (default 120) the agent's own proposal applies (`decided_by: "timeout"`):
+
+```bash
+jq '.options.hitl_mode = "interactive"' input_examples/01_ge_2022_revenue_restated.json > /tmp/01-interactive.json
+curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' -H 'X-Run-Id: gate-1' -d @/tmp/01-interactive.json
+curl -s localhost:8000/runs/gate-1/gates          # waiting_gate: {"gate_id": "g1", "gate": "critic_escalation", "options": ["frontier", "prune"], "proposal": "frontier", "context": {...}, "deadline": "..."}
+curl -s -X POST localhost:8000/runs/gate-1/gates/g1 -H 'Content-Type: application/json' -d '{"choice": "frontier"}'
+curl -s localhost:8000/runs/gate-1/gates          # g2: the source gate, "Register ... GE HealthCare ...?"
+curl -s -X POST localhost:8000/runs/gate-1/gates/g2 -H 'Content-Type: application/json' -d '{"choice": "deny", "note": "not today"}'
+curl -s localhost:8000/runs/gate-1                # done: end_state evidence-frontier, "source gate (interactive, human) denied ..."
+```
+
+A choice that is not an option is a 422, answering twice or after the deadline a 409. The CLI asks on stdin instead: `uv run python -m tiresias_agent.orchestrator ../../input_examples/01_ge_2022_revenue_restated.json --interactive`.
+
 **Without Docker** ([uv](https://docs.astral.sh/uv/); it fetches Python 3.11+ if needed). Stop the Docker stack first (`docker compose down`), or give the app another port, because both use :8000. The app runs in the foreground, so run the CLI line in a second terminal:
 
 ```bash
