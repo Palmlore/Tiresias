@@ -163,7 +163,7 @@ def _inflated_runner(req, *, tracer, run_id, logs_dir, ask=None):
     )
 
 
-def test_critic_escalation_on_an_over_explaining_add_back_takes_the_human_choice(
+def test_critic_escalation_answered_accept_capped_takes_the_human_choice(
     monkeypatch, tmp_path
 ):
     client = _client(monkeypatch, tmp_path, runner=_inflated_runner)
@@ -213,7 +213,7 @@ def test_memory_gate_discard_is_applied(monkeypatch, tmp_path):
 # --- timeout ----------------------------------------------------------------------------------
 
 
-def test_unanswered_gates_time_out_to_the_proposal(client, tmp_path, monkeypatch):
+def test_unanswered_gates_timeout_to_the_proposal(client, tmp_path, monkeypatch):
     monkeypatch.setenv("GATE_TIMEOUT_SECONDS", "0.2")
     rid = _start(client)
     result = _finish(rid)
@@ -287,7 +287,7 @@ def test_gate_errors_404_409_422(client):
 # --- concurrency and SSE ----------------------------------------------------------------------
 
 
-def test_a_waiting_run_blocks_only_itself(client):
+def test_a_waiting_run_blocks_only_itself_not_other_run(client):
     rid = _start(client, run_id="waiting-1")
     _waiting(client, rid, "critic_escalation")
     started = time.monotonic()
