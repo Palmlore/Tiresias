@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import uuid
+from collections import Counter, OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -25,7 +26,7 @@ from typing import Any, Generic, Protocol, TypeVar
 
 import httpx
 
-from ..config import WARM_ENTITIES_DEFAULT, WarmSettings
+from ..config import WARM_ENTITIES_DEFAULT, LivenessSettings, WarmSettings, max_cached_facts
 
 AGENT = "zetaris_adapter"
 REDACTED = "***"
@@ -157,7 +158,9 @@ class _NullTracer:
 
 
 class SourceError(Exception):
-    """A Zetaris call failed. recoverable=True for timeouts, connection errors and 5xx."""
+    """A Zetaris call failed. recoverable=True for an outage: a timeout, a connection error, a
+    5xx, or a reply of any status that shows a dead engine (``dead_engine``, see
+    ``DEAD_ENGINE_SIGNATURES``)."""
 
     def __init__(
         self,
@@ -167,12 +170,45 @@ class SourceError(Exception):
         status_code: int | None = None,
         retry_count: int = 0,
         detail: str = "",
+        dead_engine: bool = False,
     ) -> None:
         super().__init__(message)
         self.recoverable = recoverable
         self.status_code = status_code
         self.retry_count = retry_count
         self.detail = detail
+        self.dead_engine = dead_engine
+
+
+# A Zetaris reply that shows its Spark engine is dead, whatever the HTTP status (BACKLOG B-24).
+# Measured 2026-10-24: after an OutOfMemoryError in Spark's appStatus listener thread the driver
+# stopped its SparkContext but the server kept running, and every statement then failed in about
+# 0.1 s with HTTP 400 and one of these in the body, until the driver container was restarted. A
+# 400 normally means bad SQL or a refused object (non-recoverable); these mean an outage, so the
+# call is recoverable and the fallbacks serve the sample, traced ``degraded``. Each signature is
+# a tuple of lower-case fragments that must all appear in the reply body. This is the only list.
+DEAD_ENGINE_SIGNATURES: tuple[tuple[str, ...], ...] = (
+    ("cannot call methods on a stopped sparkcontext",),
+    ("nullpointerexception", "fetchiterator.fetchnext"),
+)
+DEAD_ENGINE_HINT = (
+    "Zetaris engine is down (SparkContext stopped); restart the driver "
+    "(docker restart zetaris-driver-1)"
+)
+
+
+def dead_engine(text: str) -> bool:
+    """True when a Zetaris reply body matches one of ``DEAD_ENGINE_SIGNATURES``."""
+    body = (text or "").lower()
+    return any(all(part in body for part in sig) for sig in DEAD_ENGINE_SIGNATURES)
+
+
+def _dead_reply(response: httpx.Response) -> bool:
+    """True when the first 20 kB of a reply body match a dead-engine signature, rows or not.
+
+    The signatures are Spark driver errors, not text an SEC filing or fact carries, so a reply
+    whose rows contain one is still treated as an outage."""
+    return dead_engine(response.text[:20_000])
 
 
 # --- SQL templates ----------------------------------------------------------------------------
@@ -346,6 +382,8 @@ class ZetarisClient:
         self._http = httpx.Client(timeout=config.timeout_seconds, transport=transport)
         # X-Run-Id is always sent: without a caller or tracer run id, one is minted per client.
         self._default_run_id = getattr(self.tracer, "run_id", None) or f"run-{uuid.uuid4()}"
+        self.down_reason: str | None = None  # set by mark_down (liveness probe found it down)
+        self.down_dead_engine = False
 
     def __repr__(self) -> str:
         return f"ZetarisClient(rest_url={self.config.rest_url!r}, org_id={self.config.org_id!r})"
@@ -369,6 +407,7 @@ class ZetarisClient:
         redact: Sequence[str] = (),
         expected: Callable[[SourceError], str | None] | None = None,
         max_retries: int | None = None,
+        trace_fields: Mapping[str, Any] | None = None,
     ) -> QueryResult:
         """Run one statement. `redact` values are masked in the returned/traced SQL and errors.
 
@@ -377,13 +416,38 @@ class ZetarisClient:
         instead of ``error``. It is consulted only for a non-recoverable failure: a timeout,
         connection error or 5xx always traces ``error``. The error is raised either way, so
         callers decide as before. ``max_retries`` overrides the configured retries for this
-        call (``warm`` passes 0: a timed-out refetch is reported, not repeated)."""
+        call (``warm`` passes 0: a timed-out refetch is reported, not repeated).
+        ``trace_fields`` are added to the statement's trace line (e.g. an UNCACHE's reason).
+
+        A reply showing a dead engine (``dead_engine``) is recoverable whatever its status and
+        is not retried (it does not heal in a second). After ``mark_down`` every statement
+        fails at once as recoverable, without a request (the liveness probe found Zetaris down)."""
         retries = self.config.max_retries if max_retries is None else max(0, max_retries)
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
         run_id = run_id or getattr(self.tracer, "run_id", None) or self._default_run_id
         shown_sql = self._scrub(sql, redact)
+        extra = dict(trace_fields or {})
         wait = timeout or self.config.timeout_seconds
         start = time.perf_counter()
+        if self.down_reason is not None:
+            self.tracer.emit(
+                agent=AGENT,
+                action=label,
+                status="error",
+                outcome="engine_down",
+                sql=shown_sql,
+                rows=0,
+                duration_ms=0,
+                retry_count=0,
+                source="zetaris",
+                output_summary=f"not sent: {self.down_reason}",
+                **extra,
+            )
+            raise SourceError(
+                f"Zetaris {label}: not sent, {self.down_reason}",
+                recoverable=True,
+                dead_engine=self.down_dead_engine,
+            )
         error: SourceError | None = None
         for attempt in range(retries + 1):
             headers = {
@@ -410,21 +474,37 @@ class ZetarisClient:
                     f"Zetaris {label}: connection failed ({type(exc).__name__})", recoverable=True
                 )
             else:
-                if response.status_code < 400:
-                    result = self._parse(response, label, shown_sql, start, attempt)
+                if response.status_code < 400 and _dead_reply(response):
+                    # A 2xx can carry the dead-engine message too, with or without data rows;
+                    # it is an outage, not a result.
+                    detail = self._scrub(response.text[:500], redact)
+                    error = SourceError(
+                        f"Zetaris {label}: HTTP {response.status_code}: "
+                        f"{DEAD_ENGINE_HINT}: {detail[:160]}",
+                        recoverable=True,
+                        status_code=response.status_code,
+                        detail=detail,
+                        dead_engine=True,
+                    )
+                elif response.status_code < 400:
+                    result = self._parse(response, label, shown_sql, start, attempt, extra)
                     if isinstance(result, QueryResult):
                         return result
                     error = result
                 else:
                     detail = self._scrub(response.text[:500], redact)
+                    # The whole body is checked: a stack trace can put the signature past 500.
+                    dead = dead_engine(response.text[:20_000])
+                    shown = f"{DEAD_ENGINE_HINT}: {detail[:160]}" if dead else detail[:200]
                     error = SourceError(
-                        f"Zetaris {label}: HTTP {response.status_code}: {detail[:200]}",
-                        recoverable=response.status_code >= 500,
+                        f"Zetaris {label}: HTTP {response.status_code}: {shown}",
+                        recoverable=dead or response.status_code >= 500,
                         status_code=response.status_code,
                         detail=detail,
+                        dead_engine=dead,
                     )
             error.retry_count = attempt
-            if not error.recoverable or attempt >= retries:
+            if not error.recoverable or error.dead_engine or attempt >= retries:
                 break
             self._sleep(self.BACKOFF_SECONDS * 2**attempt)
         assert error is not None
@@ -442,6 +522,7 @@ class ZetarisClient:
                 retry_count=error.retry_count,
                 source="zetaris",
                 output_summary=f"{outcome}: {error}",
+                **extra,
             )
             raise error
         self.tracer.emit(
@@ -454,11 +535,25 @@ class ZetarisClient:
             retry_count=error.retry_count,
             source="zetaris",
             output_summary=str(error),
+            **({"outcome": "engine_down"} if error.dead_engine else {}),
+            **extra,
         )
         raise error
 
+    def mark_down(self, reason: str, *, dead: bool = False) -> None:
+        """Send nothing more: every later ``run_sql`` fails at once as a recoverable outage with
+        this reason, so the fallbacks serve the sample (set from the liveness probe, per run)."""
+        self.down_reason = reason
+        self.down_dead_engine = dead
+
     def _parse(
-        self, response: httpx.Response, label: str, sql: str, start: float, attempt: int
+        self,
+        response: httpx.Response,
+        label: str,
+        sql: str,
+        start: float,
+        attempt: int,
+        extra: Mapping[str, Any] | None = None,
     ) -> QueryResult | SourceError:
         try:
             payload = response.json() if response.content else {}
@@ -503,6 +598,7 @@ class ZetarisClient:
             duration_ms=result.duration_ms,
             retry_count=attempt,
             source="zetaris",
+            **dict(extra or {}),
         )
         return result
 
@@ -569,6 +665,7 @@ class LiveZetarisSource:
                 note=f"no registered view for {ticker} {'/'.join(aliases)}",
             )
         sql = concept_series_sql(ticker, present, self.directory)
+        FACTS_CACHE.touch(facts_table(ticker))  # most recently used (ZETARIS_MAX_CACHED_FACTS)
         result = self.client.run_sql(sql, label="concept_series")
         facts = [
             Fact(
@@ -881,9 +978,18 @@ def bootstrap(
     discovery: bool = False,
     deadline: float | None = None,
     clock: Callable[[], float] = time.monotonic,
+    protect: Iterable[str] = (),
+    cache: FactsCache | None = None,
 ) -> list[dict[str, Any]]:
     """Register the showcase sources (or one entity's ``tables``: the asked entity, or Loop B's
     discovered one). Safe to run twice: "already exists" counts as done.
+
+    Before each companyfacts CACHE TABLE, ``cache`` (default ``FACTS_CACHE``) makes room under
+    ZETARIS_MAX_CACHED_FACTS by uncaching the least recently used table that is not one of this
+    call's entities, not in ``protect`` (object tickers, e.g. the run's asked entity) and not
+    pinned; if nothing can be released the CACHE is not sent (the cap is never exceeded) and the
+    entry is ``status: "capped"`` with ``reason: "cache_cap"``: the raw table stays registered and
+    is read uncached.
 
     A concept the entity never reported gives status "absent" (no view); other failures are
     recorded and the run goes on; steps on a raw table that failed are skipped. Never drops.
@@ -891,9 +997,11 @@ def bootstrap(
     timeout at the time left and skips the remaining statements once it has passed.
     """
     ua = sec_user_agent or os.getenv("SEC_USER_AGENT", "")
+    cache = cache if cache is not None else FACTS_CACHE
     failed_tables: set[str] = set()
     report: list[dict[str, Any]] = []
     plan = bootstrap_plan(ua, entities, concepts, tables=tables, discovery=discovery)
+    keep = {facts_table(e.ticker) for e in entities} | {facts_table(t) for t in protect}
     for step, obj, sql, requires in plan:
         entry: dict[str, Any] = {"step": step, "object": obj}
         if requires in failed_tables:
@@ -907,6 +1015,18 @@ def bootstrap(
                 continue
             timeout = min(timeout, left)
         start = time.perf_counter()
+        counted = step == "cache" and requires is not None and is_facts_table(requires)
+        if counted:
+            assert requires is not None
+            room = cache.make_room(
+                client, requires, protect=keep, timeout=min(UNCACHE_TIMEOUT_SECONDS, timeout)
+            )
+            if not room:
+                # Never cache past the cap: the table stays registered and is read uncached.
+                report.append(
+                    {**entry, "status": "capped", "reason": "cache_cap", "duration_ms": _ms(start)}
+                )
+                continue
 
         def classify(err: SourceError, step: str = step) -> str | None:
             return bootstrap_outcome(step, err)
@@ -917,6 +1037,9 @@ def bootstrap(
             )
             # Views use CREATE OR REPLACE, so a re-run reports them as "replaced".
             entry["status"] = _DONE_STATUS.get(step, "created")
+            if counted:
+                assert requires is not None
+                cache.add(requires)
         except SourceError as err:
             if outcome := classify(err):
                 entry["status"] = outcome
@@ -1005,6 +1128,305 @@ def warm_outcome(err: SourceError) -> str | None:
     return "absent" if "TABLE_OR_VIEW_NOT_FOUND" in err.detail else None
 
 
+# --- Bounded cache and liveness (BACKLOG B-24) ------------------------------------------------
+
+UNCACHE_TIMEOUT_SECONDS = 10.0
+
+
+def facts_table(ticker: str) -> str:
+    """The companyfacts raw table of an entity (``<ticker>_facts_raw``)."""
+    return f"{ticker_of(ticker)}_facts_raw"
+
+
+def is_facts_table(table: str) -> bool:
+    return warm_kind(table) == "facts"
+
+
+def uncache_sql(table: str, directory: Path | None = None) -> str:
+    """``UNCACHE TABLE`` for one raw table (15_uncache_table.sql); the name is validated."""
+    return render_file(
+        "15_uncache_table.sql", directory, table=_check(_TABLE, table, "raw table name")
+    )
+
+
+def uncache(
+    client: ZetarisClient,
+    table: str,
+    *,
+    reason: str,
+    timeout: float = UNCACHE_TIMEOUT_SECONDS,
+    directory: Path | None = None,
+) -> bool:
+    """Release one raw table's session cache. Never drops it, never raises: a failure is traced
+    (the statement's ``uncache`` line, with ``table`` and ``reason``) and returns False. A table
+    that no longer exists counts as released (``outcome: "absent"``)."""
+    fields = {"table": f"TIRESIAS_SEC.{table}", "reason": reason}
+    try:
+        sql = uncache_sql(table, directory)
+        client.run_sql(
+            sql,
+            label="uncache",
+            timeout=max(MIN_STATEMENT_SECONDS, timeout),
+            max_retries=0,
+            expected=warm_outcome,
+            trace_fields=fields,
+        )
+        return True
+    except SourceError as err:
+        return warm_outcome(err) is not None
+    except Exception as exc:  # noqa: BLE001 - releasing a cache must never fail a run
+        client.tracer.emit(
+            agent=AGENT,
+            action="uncache",
+            status="error",
+            source="zetaris",
+            output_summary=f"uncache not sent: {type(exc).__name__}: {exc}"[:200],
+            **fields,
+        )
+        return False
+
+
+class FactsCache:
+    """The companyfacts raw tables this process has cached in Zetaris, least recently used first.
+
+    Each one holds about 150 MB of Zetaris driver heap while cached (BACKLOG B-24), so at most
+    ``max_cached_facts()`` (ZETARIS_MAX_CACHED_FACTS, default 5) are kept: ``make_room`` runs
+    before a CACHE TABLE of one more and uncaches the least recently used table that is neither
+    protected by the caller nor pinned by a running run (``pin``: the asked entity, the Loop B
+    counterparty). ``touch`` marks a table used (a query on it). Tables cached by another process,
+    or before this one started, are not known here. Thread-safe; the UNCACHE itself is sent
+    outside the lock."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._lru: OrderedDict[str, None] = OrderedDict()
+        self._pins: Counter[str] = Counter()
+
+    def reset(self) -> None:
+        with self._lock:
+            self._lru.clear()
+            self._pins.clear()
+
+    def tables(self) -> list[str]:
+        with self._lock:
+            return list(self._lru)
+
+    def pinned(self) -> set[str]:
+        with self._lock:
+            return {t for t, n in self._pins.items() if n > 0}
+
+    def add(self, table: str) -> None:
+        with self._lock:
+            self._lru[table] = None
+            self._lru.move_to_end(table)
+
+    def touch(self, table: str) -> None:
+        with self._lock:
+            if table in self._lru:
+                self._lru.move_to_end(table)
+
+    def discard(self, table: str) -> None:
+        with self._lock:
+            self._lru.pop(table, None)
+
+    def pin(self, table: str) -> None:
+        with self._lock:
+            self._pins[table] += 1
+
+    def unpin(self, table: str) -> None:
+        with self._lock:
+            self._pins[table] -= 1
+            if self._pins[table] <= 0:
+                del self._pins[table]
+
+    def snapshot(self, cap: int | None = None) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "cached_facts": list(self._lru),
+                "max_cached_facts": cap if cap is not None else max_cached_facts(),
+                "pinned": sorted(t for t, n in self._pins.items() if n > 0),
+            }
+
+    def make_room(
+        self,
+        client: ZetarisClient,
+        incoming: str,
+        *,
+        protect: Iterable[str] = (),
+        cap: int | None = None,
+        timeout: float = UNCACHE_TIMEOUT_SECONDS,
+        directory: Path | None = None,
+    ) -> bool:
+        """Before caching ``incoming``: uncache least recently used tables until one more fits
+        under the cap. Returns True when it fits (or ``incoming`` is already counted), False when
+        every cached table is protected or pinned or its UNCACHE failed. Never raises; each
+        UNCACHE is traced with its reason; at most one attempt per cached table."""
+        cap = cap if cap is not None else max_cached_facts()
+        keep = {*protect, incoming}
+        tried: set[str] = set()
+        while True:
+            with self._lock:
+                if incoming in self._lru:
+                    self._lru.move_to_end(incoming)
+                    return True
+                if len(self._lru) < cap:
+                    return True
+                pinned = {t for t, n in self._pins.items() if n > 0}
+                victim = next(
+                    (t for t in self._lru if t not in keep and t not in pinned and t not in tried),
+                    None,
+                )
+                held = len(self._lru)
+            if victim is None:
+                return False
+            tried.add(victim)
+            reason = (
+                f"ZETARIS_MAX_CACHED_FACTS={cap} reached ({held} cached): least recently used, "
+                f"making room for {incoming}"
+            )
+            if uncache(client, victim, reason=reason, timeout=timeout, directory=directory):
+                self.discard(victim)
+
+
+FACTS_CACHE = FactsCache()
+
+
+@dataclass(frozen=True)
+class Liveness:
+    """One liveness probe result: ``state`` ``alive`` / ``down`` / ``inconclusive``."""
+
+    state: str
+    reason: str
+    checked_at: str
+    at: float
+    duration_ms: int
+    dead_engine: bool = False
+
+    @property
+    def down(self) -> bool:
+        return self.state == "down"
+
+
+class LivenessProbe:
+    """A cheap check that Zetaris can run a statement at all, before a live run.
+
+    Sends ``42_liveness.sql`` (``SELECT 1 AS alive``: a constant, no table, no SEC fetch, but it
+    needs a running SparkContext) with ``LivenessSettings.timeout_seconds`` (3 s) and no retry,
+    and reuses the result for ``ttl_seconds`` (30 s) per Zetaris URL, so a dead or hung engine is
+    found once instead of by every query's timeouts. ``down``: a timeout, a connection error, a
+    5xx or a dead-engine reply (``dead_engine``); the run then sends nothing more to Zetaris and
+    serves the sample (``ZetarisClient.mark_down``). ``inconclusive``: any other refusal (e.g.
+    auth): the run goes ahead live and the real queries report it. Each check is traced as one
+    ``liveness`` line (``cached`` true when the result was reused); ``snapshot`` is the last
+    result, for GET /health. Never raises."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._last: dict[str, Liveness] = {}
+        self._latest: Liveness | None = None
+
+    def reset(self) -> None:
+        with self._lock:
+            self._last.clear()
+            self._latest = None
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            latest = self._latest
+        if latest is None:
+            return {"state": "not-checked"}
+        return {
+            "state": latest.state,
+            "reason": latest.reason,
+            "checked_at": latest.checked_at,
+            "duration_ms": latest.duration_ms,
+        }
+
+    def check(
+        self,
+        client: ZetarisClient,
+        *,
+        tracer: Tracer | None = None,
+        settings: LivenessSettings | None = None,
+        clock: Callable[[], float] = time.monotonic,
+        directory: Path | None = None,
+    ) -> Liveness:
+        settings = settings or LivenessSettings.from_env()
+        log = tracer or client.tracer
+        key = client.config.rest_url
+        with self._lock:
+            last = self._last.get(key)
+        cached = last is not None and clock() - last.at < settings.ttl_seconds
+        if cached:
+            assert last is not None
+            result = last
+        else:
+            result = self._probe(client, settings, clock, directory)
+            with self._lock:
+                self._last[key] = result
+                self._latest = result
+        log.emit(
+            agent=AGENT,
+            action="liveness",
+            status={"alive": "success", "down": "degraded"}.get(result.state, "error"),
+            outcome=result.state,
+            cached=cached,
+            duration_ms=0 if cached else result.duration_ms,
+            source="zetaris",
+            output_summary=result.reason,
+        )
+        return result
+
+    def _probe(
+        self,
+        client: ZetarisClient,
+        settings: LivenessSettings,
+        clock: Callable[[], float],
+        directory: Path | None,
+    ) -> Liveness:
+        start = time.perf_counter()
+        state, reason, dead = "alive", "Zetaris answered a constant query", False
+        try:
+            client.run_sql(
+                load_template("42_liveness.sql", directory),
+                label="liveness:probe",
+                timeout=settings.timeout_seconds,
+                max_retries=0,
+            )
+        except SourceError as err:
+            dead = err.dead_engine
+            if err.recoverable:
+                state = "down"
+                reason = (
+                    DEAD_ENGINE_HINT
+                    if dead
+                    else f"Zetaris unreachable ({err}); the run serves the offline sample"
+                )
+            else:
+                state, reason = "inconclusive", f"probe refused, run goes ahead live: {err}"
+        except Exception as exc:  # noqa: BLE001 - a probe never stops a run
+            state, reason = "inconclusive", f"probe failed: {type(exc).__name__}"
+        return Liveness(state, reason[:300], _utc_now(), clock(), _ms(start), dead)
+
+
+LIVENESS = LivenessProbe()
+
+
+def check_liveness(
+    client: ZetarisClient,
+    *,
+    tracer: Tracer | None = None,
+    probe: LivenessProbe | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> Liveness:
+    """``LIVENESS.check`` and, when Zetaris is down, ``client.mark_down`` with the reason: the
+    run's statements then fail at once as an outage and every read is served from the sample."""
+    result = (probe or LIVENESS).check(client, tracer=tracer, clock=clock)
+    if result.down:
+        client.mark_down(result.reason, dead=result.dead_engine)
+    return result
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -1057,8 +1479,16 @@ def warm(
     status: WarmStatus | None = None,
     clock: Callable[[], float] = time.monotonic,
     directory: Path | None = None,
+    cache: FactsCache | None = None,
 ) -> list[dict[str, Any]]:
     """Re-issue ``CACHE TABLE`` (template 12) for the registered raw tables, one at a time.
+
+    Companyfacts tables count toward ZETARIS_MAX_CACHED_FACTS (``cache``, default
+    ``FACTS_CACHE``): before each one, tables cached outside this pass (least recently used
+    first, never a pinned one) are uncached to make room, never one this pass warmed; when no
+    room is left the remaining companyfacts tables are ``capped`` with ``reason: "cache_cap"``.
+    After the pass the warmed companyfacts tables are ordered so the first in ``warm_order`` is
+    the last to be evicted.
 
     The cache is lost when Zetaris restarts and the first query then refetches from SEC
     (BACKLOG B-20). Tables are taken in ``warm_order`` with ``settings.entities``
@@ -1073,6 +1503,7 @@ def warm(
     replaces or drops anything. Raises SourceError only if the table list cannot be read."""
     settings = settings or WarmSettings.from_env()
     status = status or WarmStatus()
+    cache = cache if cache is not None else FACTS_CACHE
     start = time.perf_counter()
     deadline = clock() + settings.budget_seconds
     try:
@@ -1089,6 +1520,7 @@ def warm(
     status.begin(len(chosen))
     report: list[dict[str, Any]] = []
     failures_in_a_row = 0
+    warmed_facts: list[str] = []
     for table in chosen:
         entry: dict[str, Any] = {"table": f"TIRESIAS_SEC.{table}", "kind": warm_kind(table)}
         left = deadline - clock()
@@ -1103,6 +1535,13 @@ def warm(
             continue
         sql = render_file("12_cache_table.sql", directory, table=table)
         t0 = time.perf_counter()
+        facts = is_facts_table(table)
+        if facts and not cache.make_room(
+            client, table, protect=warmed_facts, timeout=min(UNCACHE_TIMEOUT_SECONDS, left)
+        ):
+            report.append({**entry, "status": "capped", "reason": "cache_cap", "duration_ms": 0})
+            status.advance()
+            continue
         try:
             client.run_sql(
                 sql,
@@ -1113,6 +1552,9 @@ def warm(
             )
             entry["status"] = "warmed"
             failures_in_a_row = 0
+            if facts:
+                cache.add(table)
+                warmed_facts.append(table)
         except SourceError as err:
             if outcome := warm_outcome(err):
                 entry["status"] = outcome
@@ -1123,6 +1565,8 @@ def warm(
         entry["duration_ms"] = _ms(t0)
         report.append(entry)
         status.advance()
+    for table in reversed(warmed_facts):  # highest priority = most recently used
+        cache.touch(table)
     for table in capped:
         name = f"TIRESIAS_SEC.{table}"
         report.append({"table": name, "kind": warm_kind(table), "status": "capped"})
@@ -1298,13 +1742,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 __all__ = [
     "CONCEPT_ALIASES",
+    "DEAD_ENGINE_SIGNATURES",
+    "FACTS_CACHE",
+    "LIVENESS",
     "Entity",
     "Evidence",
     "EvidenceSource",
     "Fact",
+    "FactsCache",
     "FallbackSource",
     "Filing",
     "LiveZetarisSource",
+    "Liveness",
+    "LivenessProbe",
     "QueryResult",
     "SampleSource",
     "SourceError",
@@ -1312,10 +1762,13 @@ __all__ = [
     "ZetarisClient",
     "ZetarisConfig",
     "bootstrap",
+    "check_liveness",
+    "dead_engine",
     "endpoint_cik",
     "lightning_tables",
     "make_source",
     "object_ticker",
+    "uncache",
     "warm",
     "warm_on_start",
 ]

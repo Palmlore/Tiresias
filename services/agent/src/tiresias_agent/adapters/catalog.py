@@ -36,6 +36,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -60,6 +61,7 @@ from .zetaris import (
     object_ticker,
     render_file,
     sample_dir,
+    uncache,
 )
 
 AGENT = "catalog"
@@ -731,6 +733,38 @@ class SampleDiscovery:
 # --- live: Zetaris only --------------------------------------------------------------------------
 
 
+class _Released:
+    """Discovery tables this process uncached (``ZetarisDiscovery.release_cache``): a later read
+    re-caches them first. Bounded: the oldest names are forgotten past ``limit``."""
+
+    def __init__(self, limit: int = 512) -> None:
+        self._lock = threading.Lock()
+        self._names: dict[str, None] = {}
+        self._limit = limit
+
+    def add(self, table: str) -> None:
+        with self._lock:
+            self._names.pop(table, None)
+            self._names[table] = None
+            while len(self._names) > self._limit:
+                self._names.pop(next(iter(self._names)))
+
+    def discard(self, table: str) -> None:
+        with self._lock:
+            self._names.pop(table, None)
+
+    def has(self, table: str) -> bool:
+        with self._lock:
+            return table in self._names
+
+    def clear(self) -> None:
+        with self._lock:
+            self._names.clear()
+
+
+RELEASED = _Released()
+
+
 class ZetarisDiscovery:
     """Discovery reads as Lightning SQL through ``ZetarisClient`` (no HTTP of its own).
 
@@ -739,6 +773,10 @@ class ZetarisDiscovery:
     - ``submissions(cik10, ticker)`` registers ``<ticker>_submissions_raw`` on demand (CREATE +
       CACHE, the same template as bootstrap) and refuses a table bound to another CIK.
       Statements that make Zetaris fetch SEC are paced at the catalog rate limit.
+    - ``release_cache(keep=)`` uncaches the submissions and full-text tables this instance
+      cached, except ``keep``'s (BACKLOG B-24; the orchestrator calls it after the source scout
+      and at the end of a live run). They stay registered; a released table read again by a
+      later scout is re-cached on demand (``RELEASED`` remembers which, per process).
     """
 
     name = "zetaris"
@@ -767,6 +805,7 @@ class ZetarisDiscovery:
         self._tickers_ready = False
         self._tables: dict[str, str] | None = None
         self.registered: list[str] = []  # discovery objects this instance registered
+        self.cached: list[str] = []  # submissions / full-text tables this instance cached
 
     def _check_ua(self, label: str) -> None:
         if not _USER_AGENT.match(self.user_agent or ""):
@@ -862,6 +901,7 @@ class ZetarisDiscovery:
                     f"{SUBMISSIONS}: {table} is bound to CIK {bound}, not {cik10}",
                     recoverable=False,
                 )
+            self._recache(table, SUBMISSIONS)
             return table
         self._check_ua(SUBMISSIONS)
         ua = self.user_agent
@@ -886,6 +926,7 @@ class ZetarisDiscovery:
                     raise
         self._tables[table] = self.catalog.get(SUBMISSIONS).url(cik10=cik10)
         self.registered.append(table)
+        self._cached(table)
         self.tracer.emit(
             agent=AGENT,
             action="register_submissions",
@@ -931,6 +972,7 @@ class ZetarisDiscovery:
         if self._tables is None:
             self._tables = lightning_tables(self.client, self.directory)
         if table in self._tables:
+            self._recache(table, FULLTEXT)
             return table
         self._check_ua(FULLTEXT)
         ua = self.user_agent
@@ -955,6 +997,7 @@ class ZetarisDiscovery:
                     raise
         self._tables[table] = endpoint
         self.registered.append(table)
+        self._cached(table)
         self.tracer.emit(
             agent=AGENT,
             action="register_fulltext",
@@ -967,6 +1010,61 @@ class ZetarisDiscovery:
             "(catalog read, not counted in MAX_NEW_SOURCES_PER_RUN)",
         )
         return table
+
+    def _cached(self, table: str) -> None:
+        if table not in self.cached:
+            self.cached.append(table)
+        RELEASED.discard(table)
+
+    def _recache(self, table: str, entry_id: str) -> None:
+        """An existing table this process released earlier: CACHE it again before reading it.
+        Either way the read below caches it, so this instance tracks it for ``release_cache``."""
+        if not RELEASED.has(table):
+            self._cached(table)  # registered by an earlier run; this read caches it
+            return
+        self._pace(entry_id)
+        cache = render_file("12_cache_table.sql", self.directory, table=table)
+        timeout = max(self.client.config.timeout_seconds, BOOTSTRAP_TIMEOUT_SECONDS)
+        try:
+            self.client.run_sql(
+                cache,
+                label="discovery_cache",
+                timeout=timeout,
+                trace_fields={"reason": "re-cached on demand after an earlier release"},
+            )
+        except SourceError as err:
+            if err.recoverable:
+                raise  # an outage: the fallback serves the sample
+            return  # traced; the read below refetches the table instead
+        self._cached(table)
+
+    def release_cache(self, keep: Sequence[str] = ()) -> list[dict[str, Any]]:
+        """UNCACHE TABLE the discovery tables this instance cached (candidate submissions tables,
+        full-text search tables), except the submissions tables of ``keep`` (tickers: the asked
+        entity, the chosen counterparty). Never drops, never raises: one traced ``uncache`` line
+        per table with its reason; a failure is logged and the table is not retried. Returns one
+        entry per table (``table``, ``released`` bool)."""
+        kept: set[str] = set()
+        for ticker in keep:
+            try:
+                kept.add(submissions_table(ticker))
+            except ValueError:
+                continue
+        report: list[dict[str, Any]] = []
+        for table in list(self.cached):
+            if table in kept:
+                continue
+            reason = (
+                "full-text search table: one search, re-cached on demand"
+                if table.startswith("fts_")
+                else "discovery candidate not chosen: re-cached on demand"
+            )
+            ok = uncache(self.client, table, reason=reason, directory=self.directory)
+            self.cached.remove(table)
+            if ok:
+                RELEASED.add(table)
+            report.append({"table": table, "released": ok})
+        return report
 
     def filers_naming(
         self, phrase: str, forms: Sequence[str], start: str, end: str
@@ -1043,6 +1141,11 @@ class FallbackDiscovery:
         self, phrase: str, forms: Sequence[str], start: str, end: str
     ) -> Evidence[NamingRow]:
         return self._call("filers_naming", phrase, forms, start, end)
+
+    def release_cache(self, keep: Sequence[str] = ()) -> list[dict[str, Any]]:
+        """The live side's ``release_cache`` (the sample has no cache to release)."""
+        release = getattr(self.primary, "release_cache", None)
+        return release(keep) if callable(release) else []
 
 
 def make_discovery(
