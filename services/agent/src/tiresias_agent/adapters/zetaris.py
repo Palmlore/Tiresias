@@ -987,8 +987,9 @@ def bootstrap(
     Before each companyfacts CACHE TABLE, ``cache`` (default ``FACTS_CACHE``) makes room under
     ZETARIS_MAX_CACHED_FACTS by uncaching the least recently used table that is not one of this
     call's entities, not in ``protect`` (object tickers, e.g. the run's asked entity) and not
-    pinned; if nothing can be released the table is still cached (the run needs it) and the
-    entry carries ``cache_cap: "exceeded"``.
+    pinned; if nothing can be released the CACHE is not sent (the cap is never exceeded) and the
+    entry is ``status: "capped"`` with ``reason: "cache_cap"``: the raw table stays registered and
+    is read uncached.
 
     A concept the entity never reported gives status "absent" (no view); other failures are
     recorded and the run goes on; steps on a raw table that failed are skipped. Never drops.
@@ -1021,7 +1022,11 @@ def bootstrap(
                 client, requires, protect=keep, timeout=min(UNCACHE_TIMEOUT_SECONDS, timeout)
             )
             if not room:
-                entry["cache_cap"] = "exceeded"
+                # Never cache past the cap: the table stays registered and is read uncached.
+                report.append(
+                    {**entry, "status": "capped", "reason": "cache_cap", "duration_ms": _ms(start)}
+                )
+                continue
 
         def classify(err: SourceError, step: str = step) -> str | None:
             return bootstrap_outcome(step, err)

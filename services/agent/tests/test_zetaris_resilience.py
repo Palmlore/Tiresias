@@ -330,8 +330,28 @@ def test_cap_never_evicts_the_asked_entity_or_the_counterparty(monkeypatch):
     report = register(client, "newco", 3, cache=cache, protect=["asked"])
     assert uncached(sent) == []
     cache_entry = next(e for e in report if e["step"] == "cache")
-    assert cache_entry["status"] == "cached" and cache_entry["cache_cap"] == "exceeded"
-    assert max_cached_facts() == 2
+    assert cache_entry["status"] == "capped" and cache_entry["reason"] == "cache_cap"
+    assert not [s for s in sent if s.startswith("CACHE TABLE tiresias_sec.newco")]
+    assert len(cache.tables()) == 2 == max_cached_facts()
+
+
+def test_cap_never_exceeded_when_the_call_entities_fill_it(monkeypatch):
+    # PR #28 round 5: bootstrap(entities=[GE, IBM]) with a cap of 1 cached both.
+    monkeypatch.setenv("ZETARIS_MAX_CACHED_FACTS", "1")
+    handler, sent = recording()
+    client, cache = make_client(handler), z.FactsCache()
+    report = z.bootstrap(
+        client,
+        sec_user_agent=UA,
+        entities=[entity("aaa", 1), entity("bbb", 2)],
+        concepts=["Revenues"],
+        tables=("facts",),
+        cache=cache,
+    )
+    assert cache.tables() == ["aaa_facts_raw"]
+    assert [e["status"] for e in report if e["step"] == "cache"] == ["cached", "capped"]
+    assert [e["status"] for e in report if e["step"] == "facts_table"] == ["created", "created"]
+    assert uncached(sent) == [] and len([s for s in sent if s.startswith("CACHE")]) == 1
 
 
 def test_live_run_never_uncaches_the_asked_entity_or_the_counterparty(
