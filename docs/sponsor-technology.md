@@ -37,7 +37,7 @@ Status: **in-progress**. The H-MEM service works and passes conformance 13/13, b
 
 Nemotron models serve the Nightshift lanes: a fast lane for the hypothesiser and reporter, a deep lane for the critic's second opinion. Nightshift 1.2.1 does not let a request pin a model, so the evidence is the receipt: every model call's trace line records `routed_model` and `provider` (on 2026-10-24 every live call was routed to a Nemotron model). The NVIDIA key lives only in Nightshift's Providers tab.
 
-Status: **in-progress** (live lanes measured once; sample mode makes no model call)
+Status: **planned** (the lanes are built and were measured live once; the status is updated with metadata.json after review; sample mode makes no model call)
 
 ## Cursor
 
