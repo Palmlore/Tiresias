@@ -4,7 +4,7 @@ The single list to work from. Every event requirement is merged and de-duplicate
 
 `[x]` done (evidence linked) · `[~]` in progress · `[ ]` not started
 
-Updated **2026-10-23 AEDT** (build day 2, after #6–#9). Work now lands through DuelLoop-reviewed PRs (AGENTS.md → How work lands). Deadline **27 Oct 23:45 UTC = 28 Oct 10:45 AEDT**.
+Updated **2026-10-24 AEDT** (build day 3, after #17–#24). Work now lands through DuelLoop-reviewed PRs (AGENTS.md → How work lands). Deadline **27 Oct 23:45 UTC = 28 Oct 10:45 AEDT**.
 
 **Source keys**
 
@@ -41,10 +41,10 @@ Updated **2026-10-23 AEDT** (build day 2, after #6–#9). Work now lands through
 - [~] **Meterless Build rule: at least one engine in a working, user-facing feature, with test evidence** (SG §3.2)
   - [x] H-MEM in `services/cognition`; official conformance 13/13 (`npm run conformance`); 6 tests
   - [ ] User-facing feature: cold → warm → purge → cold memory demo through `/run`
-- [ ] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4)
-  - [ ] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers
-  - [~] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling) (merged #2; mock-tested; `python -m tiresias_agent.adapters.nightshift probe` pending the VM's Runtime URL)
-- [ ] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page)
+- [~] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4) (#22: every model call goes through Nightshift, three lanes (hypothesiser, critic second opinion, reporter wording), the model proposes and the rules decide, ADR-0010; #24: the user picks the depth, `quick` (default, rules only) / `thorough` / `deep`, ADR-0011; measured live once on case 01 on 2026-10-24: 4 calls, ~170 s; sample mode, the judges' default, makes no model call by design, so a judge sees the lanes only live)
+  - [x] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers (2026-10-24: Nightshift 1.2.1 in the Tart VM; host access needed macOS Local Network permission for the terminal and for Docker; `/v1/models` answers from the host and from a container)
+  - [x] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling) (merged #2; 2026-10-24: `python -m tiresias_agent.adapters.nightshift probe` passes on both lanes, receipts name the served model)
+- [~] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page) (#22: Nemotron serves the lanes through Nightshift, every call traces `routed_model`, `provider` and the receipt id; live 2026-10-24: nemotron-3.5-lightning-30b-a3b and nemotron-3.5-super-vl-120b-a12b served the critic and wording lanes, one critic disagreement kept by the rules. Not pinned: Nightshift 1.2.1 routes on its own and does not honour explicit model ids)
 - [x] ~~**Developed in Cursor.**~~ Optional since the organizers' 23 Oct update ("Cursor is now optional … use any AI coding tool"). Claude Code is the main coding agent. Describe only the tools actually used ([ai-usage.md](ai-usage.md)) (OR §8.1 as amended; SP cursor).
 
 ## C. Agent system (Technical 20 · Innovation 15)
@@ -67,11 +67,13 @@ Updated **2026-10-23 AEDT** (build day 2, after #6–#9). Work now lands through
 
 ## D. Running and reproducibility (any failure here can lose the whole Technical and Demo score)
 - [x] Programmatic entry point: `POST /run`, JSON in and out, bound to `0.0.0.0`, structured errors (TE §2; SC §5) (#7: `app.py`, `runs.py`, contract in `contracts/openapi/agent.yaml`; `tests/test_api.py`; #8: `/run` runs `run_investigation`, `tests/test_api.py::test_run_goes_through_loop_b_for_a_restatement`)
-- [~] Docker: `docker compose up --build` from a clean clone; nothing installed at runtime; no local GPU (TE §3–4) (#7: image built from the repo root with `data/sample/`, `zetaris/sql/`, `catalog/`, `input_examples/`, `tests/test_packaging.py`, BACKLOG B-1 done; `docker compose up --build` served the three examples locally (PR #7 Evidence); not yet from a fresh clone)
+- [~] Docker: `docker compose up --build` from a clean clone; nothing installed at runtime; no local GPU (TE §3–4) (#7: image built from the repo root with `data/sample/`, `zetaris/sql/`, `catalog/`, `input_examples/`, `tests/test_packaging.py`, BACKLOG B-1 done; #19: CI's quickstart job builds and runs the stack from a fresh checkout with an empty `.env` on every PR; 2026-10-24 fresh clone on the build Mac followed the README literally and worked (#21 fixed the friction it found); clean-machine test on the Tahoe VM still open)
 - [x] **`SAMPLE_MODE=true` runs real agent logic with an empty `.env`**, with no network or keys (SC §7, §14 step 9; ADR-0007) (#6, #8: the agents run on `data/sample/`, nothing replayed; #7: `cp .env.example .env && docker compose up --build` then `POST /run` on the three examples (PR #7 Evidence); CLI: `python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json`)
 - [x] Runs are bounded: a run finishes in ≤10 min, with timeouts and capped loops (TE §5) (#6, #8: `RUN_BUDGET_SECONDS`=600 shared by Loop A and B, `MAX_CAUSAL_DEPTH`, `MAX_BRANCHES_PER_LEVEL`, `MAX_NEW_SOURCES_PER_RUN`; `tests/test_orchestrator.py::test_wall_clock_budget_ends_in_budget`, `tests/test_loop_b.py::test_wall_clock_budget_applies_to_loop_b`; #7: `POST /run` gives a 504 past the budget; #9: registration honours the run deadline; slowest measured live run 33 s (pass 1, IBM cold), 21 s after the scout fix)
 - [x] Failures return a controlled response, not a hang or a stack trace (TE §5; SC §5) (#6: `tests/test_orchestrator.py::test_unexpected_failure_is_a_structured_error_not_a_stack_trace`; #7: structured 422/404/409/500/504 in `tests/test_api.py`, 501 in `tests/test_health.py`, 429 from `RegistryBusy`; #9: an unknown, ambiguous or unreachable company ends at `evidence-frontier` with a reason, `tests/test_any_company.py`)
-- [ ] Full validation flow from a fresh clone (SC §14), first on **day 4**, again before submitting
+- [~] Full validation flow from a fresh clone (SC §14), first on **day 4**, again before submitting (2026-10-24: fresh clone from GitHub, README only, sample mode: every Quickstart step matches, 7 s of command time with cached base images; 8 friction points, README fixed in #21; again before submitting)
+- [x] CI on every PR and on `main`: agent tests and lint, cognition tests and H-MEM conformance, secrets and metadata checks, and the judge quickstart in Docker (#19, `.github/workflows/ci.yml`)
+- [x] Merged PRs' acceptance criteria re-run on `main` on demand (#20: `scripts/verify_audit.py`, 158 criteria from 16 PRs; findings B-22, B-23)
 - [ ] **Judge installation test on a clean macOS Tahoe VM** (Tart `macos-tahoe-base`, nothing preinstalled): a newcomer following only the README gets the system running. Rule: `submission/` is all a judge sees; assume no cache, no local setup.
   - [ ] Every setup step is a script where possible (one command per step, idempotent, prints ✔/✖)
   - [ ] Steps that can't be scripted (e.g. Nightshift install, access gate, NVIDIA key) have a screenshot and a one-line reason why they're manual
@@ -110,7 +112,7 @@ Updated **2026-10-23 AEDT** (build day 2, after #6–#9). Work now lands through
 
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
 - [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris, Meterless, Cursor and NVIDIA, plus "what was unique" (SR §3.4) (drafted; finalize from what ships)
-- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris and Meterless `in-progress`, NVIDIA `planned`)
+- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris, Meterless and NVIDIA `in-progress`; Cursor `planned`, the schema has no "optional")
 - [ ] Switch to the official metadata format if the organizers publish one (STATUS #1)
 
 ## J. Submission (HackOS)
@@ -124,7 +126,7 @@ Updated **2026-10-23 AEDT** (build day 2, after #6–#9). Work now lands through
 |---|---|---|
 | Thu 22 Oct (day 1) | Zetaris up and measured; repo scaffolded; cognition service working | [x] |
 | Fri 23 Oct | Agent: Zetaris adapter, tracing, Loop A on case 01 in sample mode | [x] tracing (#1), Zetaris adapter (#5), Loop A (#6); ahead of plan: `/run` + SSE + Docker sample mode (#7), Loop B (#8), any company live through Zetaris (#9) |
-| Sat 24 Oct | Loop B live; critic rules; Nightshift client; 3 cases end to end | [~] Loop B live against local Zetaris (#8, #9 measurement); critic rules (#6, #8); 3 cases end to end in sample and live mode; Nightshift client merged (#2) but not live and not used by the agents |
+| Sat 24 Oct | Loop B live; critic rules; Nightshift client; 3 cases end to end | [x] Loop B live against local Zetaris (#8, #9 measurement); critic rules (#6, #8); 3 cases end to end in sample and live mode; Nightshift live and used by three model lanes (#22), depth levels (#24); CI (#19); audit of merged PRs (#20) |
 | Sun 25 Oct (day-4 checkpoint) | Runs locally **and** in Docker; sample mode with an empty `.env`; memory demo; fresh-clone validation; first judge install test on the clean Tahoe VM. More than 3 gaps means cut scope. | [~] local and Docker sample mode with an empty `.env` (#7); memory demo, fresh-clone validation and Tahoe VM test open |
 | Mon 26 Oct | Freeze architecture. Branching and asker profiles polish; outputs and traces committed; README final | [ ] |
 | Tue 27 Oct | Record the demo, finish the deck and sponsor explanation | [ ] |
