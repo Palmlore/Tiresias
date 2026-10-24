@@ -128,28 +128,54 @@ def _frame_03():
 # --- switch -------------------------------------------------------------------------------------
 
 
+ALL = {"hypothesiser", "critic", "reporter"}
+
+
 @pytest.mark.parametrize(
-    ("requested", "env", "sample", "configured", "enabled"),
+    ("depth", "legacy", "env", "sample", "configured", "lanes"),
     [
-        (None, {}, True, True, False),  # auto, sample mode: rule lanes
-        (None, {}, False, True, True),  # auto, live, configured: on
-        (None, {}, False, False, False),  # auto, live, not configured
-        (None, {"MODEL_LANES": "on"}, True, True, True),  # on works in sample mode too
-        (None, {"MODEL_LANES": "on"}, False, False, False),  # on but not configured
-        (None, {"MODEL_LANES": "off"}, False, True, False),
-        ("off", {"MODEL_LANES": "on"}, False, True, False),  # RunOptions wins over the env
-        ("on", {"MODEL_LANES": "off"}, True, True, True),
-        (None, {"MODEL_LANES": "bogus"}, True, True, False),  # invalid -> auto
+        # ADR-0011: the depth picks the lanes; quick (rules only) is the default, live too.
+        (None, None, {}, False, True, set()),  # default: quick
+        ("quick", None, {}, False, True, set()),
+        ("thorough", None, {}, False, True, {"critic"}),
+        ("deep", None, {}, False, True, ALL),
+        ("deep", None, {}, False, False, set()),  # no Runtime configured: rules (degraded)
+        # Sample mode: no lane at any depth, MODEL_LANES=on included.
+        (None, None, {}, True, True, set()),
+        ("deep", None, {"MODEL_LANES": "on"}, True, True, set()),
+        (None, "on", {}, True, True, set()),
+        # MODEL_LANES: off forces quick even at deep; on with no depth = deep; invalid = auto.
+        ("deep", None, {"MODEL_LANES": "off"}, False, True, set()),
+        (None, "on", {"MODEL_LANES": "off"}, False, True, set()),
+        (None, None, {"MODEL_LANES": "on"}, False, True, ALL),
+        ("thorough", None, {"MODEL_LANES": "on"}, False, True, {"critic"}),  # depth wins
+        (None, None, {"MODEL_LANES": "on"}, False, False, set()),  # on but not configured
+        (None, None, {"MODEL_LANES": "bogus"}, False, True, set()),
+        # Deprecated RunOptions.model_lanes: on = deep, off = quick, ignored when depth is set.
+        (None, "on", {}, False, True, ALL),
+        (None, "off", {"MODEL_LANES": "on"}, False, True, set()),
+        (None, "auto", {}, False, True, set()),
+        ("thorough", "on", {}, False, True, {"critic"}),
     ],
 )
-def test_switch_resolves_mode_sample_and_configuration(requested, env, sample, configured, enabled):
+def test_switch_resolves_mode_sample_and_configuration(
+    depth, legacy, env, sample, configured, lanes
+):
     config = CFG if configured else NightshiftConfig()
-    switch = model_lanes.resolve(requested, sample=sample, config=config, max_calls=12, env=env)
-    assert switch.enabled is enabled, switch
+    switch = model_lanes.resolve(
+        depth, model_lanes=legacy, sample=sample, config=config, max_calls=12, env=env
+    )
+    assert switch.enabled is bool(lanes), switch
+    assert set(switch.lanes) == lanes
+    assert switch.depth == (switch.requested if lanes else "quick")
+    if sample:
+        assert "sample mode" in switch.reason and not switch.degraded
+    if not configured and switch.requested != "quick" and not sample:
+        assert switch.degraded and "not configured" in switch.reason
 
 
 def test_cap_zero_switches_the_lanes_off():
-    switch = model_lanes.resolve("on", sample=False, config=CFG, max_calls=0, env={})
+    switch = model_lanes.resolve("deep", sample=False, config=CFG, max_calls=0, env={})
     assert not switch.enabled and "MAX_MODEL_CALLS_PER_RUN=0" in switch.reason
 
 
@@ -433,14 +459,17 @@ def test_every_model_call_writes_one_line_with_routing_and_no_secret(tmp_path):
     assert len([x for x in phases if x["action"] == "phase_done"]) == len(calls)
 
 
-def test_env_switch_on_with_an_unreachable_runtime_degrades(rule_only, tmp_path, monkeypatch):
-    # The real resolver path (_lanes): MODEL_LANES=on, a configured but unreachable Runtime.
+def test_env_switch_on_in_sample_mode_makes_no_model_call(rule_only, tmp_path, monkeypatch):
+    # The real resolver path (_lanes): MODEL_LANES=on and a configured (unreachable) Runtime.
+    # ADR-0011: sample mode runs the rules only at every depth, so nothing is called.
     monkeypatch.setenv("MODEL_LANES", "on")
     monkeypatch.setenv("METERLESS_BASE_URL", "http://127.0.0.1:9/v1")
     monkeypatch.setenv("METERLESS_RUNTIME_TOKEN", TOKEN)
     monkeypatch.setenv("MODEL_TIMEOUT_SECONDS", "2")
     result = run_investigation(_sample_request("02"), logs_dir=tmp_path)
     assert _shape(result) == _shape(rule_only["02"])
-    assert result.stats.model_calls == 1
+    assert result.stats.model_calls == 0
+    assert result.depth.requested == "deep" and result.depth.requested_by == "MODEL_LANES"
+    assert result.depth.effective == "quick" and "sample mode" in result.depth.note
     text = Path(result.trace_file).read_text()
-    assert TOKEN not in text and '"action": "degrade"' in text
+    assert TOKEN not in text and '"action": "degrade"' not in text

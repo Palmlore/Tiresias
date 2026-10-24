@@ -69,8 +69,10 @@ MODEL_LANES_MODES = ("auto", "on", "off")
 
 
 def model_lanes_mode(env: Mapping[str, str] | None = None) -> str:
-    """MODEL_LANES (ADR-0010), read at call time: auto (default), on or off. Anything else is
-    auto."""
+    """MODEL_LANES (ADR-0010, ADR-0011), read at call time: the operator's override of the
+    investigation depth. auto (default): the request's depth decides (quick unless it asks for
+    more); on: deep when the request names no depth; off: quick (rules only) at every depth.
+    Anything else is auto."""
     env = os.environ if env is None else env
     value = (env.get("MODEL_LANES") or "auto").strip().lower()
     return value if value in MODEL_LANES_MODES else "auto"
@@ -106,3 +108,60 @@ FIRST_RUN_SECONDS: dict[str, tuple[float, float, str]] = {
         "not registered yet (cold: the run registers it first), measured 2026-10-23",
     ),
 }
+
+# Investigation depth (ADR-0011): which model lanes run (agents/model_lanes.py, DEPTH_LANES).
+# quick = rules only (the default, live and sample); thorough = + the critic's deep-lane second
+# opinion; deep = every model lane (hypothesiser, critic second opinion, reporter wording).
+DEPTHS = ("quick", "thorough", "deep")
+DEFAULT_DEPTH = "quick"
+
+# Model time a depth adds to a live run, in seconds, on top of FIRST_RUN_SECONDS. Measured live on
+# 2026-10-24 on input example 01 (two runs, Zetaris down, so the evidence came from the sample
+# fallback): the three deep critic calls took 91-94 s in total, the one fast wording call about
+# 51 s, and the whole run 169-173 s (rules only: 3-11 s warm, 15-21 s cold). The hypothesiser lane
+# made no call there (the rules filled the root level); each call it makes adds up to
+# MODEL_TIMEOUT_SECONDS. The number of critic calls grows with the links judged, so these are a
+# measured case, not a bound (MAX_MODEL_CALLS_PER_RUN and RUN_BUDGET_SECONDS are the bounds).
+# Source: docs/decisions/ADR-0011-investigation-depth.md. Re-measure before changing these.
+MODEL_SECONDS: dict[str, tuple[float, float, str]] = {
+    "quick": (0.0, 0.0, "quick: rules only, no model call"),
+    "thorough": (
+        91.0,
+        94.0,
+        (
+            "thorough: + the critic's deep-lane second opinion, 91-94 s for three deep calls "
+            "(input example 01, live, 2026-10-24)"
+        ),
+    ),
+    "deep": (
+        142.0,
+        145.0,
+        (
+            "deep: every model lane, 91-94 s for three deep critic calls + about 51 s for the "
+            "fast wording call (input example 01, live, 2026-10-24; 169-173 s end to end with "
+            "Zetaris down); each hypothesiser call adds up to MODEL_TIMEOUT_SECONDS"
+        ),
+    ),
+}
+
+
+def expected_seconds(tier: str | None, depth: str, sample: bool) -> tuple[float, float, str]:
+    """Expected wall time of a run at ``depth``: FIRST_RUN_SECONDS for the tier (``None`` = not
+    known yet: warm or cold) plus MODEL_SECONDS for the depth. Sample mode makes no model call at
+    any depth, so every depth takes the sample's milliseconds."""
+    if sample:
+        lo, hi, basis = FIRST_RUN_SECONDS["sample"]
+        return lo, hi, f"{basis}; no model call at any depth"
+    if tier is None:
+        (lo, warm_hi, _), (cold_lo, hi, _) = (
+            FIRST_RUN_SECONDS["ready"],
+            FIRST_RUN_SECONDS["searchable"],
+        )
+        basis = (
+            f"rules: {lo:.0f}-{warm_hi:.0f} s if Zetaris has the entity registered (warm), "
+            f"{cold_lo:.0f}-{hi:.0f} s if the run registers it first (cold), measured 2026-10-23"
+        )
+    else:
+        lo, hi, basis = FIRST_RUN_SECONDS[tier]
+    mlo, mhi, mbasis = MODEL_SECONDS[depth if depth in MODEL_SECONDS else DEFAULT_DEPTH]
+    return lo + mlo, hi + mhi, f"{basis}; {mbasis}"

@@ -31,7 +31,7 @@ Status: **in-progress**. In live mode the agent drives Zetaris end to end, measu
 
 **Candidates for later:** the Markovian engine (each "why" as a bounded step with compressed carryover) and World Model (the why-tree as entities and edges with provenance).
 
-Status: **in-progress**. The H-MEM service works and passes conformance 13/13, but the agent does not call it yet (memory demo planned). Nightshift is live in live mode: the model lanes (ADR-0010) call it for extra candidates, the critic's second opinion and the action wording, traced with the routed model; measured once on case 01 on 2026-10-24 (4 calls). Sample mode stays rule-based.
+Status: **in-progress**. The H-MEM service works and passes conformance 13/13, but the agent does not call it yet (memory demo planned). Nightshift is live in live mode: the model lanes (ADR-0010) call it for extra candidates, the critic's second opinion and the action wording, traced with the routed model; measured once on case 01 on 2026-10-24 (4 calls). A live run calls it only when the user asks for depth `thorough` (critic) or `deep` (all lanes); the default `quick` is rules only (ADR-0011). Sample mode stays rule-based.
 
 ## NVIDIA
 

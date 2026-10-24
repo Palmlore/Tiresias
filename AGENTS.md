@@ -73,7 +73,8 @@ python3 scripts/zetaris_probe.py     # latency and registration probe (reads .en
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris bootstrap   # register sources (needs ZETARIS_* and SEC_USER_AGENT)
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris smoke [--sample]   # entities, revenue facts, filings
 # Investigation (Loop A, then Loop B) on one request (sample mode by default; --live queries Zetaris with sample fallback; --loop-a stops after Loop A)
-cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--loop-a] [--logs-dir DIR]
+cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--loop-a] [--logs-dir DIR] [--depth quick|thorough|deep]
+#   --depth (ADR-0011): quick = rules only (default); thorough/deep add model lanes live (minutes); sample mode never calls a model
 #   MAX_NEW_SOURCES_PER_RUN=0 shows the source cap (end state budget); scripted {"source": "deny"} shows the source gate
 #   stdout: the RunResult JSON only; trace lines go to stderr and <repo>/logs/trace-<run_id>.jsonl
 #   a relative request path resolves against the cwd, then the repo root

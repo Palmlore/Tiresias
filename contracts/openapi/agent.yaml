@@ -41,11 +41,12 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [run_id, status]
+                required: [run_id, status, depth]
                 properties:
                   run_id: {type: string}
                   status: {const: running}
                   events: {type: string, description: Path of the SSE stream}
+                  depth: {$ref: "#/components/schemas/RunDepth", description: "The depth the run starts at and its expected wait (ADR-0011), so a UI can say how long to wait"}
         "409": {description: X-Run-Id already in the registry, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
         "422": {description: Invalid body, JSON or X-Run-Id, content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
         "429": {description: MAX_CONCURRENT_RUNS already running (recoverable), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
@@ -185,7 +186,8 @@ components:
             memory: {type: string, enum: [warm, cold]}
             sample_mode: {type: boolean}
             decisions: {type: object, description: Scripted gate decisions}
-            model_lanes: {type: string, enum: [auto, "on", "off"], description: "Model-backed lanes through Nightshift (ADR-0010). auto (default): on in live mode when Nightshift is configured, off in sample mode. Overrides MODEL_LANES"}
+            depth: {type: string, enum: [quick, thorough, deep], description: "Investigation depth (ADR-0011). quick (default): rules only; thorough: rules + the critic's deep-lane second opinion; deep: every model lane (hypothesiser, critic second opinion, reporter wording). Sample mode makes no model call at any depth; MODEL_LANES=off forces quick. RunResult.depth and the POST /runs 202 body say what runs and the expected wait"}
+            model_lanes: {type: string, enum: [auto, "on", "off"], deprecated: true, description: "Deprecated (ADR-0011): use depth. on = deep, off = quick, auto = as if absent; ignored when depth is set. Still accepted"}
     BranchRequest:
       type: object
       required: [node_id]
@@ -303,7 +305,7 @@ components:
         hops: {type: integer}
         queries: {type: integer}
         sources_onboarded: {type: integer, description: "Sources registered by Loop B (at most MAX_NEW_SOURCES_PER_RUN)"}
-        model_calls: {type: integer, description: "Nightshift calls made by the model lanes (at most MAX_MODEL_CALLS_PER_RUN, default 12); 0 in sample mode by default"}
+        model_calls: {type: integer, description: "Nightshift calls made by the model lanes (at most MAX_MODEL_CALLS_PER_RUN, default 12); 0 at depth quick (the default) and always 0 in sample mode"}
         tokens: {type: integer, description: Total tokens the Nightshift replies reported}
         seconds: {type: number}
         retries: {type: integer, description: Critic send-backs to the analyst}
@@ -331,6 +333,9 @@ components:
           description: "Set when the scope check stopped the run before Loop A (end state evidence-frontier, status partial): plain reasons and runnable alternatives"
         why_tree: {type: array, items: {$ref: "#/components/schemas/Link"}}
         stats: {$ref: "#/components/schemas/RunStats"}
+        depth:
+          oneOf: [{$ref: "#/components/schemas/RunDepth"}, {type: "null"}]
+          description: "Investigation depth asked and run, the model lanes on and the expected wait (ADR-0011); stats.model_calls counts the calls made"
         trace_file: {type: string}
         sample_mode: {type: boolean}
         error:
@@ -383,16 +388,37 @@ components:
         min_seconds: {type: number}
         max_seconds: {type: number}
         basis: {type: string}
+    DepthWaits:
+      type: object
+      description: Expected wall time of a first full investigation at each depth (ADR-0011; config.FIRST_RUN_SECONDS + config.MODEL_SECONDS)
+      required: [quick, thorough, deep]
+      properties:
+        quick: {$ref: "#/components/schemas/ExpectedWait"}
+        thorough: {$ref: "#/components/schemas/ExpectedWait"}
+        deep: {$ref: "#/components/schemas/ExpectedWait"}
+    RunDepth:
+      type: object
+      description: "The investigation depth of a run (ADR-0011): asked, run, and the expected wait. Precedence: sample mode runs quick at every depth; MODEL_LANES=off forces quick; else options.depth, else the deprecated options.model_lanes (on = deep, off = quick), else MODEL_LANES=on = deep, else quick. A depth with model lanes and no configured Nightshift Runtime (or MAX_MODEL_CALLS_PER_RUN=0) runs as quick, degraded"
+      required: [requested, requested_by, effective, lanes, degraded, note, expected_wait]
+      properties:
+        requested: {type: string, enum: [quick, thorough, deep], description: The depth asked for (quick when nothing asked)}
+        requested_by: {type: string, enum: [options.depth, options.model_lanes, MODEL_LANES, default]}
+        effective: {type: string, enum: [quick, thorough, deep], description: "The depth that runs"}
+        lanes: {type: array, items: {type: string, enum: [hypothesiser, critic, reporter]}, description: Model lanes on for the run (empty at quick)}
+        degraded: {type: boolean, description: "Model lanes were asked for but could not run (no configured Runtime, cap 0, or Nightshift became unavailable during the run)"}
+        note: {type: string, description: Why the effective depth is what it is}
+        expected_wait: {$ref: "#/components/schemas/ExpectedWait"}
     EntityInfo:
       type: object
-      required: [cik, ticker, tier, expected_first_run]
+      required: [cik, ticker, tier, expected_first_run, expected_first_run_by_depth]
       properties:
         cik: {type: string}
         ticker: {type: string}
         name: {type: string}
         tier: {type: string, enum: [ready, searchable]}
         metrics: {type: array, items: {type: string}, description: Supported metrics with registered data}
-        expected_first_run: {$ref: "#/components/schemas/ExpectedWait"}
+        expected_first_run: {$ref: "#/components/schemas/ExpectedWait", description: "At the default depth (quick, rules only)"}
+        expected_first_run_by_depth: {$ref: "#/components/schemas/DepthWaits", description: "At each depth, so a UI can warn before the run starts (ADR-0011)"}
     EntityList:
       type: object
       required: [mode, entities, searchable]

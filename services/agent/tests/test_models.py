@@ -160,8 +160,42 @@ def test_result_shapes_match_the_contract_field_for_field():
         "EntityList",
         "SuggestionList",
         "ModelOpinion",
+        "RunDepth",
+        "DepthWaits",
     ):
         model = getattr(models, name)
         assert set(schemas[name]["properties"]) == set(model.model_fields), name
     stats = set(schemas["RunStats"]["properties"])
     assert {"retries", "prunes", "gate_decisions"} <= stats
+
+
+def test_depth_contract_matches_the_models():
+    # ADR-0011: RunOptions.depth (model_lanes deprecated), RunResult.depth, the 202 body and the
+    # per-depth waits on GET /entities agree between the YAML and the pydantic models.
+    yaml = pytest.importorskip("yaml")
+    from tiresias_agent import models
+    from tiresias_agent.config import DEPTHS
+
+    spec = yaml.safe_load(CONTRACT.read_text())
+    schemas = spec["components"]["schemas"]
+    options = schemas["RunRequest"]["properties"]["options"]["properties"]
+    assert set(options) == set(models.RunOptions.model_fields)
+    assert options["depth"]["enum"] == list(get_args(models.Depth)) == list(DEPTHS)
+    assert options["model_lanes"]["deprecated"] is True
+    assert options["model_lanes"]["enum"] == list(get_args(models.ModelLanesMode))
+    depth = schemas["RunDepth"]["properties"]
+    for field in ("requested", "effective"):
+        assert depth[field]["enum"] == list(DEPTHS)
+    assert depth["lanes"]["items"]["enum"] == list(get_args(models.ModelLane))
+    assert set(schemas["RunDepth"]["required"]) == set(models.RunDepth.model_fields)
+    assert set(schemas["DepthWaits"]["properties"]) == set(DEPTHS)
+    assert "expected_first_run_by_depth" in schemas["EntityInfo"]["required"]
+    accepted = spec["paths"]["/runs"]["post"]["responses"]["202"]["content"]["application/json"]
+    body = accepted["schema"]
+    assert body["properties"]["depth"]["$ref"].endswith("/RunDepth") and "depth" in body["required"]
+    data = _example()
+    data["options"] = {"depth": "thorough"}
+    assert RunRequest.model_validate(data).options.depth == "thorough"
+    data["options"] = {"depth": "maximum"}
+    with pytest.raises(ValidationError):
+        RunRequest.model_validate(data)

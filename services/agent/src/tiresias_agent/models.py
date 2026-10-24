@@ -9,6 +9,8 @@ Role = Literal["analyst", "auditor", "board"]
 HitlMode = Literal["auto", "interactive", "scripted"]
 MemoryMode = Literal["warm", "cold"]
 ModelLanesMode = Literal["auto", "on", "off"]
+Depth = Literal["quick", "thorough", "deep"]
+ModelLane = Literal["hypothesiser", "critic", "reporter"]
 LinkLabel = Literal["breakdown", "causal", "leverage", "background"]
 EvidenceStatus = Literal["evidenced", "partially-evidenced", "hypothesis"]
 RunStatus = Literal["success", "partial", "error"]
@@ -43,10 +45,18 @@ class RunOptions(BaseModel):
     memory: MemoryMode | None = None
     sample_mode: bool | None = None
     decisions: dict[str, Any] | None = Field(default=None, description="Scripted gate decisions")
+    depth: Depth | None = Field(
+        default=None,
+        description="Investigation depth (ADR-0011): quick (default) = rules only; thorough = "
+        "rules + the critic's deep-lane second opinion; deep = every model lane (hypothesiser, "
+        "critic second opinion, reporter wording). Sample mode makes no model call at any depth; "
+        "MODEL_LANES=off forces quick",
+    )
     model_lanes: ModelLanesMode | None = Field(
         default=None,
-        description="Model-backed lanes through Nightshift (ADR-0010): auto (on in live mode when "
-        "Nightshift is configured, off in sample mode), on, off. Overrides MODEL_LANES",
+        description="Deprecated (ADR-0011): use depth. on = deep, off = quick, auto = as if "
+        "absent; ignored when depth is set",
+        json_schema_extra={"deprecated": True},
     )
 
 
@@ -272,6 +282,38 @@ class ExpectedWait(BaseModel):
     basis: str
 
 
+class DepthWaits(BaseModel):
+    """Expected wall time of a first full investigation at each depth (ADR-0011)."""
+
+    quick: ExpectedWait
+    thorough: ExpectedWait
+    deep: ExpectedWait
+
+
+class RunDepth(BaseModel):
+    """The investigation depth of a run (ADR-0011): what was asked, what runs, how long to
+    expect. Set on the POST /runs 202 body (before the run) and on RunResult.depth."""
+
+    requested: Depth = Field(description="The depth asked for (quick when nothing asked)")
+    requested_by: Literal["options.depth", "options.model_lanes", "MODEL_LANES", "default"] = Field(
+        description="Where the requested depth came from (see precedence in ADR-0011)"
+    )
+    effective: Depth = Field(
+        description="The depth that runs: quick in sample mode, with MODEL_LANES=off, with "
+        "MAX_MODEL_CALLS_PER_RUN=0 or without a configured Nightshift Runtime"
+    )
+    lanes: list[ModelLane] = Field(
+        default_factory=list, description="Model lanes on for the run (empty at quick)"
+    )
+    degraded: bool = Field(
+        default=False,
+        description="Model lanes were asked for but could not run (Nightshift not configured, "
+        "the call cap is 0, or Nightshift became unavailable during the run)",
+    )
+    note: str = Field(description="Why the effective depth is what it is, in plain words")
+    expected_wait: ExpectedWait
+
+
 class EntityInfo(BaseModel):
     cik: str
     ticker: str
@@ -280,7 +322,10 @@ class EntityInfo(BaseModel):
     metrics: list[str] = Field(
         default_factory=list, description="Supported metrics with registered data (ready only)"
     )
-    expected_first_run: ExpectedWait
+    expected_first_run: ExpectedWait = Field(description="At the default depth (quick, rules only)")
+    expected_first_run_by_depth: DepthWaits = Field(
+        description="At each depth, so a UI can warn before the run starts (ADR-0011)"
+    )
 
 
 class EntityList(BaseModel):
@@ -326,6 +371,11 @@ class RunResult(BaseModel):
     )
     why_tree: list[Link] = Field(default_factory=list)
     stats: RunStats = Field(default_factory=RunStats)
+    depth: RunDepth | None = Field(
+        default=None,
+        description="Investigation depth asked and run, the model lanes on and the expected wait "
+        "(ADR-0011); stats.model_calls counts the calls made",
+    )
     trace_file: str | None = None
     sample_mode: bool | None = None
     error: ErrorDetail | None = None

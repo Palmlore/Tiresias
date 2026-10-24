@@ -15,7 +15,7 @@ MAX_CAUSAL_DEPTH levels and RUN_BUDGET_SECONDS. Every run ends in exactly one en
 ``run_investigation`` runs Loop A, then Loop B when Loop A ends at the evidence frontier with an
 information need; ``run_loop_a`` runs Loop A only. Both take the same arguments and never raise.
 
-CLI: python -m tiresias_agent.orchestrator <request.json> [--live] [--loop-a] [--logs-dir DIR]
+CLI: python -m tiresias_agent.orchestrator <request.json> [--live] [--loop-a] [--logs-dir DIR] [--depth D]
 runs run_investigation (Loop A only with --loop-a) and prints the RunResult JSON on stdout (trace lines go to stderr and logs/trace-<run_id>.jsonl).
 """
 
@@ -69,14 +69,16 @@ from .agents.knowledge import (
     residual_text,
     ruled_out_text,
 )
-from .config import LoopBudgets, max_over_explained, settings
+from .config import DEPTHS, LoopBudgets, expected_seconds, max_over_explained, settings
 from .gates import Gate, GateRequest
 from .models import Entity as EntityRef
 from .models import (
     ErrorDetail,
     ErrorResponse,
+    ExpectedWait,
     InformationNeed,
     Period,
+    RunDepth,
     RunRequest,
     RunResult,
     RunStats,
@@ -195,7 +197,7 @@ class LoopA:
                 continue
             break
         opinion = None
-        if self.lanes.enabled:  # deep lane: advisory second opinion, the rule verdict decides
+        if self.lanes.allows("critic"):  # deep lane: advisory second opinion, rules decide
             opinion = model_lanes.second_opinion(self.lanes, cand, m, v, frame, self.tracer)
             if opinion is not None and not opinion.agrees:
                 ask = model_lanes.dissent_request(v, opinion)
@@ -276,7 +278,7 @@ class LoopA:
                     exclude=tested,
                 )
                 free = self.budgets.max_branches_per_level - len(cands)
-                if free > 0 and self.lanes.enabled:  # fast lane fills only the free slots
+                if free > 0 and self.lanes.allows("hypothesiser"):  # fast lane: free slots only
                     cands += model_lanes.propose(
                         self.lanes,
                         frame,
@@ -484,19 +486,67 @@ def _start(
     return run, source
 
 
-def _lanes(request: RunRequest, run: _Run) -> model_lanes.ModelLanes:
-    """The run's model lanes (ADR-0010) from RunOptions.model_lanes, MODEL_LANES and the
-    Nightshift configuration. Never raises: a bad configuration means rule lanes only."""
+def _switch(
+    request: RunRequest, sample: bool, budgets: LoopBudgets
+) -> tuple[model_lanes.LaneSwitch, NightshiftConfig | None]:
+    """The run's depth and model lanes (ADR-0010, ADR-0011) from RunOptions.depth (or the
+    deprecated RunOptions.model_lanes), MODEL_LANES, sample mode and the Runtime configuration.
+    Never raises: a bad configuration means quick (rules only), degraded."""
+    opts = request.options
     try:
         config = NightshiftConfig.from_env()
         switch = model_lanes.resolve(
-            request.options.model_lanes,
-            sample=run.sample,
+            opts.depth,
+            model_lanes=opts.model_lanes,
+            sample=sample,
             config=config,
-            max_calls=run.budgets.max_model_calls,
+            max_calls=budgets.max_model_calls,
         )
     except Exception as err:  # noqa: BLE001 - the model is optional
-        return model_lanes.ModelLanes.off(run.tracer, f"model lanes off: {err}")
+        asked, by = model_lanes.requested_depth(opts.depth, opts.model_lanes)
+        reason = f"model lanes off: {type(err).__name__}: {err}"[:300]
+        degraded = bool(model_lanes.DEPTH_LANES[asked]) and not sample
+        switch = model_lanes.LaneSwitch(
+            False, "auto", reason, frozenset(), asked, "quick", by, degraded
+        )
+        return switch, None
+    return switch, config
+
+
+def depth_plan(
+    request: RunRequest,
+    switch: model_lanes.LaneSwitch | None = None,
+    *,
+    unavailable: str | None = None,
+) -> RunDepth:
+    """The depth a request runs at and its expected wait, before the run (the POST /runs 202
+    body) or after it (RunResult.depth). The tier is not known before entity resolution, so
+    the wait spans warm and cold registration (config.expected_seconds)."""
+    sample = request.options.sample_mode
+    sample = settings.sample_mode if sample is None else sample
+    if switch is None:
+        switch, _ = _switch(request, sample, LoopBudgets.from_env())
+    lo, hi, basis = expected_seconds(None, switch.depth, sample)
+    lanes = [lane for lane in model_lanes.LANES if lane in switch.lanes] if switch.enabled else []
+    note = switch.reason
+    if unavailable:
+        note = f"{note}; then {unavailable}: rule lanes for the rest of the run"
+    return RunDepth(
+        requested=switch.requested,
+        requested_by=switch.requested_by,
+        effective=switch.depth,
+        lanes=lanes,
+        degraded=switch.degraded or unavailable is not None,
+        note=note,
+        expected_wait=ExpectedWait(min_seconds=lo, max_seconds=hi, basis=basis),
+    )
+
+
+def _lanes(request: RunRequest, run: _Run) -> model_lanes.ModelLanes:
+    """The run's model lanes (see ``_switch``)."""
+    switch, config = _switch(request, run.sample, run.budgets)
+    if config is None:
+        return model_lanes.ModelLanes(tracer=run.tracer, switch=switch)
     return model_lanes.ModelLanes(
         tracer=run.tracer,
         switch=switch,
@@ -655,7 +705,7 @@ def _report(run: _Run) -> RunResult:
         stats.model_calls = run.lanes.calls
         stats.tokens = run.lanes.tokens
     if run.error is not None:
-        return reporter.build(
+        result = reporter.build(
             end_state=None,
             frame=run.frame,
             nodes=loop.nodes if loop else [],
@@ -665,6 +715,7 @@ def _report(run: _Run) -> RunResult:
             error=run.error,
             **run.common,
         )
+        return _with_depth(result, run)
     result = reporter.build(
         end_state=run.end_state,
         frame=run.frame,
@@ -677,7 +728,13 @@ def _report(run: _Run) -> RunResult:
         **run.common,
     )
     lanes = run.lanes
-    if lanes is not None and lanes.enabled and result.action and run.frame and not run.scope:
+    if (
+        lanes is not None
+        and lanes.allows("reporter")
+        and result.action
+        and run.frame
+        and not run.scope
+    ):
         context = " ".join(
             filter(None, [result.root_cause, result.effect and result.effect.summary])
         )
@@ -686,6 +743,12 @@ def _report(run: _Run) -> RunResult:
             result.action_template, result.action = result.action, wording
             result.action_source = "model"
         result.stats.model_calls, result.stats.tokens = lanes.calls, lanes.tokens
+    return _with_depth(result, run)
+
+
+def _with_depth(result: RunResult, run: _Run) -> RunResult:
+    if run.lanes is not None:
+        result.depth = depth_plan(run.request, run.lanes.switch, unavailable=run.lanes.unavailable)
     return result
 
 
@@ -1042,6 +1105,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     mode.add_argument("--sample", action="store_true", help="sample mode (the default)")
     parser.add_argument("--loop-a", action="store_true", help="run Loop A only (no Loop B)")
     parser.add_argument("--logs-dir", default=None, help="trace directory (default: <repo>/logs)")
+    parser.add_argument(
+        "--depth",
+        choices=DEPTHS,
+        default=None,
+        help="investigation depth (ADR-0011): quick = rules only (the default), thorough = + the "
+        "critic's model second opinion, deep = every model lane; overrides options.depth",
+    )
     args = parser.parse_args(argv)
     try:
         data = json.loads(_resolve(args.request).read_text(encoding="utf-8"))
@@ -1051,6 +1121,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(body.model_dump_json(indent=2))
         return 2
     request.options.sample_mode = not args.live
+    if args.depth:
+        request.options.depth = args.depth
     logs_dir = args.logs_dir or os.getenv("LOGS_DIR") or REPO_ROOT / "logs"
     with contextlib.redirect_stdout(sys.stderr):  # keep stdout for the result only
         run = run_loop_a if args.loop_a else run_investigation
