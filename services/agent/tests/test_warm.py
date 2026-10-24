@@ -22,18 +22,30 @@ CONTRACT = Path(__file__).resolve().parents[3] / "contracts" / "openapi" / "agen
 TABLES = {
     "fts_0123abcd_raw": "https://efts.sec.gov/LATEST/search-index?q=x",
     "gev_facts_raw": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001996810.json",
-    "mmm_facts_raw": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000066740.json",
+    "ibm_facts_raw": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000051143.json",
     "ge_submissions_raw": "https://data.sec.gov/submissions/CIK0000040545.json",
     "ge_facts_raw": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000040545.json",
     "sec_tickers_raw": "https://www.sec.gov/files/company_tickers_exchange.json",
 }
-ORDER = [  # showcase entities (facts, then submissions), the ticker map, other entities
+ORDER = [  # ZETARIS_WARM_ENTITIES (facts, then submissions), the ticker map, other entities
     "ge_facts_raw",
     "ge_submissions_raw",
     "gev_facts_raw",
     "sec_tickers_raw",
-    "mmm_facts_raw",
+    "ibm_facts_raw",
 ]
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_warm_settings(monkeypatch):
+    for name in (
+        "ZETARIS_WARM_ON_START",
+        "ZETARIS_WARM_TIMEOUT_SECONDS",
+        "ZETARIS_WARM_BUDGET_SECONDS",
+        "ZETARIS_WARM_MAX_TABLES",
+        "ZETARIS_WARM_ENTITIES",
+    ):
+        monkeypatch.delenv(name, raising=False)
 
 
 class RecordingTracer:
@@ -119,7 +131,7 @@ def test_each_statement_gets_the_warm_timeout_not_the_source_timeout():
 def test_a_failing_table_is_reported_and_the_rest_still_warm():
     fake = FakeZetaris(
         replies={
-            "mmm_facts_raw": "timeout",
+            "ibm_facts_raw": "timeout",
             "ge_submissions_raw": httpx.Response(400, text="PARSE_SYNTAX_ERROR near CACHE"),
         }
     )
@@ -127,14 +139,14 @@ def test_a_failing_table_is_reported_and_the_rest_still_warm():
     status = z.WarmStatus()
     report = z.warm(make_client(fake, tracer), settings=WarmSettings(), status=status)
     by = {e["table"].split(".")[-1]: e for e in report}
-    assert by["mmm_facts_raw"]["status"] == "failed" and by["mmm_facts_raw"]["recoverable"]
-    assert "timed out after 120 s" in by["mmm_facts_raw"]["error"]
+    assert by["ibm_facts_raw"]["status"] == "failed" and by["ibm_facts_raw"]["recoverable"]
+    assert "timed out after 120 s" in by["ibm_facts_raw"]["error"]
     assert by["ge_submissions_raw"]["status"] == "failed"
     assert by["ge_submissions_raw"]["recoverable"] is False
     assert [by[t]["status"] for t in ("ge_facts_raw", "gev_facts_raw", "sec_tickers_raw")] == [
         "warmed"
     ] * 3
-    assert fake.cached().count("mmm_facts_raw") == 1  # a timed-out refetch is not retried
+    assert fake.cached().count("ibm_facts_raw") == 1  # a timed-out refetch is not retried
     assert status.snapshot()["state"] == "partial"
 
 
@@ -213,7 +225,7 @@ def test_the_overall_budget_skips_the_remaining_tables():
 def test_trace_statuses_per_statement_and_summary():
     fake = FakeZetaris(
         replies={
-            "mmm_facts_raw": httpx.Response(400, text="[TABLE_OR_VIEW_NOT_FOUND] mmm_facts_raw"),
+            "ibm_facts_raw": httpx.Response(400, text="[TABLE_OR_VIEW_NOT_FOUND] ibm_facts_raw"),
             "gev_facts_raw": httpx.Response(503, text="busy"),
         }
     )
@@ -223,10 +235,10 @@ def test_trace_statuses_per_statement_and_summary():
     assert len(lines) == 5 and all(e["agent"] == "zetaris_adapter" for e in lines)
     by = {e["sql"].split(".")[-1]: e for e in lines}
     assert by["ge_facts_raw"]["status"] == "success" and "outcome" not in by["ge_facts_raw"]
-    assert by["mmm_facts_raw"]["status"] == "success"
-    assert by["mmm_facts_raw"]["outcome"] == "absent"  # benign, B-9's expected= mechanism
+    assert by["ibm_facts_raw"]["status"] == "success"
+    assert by["ibm_facts_raw"]["outcome"] == "absent"  # benign, B-9's expected= mechanism
     assert by["gev_facts_raw"]["status"] == "error"  # a 5xx is never benign
-    assert {e["table"].split(".")[-1]: e["status"] for e in report}["mmm_facts_raw"] == "absent"
+    assert {e["table"].split(".")[-1]: e["status"] for e in report}["ibm_facts_raw"] == "absent"
     summary = tracer.events[-1]
     assert summary["action"] == "warm" and summary["status"] == "degraded"
     assert summary["outcome"] == "partial" and summary["counts"]["failed"] == 1
@@ -284,9 +296,10 @@ def test_warm_settings_from_env_are_clamped():
     assert (s.timeout_seconds, s.budget_seconds, s.max_tables, s.on_start) == (
         120.0,
         600.0,
-        7,
+        11,  # the five default entities' facts and submissions plus the ticker map
         True,
     )
+    assert s.entities == ("mmm", "solv", "ge", "gehc", "gev")
     s = WarmSettings.from_env(
         {
             "ZETARIS_WARM_TIMEOUT_SECONDS": "9999",
@@ -302,6 +315,90 @@ def test_warm_settings_from_env_are_clamped():
         False,
     )
     assert WarmSettings.from_env({"ZETARIS_WARM_TIMEOUT_SECONDS": "x"}).timeout_seconds == 120.0
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        (None, ("mmm", "solv", "ge", "gehc", "gev")),
+        ("  ", ("mmm", "solv", "ge", "gehc", "gev")),
+        (" IBM, brkb ,,ibm,ge ", ("ibm", "brkb", "ge")),  # trimmed, lower-cased, deduplicated
+    ],
+)
+def test_warm_entities_env_is_parsed_in_order(value, expected):
+    env = {} if value is None else {"ZETARIS_WARM_ENTITIES": value}
+    assert WarmSettings.from_env(env).entities == expected
+
+
+def test_default_entities_put_3m_and_solventum_first_then_ge_then_the_ticker_map():
+    tables = [
+        "ge_facts_raw",
+        "sec_tickers_raw",
+        "solv_submissions_raw",
+        "gev_facts_raw",
+        "ibm_facts_raw",
+        "mmm_submissions_raw",
+        "solv_facts_raw",
+        "gehc_submissions_raw",
+        "mmm_facts_raw",
+        "ge_submissions_raw",
+        "gehc_facts_raw",
+        "gev_submissions_raw",
+    ]
+    order = z.warm_order(tables)
+    assert order == [
+        "mmm_facts_raw",
+        "mmm_submissions_raw",
+        "solv_facts_raw",
+        "solv_submissions_raw",
+        "ge_facts_raw",
+        "ge_submissions_raw",
+        "gehc_facts_raw",
+        "gehc_submissions_raw",
+        "gev_facts_raw",
+        "gev_submissions_raw",
+        "sec_tickers_raw",
+        "ibm_facts_raw",
+    ]
+    # the default cap (11) covers exactly the default entities and the ticker map
+    fake = FakeZetaris(tables={t: "https://example.test" for t in tables})
+    report = z.warm(make_client(fake), settings=WarmSettings.from_env({}))
+    assert fake.cached() == order[:11]
+    assert [e["status"] for e in report][-1] == "capped"
+
+
+def test_configured_entities_are_warmed_first_in_the_given_order():
+    fake = FakeZetaris()
+    settings = WarmSettings.from_env({"ZETARIS_WARM_ENTITIES": "ibm,gev"})
+    z.warm(make_client(fake), settings=settings)
+    # ibm, gev (no submissions table here), the ticker map, then ge as an ordinary entity
+    assert fake.cached() == [
+        "ibm_facts_raw",
+        "gev_facts_raw",
+        "sec_tickers_raw",
+        "ge_facts_raw",
+        "ge_submissions_raw",
+    ]
+
+
+@pytest.mark.parametrize("bad", ["brk-b", "1abc", "ge;drop", "averyverylongticker", "GE"])
+def test_an_invalid_entity_name_is_rejected_before_any_sql(bad):
+    fake = FakeZetaris()
+    status = z.WarmStatus()
+    with pytest.raises(ValueError, match="ZETARIS_WARM_ENTITIES"):
+        z.warm(make_client(fake), settings=WarmSettings(entities=("ge", bad)), status=status)
+    assert fake.sql == [] and status.snapshot()["state"] == "failed"
+
+
+def test_cli_warm_reports_an_invalid_entity_name(monkeypatch, capsys):
+    fake = FakeZetaris()
+    monkeypatch.setenv("ZETARIS_WARM_ENTITIES", "ge,brk-b")
+    monkeypatch.setattr(
+        z, "ZetarisClient", lambda config, tracer=None: make_client(fake, tracer, max_retries=0)
+    )
+    assert z.main(["warm"]) == 1
+    line = json.loads(capsys.readouterr().out.splitlines()[-1])
+    assert line["warm"] == "failed" and "brk-b" in line["error"] and fake.sql == []
 
 
 # --- warm on start ----------------------------------------------------------------------------

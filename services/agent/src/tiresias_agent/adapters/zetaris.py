@@ -25,7 +25,7 @@ from typing import Any, Generic, Protocol, TypeVar
 
 import httpx
 
-from ..config import WarmSettings
+from ..config import WARM_ENTITIES_DEFAULT, WarmSettings
 
 AGENT = "zetaris_adapter"
 REDACTED = "***"
@@ -953,12 +953,17 @@ def endpoint_cik(endpoint: str) -> str | None:
 # refetched. Each cached companyfacts table holds Zetaris driver heap: on 2026-10-24 re-caching
 # every registered table (63) ran the 2 GB driver heap out of memory after about ten companyfacts
 # tables, which stopped its SparkContext until the driver was restarted. So warm takes at most
-# ``WarmSettings.max_tables`` (ZETARIS_WARM_MAX_TABLES, default 7: the three showcase entities'
-# facts and submissions, then the ticker map) in ``warm_order``, and stops after
-# ``WARM_MAX_CONSECUTIVE_FAILURES`` failures in a row (Zetaris itself is then likely down).
+# ``WarmSettings.max_tables`` (ZETARIS_WARM_MAX_TABLES, default 11: the five default
+# ZETARIS_WARM_ENTITIES' facts and submissions, then the ticker map) in ``warm_order``, and stops
+# after ``WARM_MAX_CONSECUTIVE_FAILURES`` failures in a row (Zetaris itself is then likely down).
 WARM_KINDS = ("facts", "submissions", "tickers")
 WARM_MAX_CONSECUTIVE_FAILURES = 2
-_SHOWCASE_ORDER = {e.ticker: i for i, e in enumerate(SHOWCASE_ENTITIES)}
+
+
+def check_warm_entities(entities: Iterable[str]) -> tuple[str, ...]:
+    """Each ZETARIS_WARM_ENTITIES name checked against the object-ticker pattern used for SQL
+    placeholders (``object_ticker`` output, e.g. ``brkb``); raises ValueError otherwise."""
+    return tuple(_check(_TICKER, e, "ZETARIS_WARM_ENTITIES entry") for e in entities)
 
 
 def warm_kind(table: str) -> str | None:
@@ -972,23 +977,25 @@ def warm_kind(table: str) -> str | None:
     return None
 
 
-def warm_order(tables: Iterable[str]) -> list[str]:
-    """Warmable tables, most useful first: the showcase entities (facts, then submissions), the
-    ticker map, other registered entities' facts, their submissions, then submissions tables
-    only discovery registered (scout candidates without a facts table)."""
+def warm_order(tables: Iterable[str], entities: Sequence[str] = WARM_ENTITIES_DEFAULT) -> list[str]:
+    """Warmable tables, most useful first: ``entities`` in the given order (each one's facts,
+    then its submissions; validated by ``check_warm_entities``), the ticker map, other
+    registered entities' facts, their submissions, then submissions tables only discovery
+    registered (scout candidates without a facts table)."""
+    priority = {e: i for i, e in reversed(list(enumerate(check_warm_entities(entities))))}
     names = [t for t in tables if warm_kind(t)]
-    entities = {t.removesuffix("_facts_raw") for t in names if warm_kind(t) == "facts"}
+    registered = {t.removesuffix("_facts_raw") for t in names if warm_kind(t) == "facts"}
 
     def key(name: str) -> tuple[int, int, str]:
         kind = warm_kind(name)
         ticker = name.rsplit("_", 2)[0]
         if kind == "tickers":
             return (1, 0, name)
-        if ticker in _SHOWCASE_ORDER:
-            return (0, _SHOWCASE_ORDER[ticker] * 2 + (kind == "submissions"), name)
+        if ticker in priority:
+            return (0, priority[ticker] * 2 + (kind == "submissions"), name)
         if kind == "facts":
             return (2, 0, name)
-        return (3 if ticker in entities else 4, 0, name)
+        return (3 if ticker in registered else 4, 0, name)
 
     return sorted(names, key=key)
 
@@ -1054,7 +1061,9 @@ def warm(
     """Re-issue ``CACHE TABLE`` (template 12) for the registered raw tables, one at a time.
 
     The cache is lost when Zetaris restarts and the first query then refetches from SEC
-    (BACKLOG B-20). Tables are taken in ``warm_order``, at most ``settings.max_tables`` (the
+    (BACKLOG B-20). Tables are taken in ``warm_order`` with ``settings.entities``
+    (ZETARIS_WARM_ENTITIES) first; an invalid name raises ValueError before any SQL is sent.
+    At most ``settings.max_tables`` are re-cached (the
     rest are ``capped``: listed, not touched). Each statement may take
     ``settings.timeout_seconds``, with no retry (a timed-out refetch is reported; run warm
     again), capped at what is left of ``settings.budget_seconds``. One entry per table:
@@ -1067,7 +1076,12 @@ def warm(
     start = time.perf_counter()
     deadline = clock() + settings.budget_seconds
     try:
-        tables = warm_order(lightning_tables(client, directory))
+        entities = check_warm_entities(settings.entities)  # before any SQL is sent
+    except ValueError as err:
+        status.fail(str(err))
+        raise
+    try:
+        tables = warm_order(lightning_tables(client, directory), entities)
     except SourceError as err:
         status.fail(str(err))
         raise
@@ -1249,7 +1263,7 @@ def _warm(client: ZetarisClient) -> int:
     start = time.perf_counter()
     try:
         report = warm(client)
-    except SourceError as err:
+    except (SourceError, ValueError) as err:
         print(json.dumps({"warm": "failed", "error": str(err)[:200]}), flush=True)
         return 1
     for entry in report:
