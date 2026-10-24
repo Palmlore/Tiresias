@@ -43,7 +43,7 @@ Status: **in progress** (the lanes are built and were measured live once on 2026
 
 Cursor became optional on 23 Oct 2026. The organizers' update to the Build section reads: "Cursor is now optional. You can use any AI coding tool you're comfortable with, such as Cursor, Claude Code, Windsurf or GitHub Copilot." Tiresias is built mainly with Claude Code (see [ai-usage.md](ai-usage.md#development-tools)). The core Build requirement is unchanged: a Meterless engine (H-MEM here) in a working feature, shown with a passing test or a live demo.
 
-Status: **optional, not a Tiresias dependency**
+Status: **planned** in metadata.json, the closest value the community schema allows (planned / in-progress / working); in practice Cursor is optional and not a Tiresias dependency
 
 ## What was unique
 
