@@ -140,6 +140,22 @@ Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
 - Review at: after submission.
 - Evidence: [zetaris/README.md](zetaris/README.md) ("Discovery goes through Zetaris too"); `adapters/catalog.py` (`ZetarisDiscovery`).
 
+## B-22: AGENTS.md rule 4 and the parallel-PR rule disagree on who updates the status docs
+Found in: verifier audit (24 Oct)  ·  Status: open  ·  Severity: later
+- Out of scope because: the audit only re-runs verifiers and records results; AGENTS.md is invariants-only and a change to it needs the human's agreement.
+- Safe to leave because: in practice the parallel-PR rule is followed (the coordinator updates CHECKLIST, STATUS and metadata.json in its own status PRs, #4, #10, #16), so no status doc is edited by two PRs at once; the conflict is in the wording, not in the history.
+- Urgent if: an agent follows rule 4 literally and edits CHECKLIST/STATUS/metadata.json in a parallel feature PR, or a judge reads AGENTS.md as the project's process.
+- Review at: the next change to AGENTS.md's "How work lands" or "Rules".
+- Evidence: `AGENTS.md:103` (rule 4: "Update `docs/CHECKLIST.md`, `docs/STATUS.md` and `metadata.json` in the same commit as the work") vs `AGENTS.md:97` ("Parallel PRs don't edit … the coordinator updates them right after each merge"); `.github/pull_request_template.md:27` ("updated in the same change"). PR #4 criterion 4 in [docs/measurements/verifier-audit-2026-10-24.md](docs/measurements/verifier-audit-2026-10-24.md).
+
+## B-23: Cursor's status reads `planned` in metadata.json but `optional` in README and sponsor-technology.md
+Found in: verifier audit (24 Oct)  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: the audit doesn't edit metadata.json, and the schema's status enum (`planned`, `in-progress`, `working`) has no `optional`, so the fix is a wording choice (README/sponsor-technology.md say `planned (optional)`, or the metadata `how` field carries it) for the coordinator's next status PR.
+- Safe to leave because: every file agrees that Cursor is not a dependency and nothing claims it is working; the `how` text in metadata.json says it is optional.
+- Urgent if: the final submission check compares sponsor statuses across files, or the organizers' metadata format adds an `optional` status.
+- Review at: the next status PR (after the next merge), or submission readiness (Mon 26 Oct) at the latest.
+- Evidence: `metadata.json` `sponsors.cursor.status: "planned"`; `README.md:118` (`| optional |`); `docs/sponsor-technology.md:46` (`Status: **optional, not a Tiresias dependency**`); `scripts/metadata.schema.json:111` (enum). PR #11 criterion 3 and PR #16 criterion 2 in [docs/measurements/verifier-audit-2026-10-24.md](docs/measurements/verifier-audit-2026-10-24.md).
+
 ## Closed
 
 - **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.
