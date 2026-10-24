@@ -9,7 +9,8 @@ Two tiers:
   registers it first. Sample mode lists only the slice and says why (it cannot search SEC).
 
 Each entity carries the expected wall time of its first full investigation, from the measured
-constants in ``config.FIRST_RUN_SECONDS`` (docs/measurements/live-any-company.md). Every call
+constants in ``config.FIRST_RUN_SECONDS`` (docs/measurements/live-any-company.md), at the default
+depth and per depth (plus ``config.MODEL_SECONDS``, ADR-0011). Every call
 emits ``api`` trace lines. Nothing here names an entity; everything comes from the sources.
 """
 
@@ -32,8 +33,8 @@ from .adapters.zetaris import (
 )
 from .agents import suggester
 from .agents.knowledge import SUGGESTED_METRICS
-from .config import FIRST_RUN_SECONDS
-from .models import EntityInfo, EntityList, ExpectedWait, SuggestionList
+from .config import DEPTHS, FIRST_RUN_SECONDS, expected_seconds
+from .models import DepthWaits, EntityInfo, EntityList, ExpectedWait, SuggestionList
 
 AGENT = "api"
 DEFAULT_LIMIT = 20
@@ -57,8 +58,18 @@ class DirectoryError(Exception):
 
 
 def expected_wait(tier: str, sample: bool) -> ExpectedWait:
+    """At the default depth (quick: rules only)."""
     lo, hi, basis = FIRST_RUN_SECONDS["sample" if sample else tier]
     return ExpectedWait(min_seconds=lo, max_seconds=hi, basis=basis)
+
+
+def expected_by_depth(tier: str, sample: bool) -> DepthWaits:
+    """Per depth (ADR-0011): FIRST_RUN_SECONDS for the tier plus MODEL_SECONDS for the depth."""
+    waits = {}
+    for depth in DEPTHS:
+        lo, hi, basis = expected_seconds(tier, depth, sample)
+        waits[depth] = ExpectedWait(min_seconds=lo, max_seconds=hi, basis=basis)
+    return DepthWaits(**waits)
 
 
 def _views(source: EvidenceSource) -> set[str] | None:
@@ -140,6 +151,7 @@ def _info(e: Entity, tier: str, sample: bool, metrics: Sequence[str] = ()) -> En
         tier=tier,  # type: ignore[arg-type]
         metrics=list(metrics),
         expected_first_run=expected_wait(tier, sample),
+        expected_first_run_by_depth=expected_by_depth(tier, sample),
     )
 
 

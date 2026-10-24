@@ -12,8 +12,12 @@ Three lanes, each one bounded, validated and optional:
 - reporter (fast): plain-language wording of the template action. It is used only when it adds
   no number and no name absent from the template; otherwise the template stays.
 
-The switch (``MODEL_LANES`` or ``RunOptions.model_lanes``): auto (on in live mode when Nightshift
-is configured, off in sample mode), on, off. Every call is counted against
+Which lanes run is the investigation depth (ADR-0011, ``RunOptions.depth``, ``DEPTH_LANES``):
+quick (default) = none, rules only; thorough = the critic lane; deep = all three. Precedence, in
+``resolve``: sample mode runs no lane at any depth; ``MODEL_LANES=off`` forces quick; otherwise
+``RunOptions.depth``, else the deprecated ``RunOptions.model_lanes`` (on = deep, off = quick),
+else ``MODEL_LANES=on`` = deep, else quick. A depth with model lanes and no configured Runtime
+(or ``MAX_MODEL_CALLS_PER_RUN=0``) runs as quick with a ``degraded`` line. Every call is counted against
 ``MAX_MODEL_CALLS_PER_RUN`` and the run's wall-clock budget, and is traced by the Nightshift client
 as one line (lane, requested and routed model, provider, latency, receipt id). Nightshift routes
 on its own (explicit model ids are not honoured), so the routed model comes from the receipt.
@@ -39,7 +43,7 @@ from ..adapters.nightshift import (
     NightshiftConfig,
 )
 from ..adapters.zetaris import CONCEPT_SLUGS, concept_aliases
-from ..config import model_lanes_mode
+from ..config import DEFAULT_DEPTH, DEPTHS, model_lanes_mode
 from ..models import ModelOpinion
 from ..trace import phase
 from .common import Candidate, Frame, Measurement, Node, Verdict
@@ -62,32 +66,84 @@ OPINION_DECISIONS = ("accept", "prune")
 KEEP_RULE = "keep-rule"
 
 
+LANES = ("hypothesiser", "critic", "reporter")
+# Investigation depth (ADR-0011) -> the model lanes that run. config.DEPTHS lists the depths.
+DEPTH_LANES: dict[str, frozenset[str]] = {
+    "quick": frozenset(),
+    "thorough": frozenset({"critic"}),
+    "deep": frozenset(LANES),
+}
+
+
 @dataclass(frozen=True)
 class LaneSwitch:
     enabled: bool
-    mode: str
+    mode: str  # MODEL_LANES (the operator override): auto, on or off
     reason: str
+    lanes: frozenset[str] = frozenset(LANES)  # the lanes on when enabled
+    requested: str = "deep"  # the depth asked for
+    depth: str = "deep"  # the depth that runs
+    requested_by: str = "options.depth"
+    degraded: bool = False  # model lanes asked for but not runnable (no Runtime, cap 0)
+
+
+def requested_depth(
+    depth: str | None, model_lanes: str | None, env: Mapping[str, str] | None = None
+) -> tuple[str, str]:
+    """(depth, where it came from): RunOptions.depth, else the deprecated RunOptions.model_lanes
+    (on = deep, off = quick), else MODEL_LANES=on = deep, else quick (DEFAULT_DEPTH)."""
+    if depth in DEPTHS:
+        return depth, "options.depth"
+    if model_lanes == "on":
+        return "deep", "options.model_lanes"
+    if model_lanes == "off":
+        return "quick", "options.model_lanes"
+    if model_lanes_mode(env) == "on":
+        return "deep", "MODEL_LANES"
+    return DEFAULT_DEPTH, "default"
 
 
 def resolve(
-    requested: str | None,
+    depth: str | None = None,
     *,
+    model_lanes: str | None = None,
     sample: bool,
     config: NightshiftConfig,
     max_calls: int,
     env: Mapping[str, str] | None = None,
 ) -> LaneSwitch:
-    """Whether the model lanes run: ``requested`` (RunOptions.model_lanes) wins over MODEL_LANES."""
-    mode = requested if requested in ("auto", "on", "off") else model_lanes_mode(env)
+    """Which model lanes run (ADR-0011). Sample mode: none, at every depth. MODEL_LANES=off:
+    none (operator override). Otherwise the requested depth's lanes (``requested_depth``), or
+    none with ``degraded`` when Nightshift is not configured or the call cap is 0."""
+    mode = model_lanes_mode(env)
+    asked, by = requested_depth(depth, model_lanes, env)
+    lanes = DEPTH_LANES[asked]
+
+    def off(reason: str, degraded: bool = False) -> LaneSwitch:
+        return LaneSwitch(False, mode, reason, frozenset(), asked, "quick", by, degraded)
+
+    if sample:
+        return off(
+            f"sample mode: rule lanes only, no model call at any depth ({asked} asked, ADR-0011)"
+        )
+    if not lanes:
+        return off(f"quick ({by}): rule lanes only, no model call")
     if mode == "off":
-        return LaneSwitch(False, mode, "model lanes off: rule lanes only")
+        return off(f"MODEL_LANES=off: rule lanes only ({asked} asked; operator override)")
     if max_calls <= 0:
-        return LaneSwitch(False, mode, "MAX_MODEL_CALLS_PER_RUN=0: rule lanes only")
-    if mode == "auto" and sample:
-        return LaneSwitch(False, mode, "auto: sample mode uses the rule lanes (ADR-0007)")
+        return off(f"MAX_MODEL_CALLS_PER_RUN=0: rule lanes only ({asked} asked)", degraded=True)
     if not config.configured:
-        return LaneSwitch(False, mode, f"{mode}: Nightshift not configured: rule lanes only")
-    return LaneSwitch(True, mode, f"{mode}: Nightshift lanes fast/deep, cap {max_calls} calls")
+        return off(f"Nightshift not configured: rule lanes only ({asked} asked)", degraded=True)
+    names = ", ".join(lane for lane in LANES if lane in lanes)
+    return LaneSwitch(
+        True,
+        mode,
+        f"{asked} ({by}): Nightshift lanes {names}, cap {max_calls} calls",
+        lanes,
+        asked,
+        asked,
+        by,
+    )
 
 
 class ModelLanes:
@@ -116,26 +172,54 @@ class ModelLanes:
         self.calls = 0
         self.tokens = 0
         self.off_reason: str | None = None if switch.enabled else switch.reason
+        self.unavailable: str | None = None  # set when Nightshift failed during the run
         self._capped = self._out_of_time = False
 
     @classmethod
-    def off(cls, tracer: Any, reason: str = "model lanes off") -> ModelLanes:
-        return cls(tracer=tracer, switch=LaneSwitch(False, "off", reason))
+    def off(
+        cls, tracer: Any, reason: str = "model lanes off", degraded: bool = False
+    ) -> ModelLanes:
+        switch = LaneSwitch(
+            False, "off", reason, frozenset(), "quick", "quick", "default", degraded
+        )
+        return cls(tracer=tracer, switch=switch)
 
     @property
     def enabled(self) -> bool:
         return self.off_reason is None
 
+    def allows(self, lane: str) -> bool:
+        """Whether ``lane`` (hypothesiser, critic, reporter) may call the model now."""
+        return self.enabled and lane in self.switch.lanes
+
+    @property
+    def degraded(self) -> bool:
+        return self.switch.degraded or self.unavailable is not None
+
     def announce(self) -> None:
+        s = self.switch
         self.tracer.emit(
             agent=AGENT,
             action="mode",
             status="success",
             lanes="on" if self.enabled else "off",
-            lanes_mode=self.switch.mode,
+            lanes_mode=s.mode,
+            depth=s.depth,
+            depth_requested=s.requested,
+            depth_requested_by=s.requested_by,
+            model_lanes_on=[lane for lane in LANES if lane in s.lanes] if self.enabled else [],
             max_model_calls=self.max_calls,
-            output_summary=self.switch.reason,
+            output_summary=s.reason,
         )
+        if s.degraded:  # model lanes asked for, none can run: the run goes on the rules
+            self.tracer.emit(
+                agent=AGENT,
+                action="degrade",
+                status="degraded",
+                depth=s.depth,
+                depth_requested=s.requested,
+                output_summary=f"{s.reason}; the run continues on the rules",
+            )
 
     def ask(
         self,
@@ -147,8 +231,9 @@ class ModelLanes:
         user: str,
         node_id: str | None = None,
     ) -> tuple[Any, ModelReply] | None:
-        """One JSON call on ``lane``, or None (lanes off, cap, budget, unavailable, bad reply)."""
-        if not self.enabled:
+        """One JSON call on ``lane``, or None (lanes off, the calling lane not on at this depth,
+        cap, budget, unavailable, bad reply)."""
+        if not self.enabled or (agent in LANES and agent not in self.switch.lanes):
             return None
         if self.calls >= self.max_calls:
             if not self._capped:
@@ -198,7 +283,7 @@ class ModelLanes:
                     trace_fields={"node_id": node_id, "target_agent": AGENT},
                 )
         except ModelUnavailable as exc:
-            self.off_reason = f"model unavailable: {exc.reason}"
+            self.off_reason = self.unavailable = f"model unavailable: {exc.reason}"
             self.tracer.emit(
                 agent=agent,
                 action="degrade",
@@ -319,7 +404,7 @@ def propose(
 ) -> list[Candidate]:
     """Model candidates for the free slots under ``parent``, each validated against the
     vocabulary; every rejected proposal is traced with its reason."""
-    if free <= 0 or not lanes.enabled:
+    if free <= 0 or not lanes.allows("hypothesiser"):
         return []
     vocab = vocabulary(frame)
     taken = [c.variable for c in rule_candidates]
@@ -499,7 +584,7 @@ def second_opinion(
     lanes: ModelLanes, cand: Candidate, m: Measurement, v: Verdict, frame: Frame, tracer: Any
 ) -> ModelOpinion | None:
     """The deep lane's independent judgement of one link (it is not shown the rule verdict)."""
-    if not lanes.enabled:
+    if not lanes.allows("critic"):
         return None
     facts = _measurement_facts(cand, m, frame)
     answer = lanes.ask(
@@ -592,7 +677,7 @@ REPORTER_SYSTEM = (
 
 def draft_action(lanes: ModelLanes, template: str, context: str, tracer: Any) -> str | None:
     """The fast lane's wording of ``template``, or None (the template stays)."""
-    if not lanes.enabled or not template:
+    if not lanes.allows("reporter") or not template:
         return None
     answer = lanes.ask(
         lane="fast",

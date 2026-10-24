@@ -1,6 +1,6 @@
 # ADR-0010: Model lanes through Nightshift: the model proposes, the rules and the data decide
 
-Status: accepted (2026-10-24)
+Status: accepted (2026-10-24). **Addendum (2026-10-24): the switch below is replaced by the investigation depth of [ADR-0011](ADR-0011-investigation-depth.md).** Live runs now default to rules only (`quick`); the user asks for `thorough` (the critic lane) or `deep` (all three lanes) per question and is told the expected wait first, because the lanes took 91–94 s (three deep critic calls) plus about 51 s (the wording call) on case 01, 169–173 s end to end, against 3–21 s rules only. `MODEL_LANES` stays as an operator override (`off` forces rules only; `on` = `deep` when the request names no depth), `RunOptions.model_lanes` is deprecated, and sample mode makes no model call at any depth. The lanes themselves are unchanged.
 
 Context: the event rules make Meterless Nightshift the primary model provider for real model calls, and NVIDIA Nemotron powering a feature is a bonus. Until now no agent called a model (`stats.model_calls` was 0): the hypothesiser, critic and reporter are rule-based (ADR-0007). A model must not become a way to put unevidenced claims in the report (ADR-0004: every accepted link passes the critic's tests on SQL rows), and judges run sample mode with no keys.
 

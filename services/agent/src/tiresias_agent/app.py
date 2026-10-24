@@ -20,7 +20,7 @@ from .adapters.catalog import make_discovery
 from .adapters.zetaris import make_source
 from .config import settings
 from .models import ErrorDetail, ErrorResponse, Role, RunRequest
-from .orchestrator import _find
+from .orchestrator import _find, depth_plan
 from .runs import RegistryBusy, RunConflict, RunRecord, RunRegistry, valid_run_id
 from .runs import logs_dir as _logs_dir
 from .runs import wait_budget_seconds as _wait_budget
@@ -146,7 +146,12 @@ def start_run(body: RunRequest, x_run_id: str | None = Header(default=None)) -> 
     rid = record.run_id
     return JSONResponse(
         status_code=202,
-        content={"run_id": rid, "status": record.status, "events": f"/runs/{rid}/events"},
+        content={
+            "run_id": rid,
+            "status": record.status,
+            "events": f"/runs/{rid}/events",
+            "depth": depth_plan(body).model_dump(mode="json"),
+        },
         headers={"X-Run-Id": rid},
     )
 

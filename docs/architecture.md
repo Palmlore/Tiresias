@@ -89,5 +89,5 @@ Slow phases are bracketed for progress UIs: `agent: orchestrator`, `action: phas
 
 | Mode | Data | Models | Memory |
 |---|---|---|---|
-| Live | Zetaris (local Docker) → SEC APIs | Rules decide; Nightshift lanes (`MODEL_LANES=auto`, ADR-0010) propose extra candidates, give the critic a second opinion and word the action | cognition service |
-| `SAMPLE_MODE=true` | Cached rows in `data/sample/` | Rule-based hypothesiser and critic (ADR-0007); `MODEL_LANES=on` adds the Nightshift lanes on the cached rows (ADR-0010) | cognition service (H-MEM model-free path) |
+| Live | Zetaris (local Docker) → SEC APIs | Rules decide. By the run's depth (`options.depth`, ADR-0011): `quick` (default) rules only; `thorough` adds the critic's Nightshift second opinion; `deep` also lets the model propose extra candidates and word the action (ADR-0010) | cognition service |
+| `SAMPLE_MODE=true` | Cached rows in `data/sample/` | Rule-based hypothesiser and critic (ADR-0007); no model call at any depth (ADR-0011) | cognition service (H-MEM model-free path) |
