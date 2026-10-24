@@ -347,3 +347,23 @@ def test_probe_unreachable_exits_non_zero(capsys):
     assert probe(CFG, transport=httpx.MockTransport(handler)) == 1
     out = capsys.readouterr()
     assert "✖" in out.err and TOKEN not in out.out + out.err
+
+
+def test_caller_names_the_trace_line_and_it_carries_receipt_id_and_latency():
+    def handler(request):
+        return httpx.Response(200, json=completion("ok", meterless=RECEIPT))
+
+    tracer = RecordingTracer()
+    reply = make_client(handler, tracer).chat(
+        [{"role": "user", "content": "x"}],
+        lane="deep",
+        agent="critic",
+        action="model_review",
+        trace_fields={"node_id": "n0.1"},
+    )
+    assert reply.receipt_id == "rcpt-42"
+    [event] = tracer.events
+    assert (event["agent"], event["action"], event["node_id"]) == ("critic", "model_review", "n0.1")
+    assert event["requested_model"] == "meterless/deep" and event["receipt_id"] == "rcpt-42"
+    assert event["latency_ms"] == event["duration_ms"] and event["usage_total"] == 4
+    assert_no_token(tracer.events)

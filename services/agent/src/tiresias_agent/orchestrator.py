@@ -35,6 +35,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .adapters.catalog import CatalogError, Discovery, make_discovery
+from .adapters.nightshift import NightshiftConfig
 from .adapters.zetaris import (
     DEFAULT_FORMS,
     Entity,
@@ -49,6 +50,7 @@ from .agents import (
     entity_resolver,
     gap_analyst,
     hypothesiser,
+    model_lanes,
     onboarder,
     reconciler,
     reporter,
@@ -126,12 +128,14 @@ class LoopA:
         gate: Gate,
         budgets: LoopBudgets,
         clock: Callable[[], float] = time.monotonic,
+        lanes: model_lanes.ModelLanes | None = None,
     ) -> None:
         self.request = request
         self.source = CountingSource(source)
         self.tracer = tracer
         self.gate = gate
         self.budgets = budgets
+        self.lanes = lanes or model_lanes.ModelLanes.off(tracer)
         self.clock = clock
         self.started = clock()
         self.nodes: list[Node] = []
@@ -183,13 +187,37 @@ class LoopA:
                 )
                 self.gate_decisions += 1
                 v = critic.apply_gate(v, decision.choice)
-            critic.trace_verdict(self.tracer, cand, m, v)
             if v.decision == "retry":
+                critic.trace_verdict(self.tracer, cand, m, v)
                 attempt += 1
                 self.retries += 1
                 scope = v.retry_scope or scope
                 continue
             break
+        opinion = None
+        if self.lanes.enabled:  # deep lane: advisory second opinion, the rule verdict decides
+            opinion = model_lanes.second_opinion(self.lanes, cand, m, v, frame, self.tracer)
+            if opinion is not None and not opinion.agrees:
+                ask = model_lanes.dissent_request(v, opinion)
+                decision = self.gate.decide(
+                    GateRequest(
+                        gate="critic_escalation",
+                        question=ask["question"],
+                        options=tuple(ask["options"]),
+                        proposal=ask["proposal"],
+                        node_id=cand.node_id,
+                        requested_by=critic.AGENT,
+                        context={
+                            "rule": {"decision": v.decision, "label": v.label},
+                            "model": {"decision": opinion.decision, "label": opinion.label},
+                        },
+                    )
+                )
+                self.gate_decisions += 1
+                opinion = opinion.model_copy(update={"gate_choice": decision.choice})
+                if decision.choice == "prune":
+                    v = critic.apply_gate(v, "prune")
+        critic.trace_verdict(self.tracer, cand, m, v)
         if v.decision == "prune":
             self.prunes += 1
         return Node(
@@ -210,6 +238,8 @@ class LoopA:
             attempts=attempt + 1,
             evidence=evidence,
             measurement=m,
+            proposed_by=cand.proposed_by,
+            model_opinion=opinion,
         )
 
     # --- the loop -----------------------------------------------------------------------------
@@ -245,6 +275,18 @@ class LoopA:
                     tracer=self.tracer,
                     exclude=tested,
                 )
+                free = self.budgets.max_branches_per_level - len(cands)
+                if free > 0 and self.lanes.enabled:  # fast lane fills only the free slots
+                    cands += model_lanes.propose(
+                        self.lanes,
+                        frame,
+                        parent,
+                        rule_candidates=cands,
+                        path_variables=path,
+                        exclude=tested,
+                        free=free,
+                        tracer=self.tracer,
+                    )
                 if not cands:
                     return self._no_more_rules(frame, parent, frontier)
                 level_nodes = []
@@ -369,6 +411,7 @@ class _Run:
     prelude_gate_decisions: int = 0
     discovery: Discovery | None = None
     scope: ScopeCheck | None = None  # set when the scope check stopped the run
+    lanes: model_lanes.ModelLanes | None = None
 
 
 def _fail(run: _Run, err: Exception) -> None:
@@ -397,6 +440,7 @@ def _start(
     parent_run_id: str | None,
     logs_dir: str | Path | None,
     clock: Callable[[], float],
+    lanes: model_lanes.ModelLanes | None = None,
 ) -> tuple[_Run, EvidenceSource | None]:
     sample = request.options.sample_mode
     sample = settings.sample_mode if sample is None else sample
@@ -426,6 +470,8 @@ def _start(
         "tracer": tracer,
     }
     run = _Run(request, tracer, budgets, sample, common, clock, started=clock())
+    run.lanes = lanes or _lanes(request, run)
+    run.lanes.announce()
     try:
         run.gate = gate or Gate(
             request.options.hitl_mode or settings.hitl_mode,
@@ -436,6 +482,30 @@ def _start(
     except Exception as err:  # noqa: BLE001 - a run must end in a structured result
         _fail(run, err)
     return run, source
+
+
+def _lanes(request: RunRequest, run: _Run) -> model_lanes.ModelLanes:
+    """The run's model lanes (ADR-0010) from RunOptions.model_lanes, MODEL_LANES and the
+    Nightshift configuration. Never raises: a bad configuration means rule lanes only."""
+    try:
+        config = NightshiftConfig.from_env()
+        switch = model_lanes.resolve(
+            request.options.model_lanes,
+            sample=run.sample,
+            config=config,
+            max_calls=run.budgets.max_model_calls,
+        )
+    except Exception as err:  # noqa: BLE001 - the model is optional
+        return model_lanes.ModelLanes.off(run.tracer, f"model lanes off: {err}")
+    return model_lanes.ModelLanes(
+        tracer=run.tracer,
+        switch=switch,
+        config=config,
+        max_calls=run.budgets.max_model_calls,
+        deadline=run.started + run.budgets.run_seconds,
+        clock=run.clock,
+        run_id=run.common["run_id"],
+    )
 
 
 def _unframed(run: _Run, reason: str) -> None:
@@ -551,6 +621,7 @@ def _loop_a(run: _Run, source: EvidenceSource) -> None:
                 gate=run.gate,
                 budgets=run.budgets,
                 clock=run.clock,
+                lanes=run.lanes,
             )
             run.loop.started = run.started  # one budget for the run, registration included
             run.loop.gate_decisions += run.prelude_gate_decisions
@@ -580,6 +651,9 @@ def _report(run: _Run) -> RunResult:
     loop = run.loop
     stats = loop.stats() if loop else RunStats(gate_decisions=run.prelude_gate_decisions)
     stats.sources_onboarded = run.sources_onboarded
+    if run.lanes is not None:
+        stats.model_calls = run.lanes.calls
+        stats.tokens = run.lanes.tokens
     if run.error is not None:
         return reporter.build(
             end_state=None,
@@ -591,7 +665,7 @@ def _report(run: _Run) -> RunResult:
             error=run.error,
             **run.common,
         )
-    return reporter.build(
+    result = reporter.build(
         end_state=run.end_state,
         frame=run.frame,
         nodes=loop.nodes if loop else [],
@@ -602,6 +676,17 @@ def _report(run: _Run) -> RunResult:
         scope=run.scope,
         **run.common,
     )
+    lanes = run.lanes
+    if lanes is not None and lanes.enabled and result.action and run.frame and not run.scope:
+        context = " ".join(
+            filter(None, [result.root_cause, result.effect and result.effect.summary])
+        )
+        wording = model_lanes.draft_action(lanes, result.action, context, run.tracer)
+        if wording:
+            result.action_template, result.action = result.action, wording
+            result.action_source = "model"
+        result.stats.model_calls, result.stats.tokens = lanes.calls, lanes.tokens
+    return result
 
 
 def run_loop_a(
@@ -615,6 +700,7 @@ def run_loop_a(
     parent_run_id: str | None = None,
     logs_dir: str | Path | None = None,
     clock: Callable[[], float] = time.monotonic,
+    lanes: model_lanes.ModelLanes | None = None,
 ) -> RunResult:
     """Run Loop A for one request. Never raises for a bad case: failures become a RunResult
     with status "error" (structured) or end state "budget"."""
@@ -628,6 +714,7 @@ def run_loop_a(
         parent_run_id=parent_run_id,
         logs_dir=logs_dir,
         clock=clock,
+        lanes=lanes,
     )
     if run.error is None and source is not None:
         _loop_a(run, source)
@@ -648,6 +735,7 @@ def run_investigation(
     discovery: Discovery | None = None,
     zetaris_client: ZetarisClient | None = None,
     data_dir: Path | None = None,
+    lanes: model_lanes.ModelLanes | None = None,
 ) -> RunResult:
     """Loop A, then Loop B when Loop A ends at the evidence frontier with an information need.
 
@@ -663,6 +751,7 @@ def run_investigation(
         parent_run_id=parent_run_id,
         logs_dir=logs_dir,
         clock=clock,
+        lanes=lanes,
     )
     if run.error is None and source is not None:
         _loop_a(run, source)

@@ -79,7 +79,7 @@ These are the planned defaults, tunable through environment variables:
 
 Every action is one JSONL line in `logs/trace-<run_id>.jsonl` and is also printed to stdout. Both services write to the shared `logs/` volume and propagate `X-Run-Id`. Planned fields:
 
-`timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, retry_count, status, outcome, duration_ms`
+`timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, requested_model, routed_model, provider, receipt_id, latency_ms, proposed_by, retry_count, status, outcome, duration_ms`
 
 `outcome` names a benign result under `status: success`: for example a registration step whose object already `exists`, or a concept view that is `absent`; such steps are never traced `error`.
 
@@ -89,5 +89,5 @@ Slow phases are bracketed for progress UIs: `agent: orchestrator`, `action: phas
 
 | Mode | Data | Models | Memory |
 |---|---|---|---|
-| Live | Zetaris (local Docker) → SEC APIs | Nightshift → Nemotron | cognition service |
-| `SAMPLE_MODE=true` | Cached rows in `data/sample/` | Rule-based hypothesiser and critic (ADR-0007) | cognition service (H-MEM model-free path) |
+| Live | Zetaris (local Docker) → SEC APIs | Rules decide; Nightshift lanes (`MODEL_LANES=auto`, ADR-0010) propose extra candidates, give the critic a second opinion and word the action | cognition service |
+| `SAMPLE_MODE=true` | Cached rows in `data/sample/` | Rule-based hypothesiser and critic (ADR-0007); `MODEL_LANES=on` adds the Nightshift lanes on the cached rows (ADR-0010) | cognition service (H-MEM model-free path) |

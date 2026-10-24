@@ -185,6 +185,7 @@ components:
             memory: {type: string, enum: [warm, cold]}
             sample_mode: {type: boolean}
             decisions: {type: object, description: Scripted gate decisions}
+            model_lanes: {type: string, enum: [auto, "on", "off"], description: "Model-backed lanes through Nightshift (ADR-0010). auto (default): on in live mode when Nightshift is configured, off in sample mode. Overrides MODEL_LANES"}
     BranchRequest:
       type: object
       required: [node_id]
@@ -212,6 +213,27 @@ components:
         reason: {type: string, description: The critic's reason}
         attempts: {type: integer, description: Analyst attempts (a critic retry adds one)}
         evidence: {type: array, items: {$ref: "#/components/schemas/EvidenceItem"}}
+        proposed_by: {type: string, enum: [rules, model], description: "Who proposed the hypothesis; a model proposal is validated against the queryable vocabulary and tested like any other (ADR-0010)"}
+        model_opinion:
+          oneOf: [{$ref: "#/components/schemas/ModelOpinion"}, {type: "null"}]
+          description: The deep model lane's advisory second opinion on the critic's verdict (live mode)
+    ModelOpinion:
+      type: object
+      description: "Advisory second opinion from the deep lane (ADR-0010). The rule critic decides; a disagreement goes to the critic_escalation gate, whose auto policy keeps the rule verdict"
+      required: [lane, requested_model, decision, label, grounded, agrees, rule_decision]
+      properties:
+        lane: {type: string}
+        requested_model: {type: string}
+        routed_model: {type: [string, "null"], description: "Model that answered, from the Nightshift receipt (explicit ids are not honoured)"}
+        provider: {type: [string, "null"]}
+        receipt_id: {type: [string, "null"]}
+        decision: {type: string, enum: [accept, prune]}
+        label: {type: string, enum: [breakdown, causal, background]}
+        rationale: {type: [string, "null"], description: "One paragraph; null when it quoted a number not in the measurement"}
+        grounded: {type: boolean}
+        agrees: {type: boolean}
+        rule_decision: {type: string}
+        gate_choice: {type: [string, "null"], description: "critic_escalation choice when they disagreed (keep-rule or prune)"}
     EvidenceItem:
       type: object
       description: One query behind a claim; in sample mode the SQL that live mode would run
@@ -281,8 +303,8 @@ components:
         hops: {type: integer}
         queries: {type: integer}
         sources_onboarded: {type: integer, description: "Sources registered by Loop B (at most MAX_NEW_SOURCES_PER_RUN)"}
-        model_calls: {type: integer}
-        tokens: {type: integer}
+        model_calls: {type: integer, description: "Nightshift calls made by the model lanes (at most MAX_MODEL_CALLS_PER_RUN, default 12); 0 in sample mode by default"}
+        tokens: {type: integer, description: Total tokens the Nightshift replies reported}
         seconds: {type: number}
         retries: {type: integer, description: Critic send-backs to the analyst}
         prunes: {type: integer}
@@ -294,6 +316,8 @@ components:
       properties:
         end_state: {type: string, enum: [actionable, branched, cyclic, evidence-frontier, external-driver, budget], description: Absent when status is error}
         action: {type: [string, "null"], description: Recommended action for the asker}
+        action_source: {type: string, enum: [template, model], description: "template: the rule template; model: worded by the fast model lane from the template and validated (no number or name absent from it; ADR-0010)"}
+        action_template: {type: [string, "null"], description: "The template action, set only when the model's wording replaced it"}
         root_cause: {type: [string, "null"]}
         residual: {type: [number, "null"], description: "Share of the effect left unexplained; when the chosen link is a Loop B reconciliation it is signed (negative = over-explained)"}
         run_id: {type: string}

@@ -7,7 +7,15 @@ from datetime import date
 from typing import Any, Literal
 
 from ..adapters.zetaris import Evidence, Fact, Filing
-from ..models import Asker, EffectKind, EvidenceItem, EvidenceStatus, LinkLabel, Observation
+from ..models import (
+    Asker,
+    EffectKind,
+    EvidenceItem,
+    EvidenceStatus,
+    LinkLabel,
+    ModelOpinion,
+    Observation,
+)
 
 ROWS_SHOWN = 10
 
@@ -96,6 +104,8 @@ class Node:
     # Loop B extras: signed residual share ("residual"), and text fields the action templates
     # use ("format": counterparty, counterparty_value, residual).
     context: dict[str, Any] = field(default_factory=dict)
+    proposed_by: str = "rules"  # or "model" (agents/model_lanes.py, ADR-0010)
+    model_opinion: ModelOpinion | None = None
 
 
 @dataclass
@@ -110,6 +120,7 @@ class Candidate:
     claim: str
     category: str
     params: dict[str, Any] = field(default_factory=dict)
+    proposed_by: str = "rules"  # or "model": validated against the vocabulary, then tested alike
 
 
 Scope = Literal["broad", "window", "relaxed"]

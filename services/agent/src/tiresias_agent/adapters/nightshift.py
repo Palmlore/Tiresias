@@ -3,7 +3,9 @@
 Nightshift routes by the app's mode, so the model named in a request is only a lane
 (``meterless/fast`` or ``meterless/deep``). The model that actually answered is read from the
 response's receipt (``meterless.routed_model``, ``winning_route.provider``) and is ``None`` when
-the receipt does not say. When Nightshift is offline the client raises ``ModelUnavailable`` so the
+the receipt does not say. Nightshift 1.2.1 does not honour explicit model ids (METERLESS_MODEL_* only
+name the lane), and the same lane was routed to different Nemotron models on 2026-10-24, so every
+call's trace line records ``routed_model`` and ``receipt_id``. When Nightshift is offline the client raises ``ModelUnavailable`` so the
 orchestrator can fall back to the rule-based path (ADR-0007).
 
 CLI: ``uv run python -m tiresias_agent.adapters.nightshift probe [--env-file PATH]``.
@@ -131,6 +133,7 @@ class ModelReply:
     receipt: dict[str, Any]
     usage: dict[str, Any]
     duration_ms: int
+    receipt_id: str | None = None
 
 
 def _redact(value: Any, token: str) -> Any:
@@ -202,6 +205,19 @@ def routed_from_receipt(receipt: dict[str, Any]) -> tuple[str | None, str | None
         hdr.get("x-meterless-provider"),
     )
     return routed, provider
+
+
+def receipt_id_from(receipt: dict[str, Any]) -> str | None:
+    """The receipt's id (``meterless.receipt_id`` on Nightshift 1.2.1), or None if not stated."""
+    hdr = receipt.get("headers") or {}
+    return _first_str(
+        _dig(receipt, "meterless", "receipt_id"),
+        _dig(receipt, "meterless", "receipt", "receipt_id"),
+        _dig(receipt, "receipt", "receipt_id"),
+        _dig(receipt, "receipt", "id"),
+        hdr.get("meterless-receipt-id"),
+        hdr.get("x-meterless-receipt-id"),
+    )
 
 
 def _summary(text: str) -> str:
@@ -280,11 +296,19 @@ class NightshiftClient:
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
         run_id: str | None = None,
+        agent: str = "model_client",
+        action: str = "chat",
+        trace_fields: dict[str, Any] | None = None,
     ) -> ModelReply:
+        """One chat completion, traced as one line (``agent``/``action``, default
+        model_client/chat) with lane, requested and routed model, provider, latency, receipt id
+        and a short output summary. ``trace_fields`` are added to that line (e.g. node_id)."""
         requested = self.config.model_for(lane)
         prompt_text = " ".join(str(m.get("content", "")) for m in messages if isinstance(m, dict))
         trace = {
+            **(trace_fields or {}),
             "model": requested,
+            "requested_model": requested,
             "lane": lane,
             "input_summary": _summary(self._safe(prompt_text)),
         }
@@ -301,26 +325,32 @@ class NightshiftClient:
             response, retries = self._post(payload, run_id)
             reply = self._parse(response, lane, requested, start)
         except ModelError as exc:
+            elapsed = int((time.monotonic() - start) * 1000)
             self.tracer.emit(
-                agent="model_client",
-                action="chat",
+                agent=agent,
+                action=action,
                 status="error",
                 routed_model=None,
                 provider=None,
+                receipt_id=None,
                 retry_count=retries,
-                duration_ms=int((time.monotonic() - start) * 1000),
+                duration_ms=elapsed,
+                latency_ms=elapsed,
                 output_summary=_summary(self._safe(f"{type(exc).__name__}: {exc}")),
                 **trace,
             )
             raise
         self.tracer.emit(
-            agent="model_client",
-            action="chat",
+            agent=agent,
+            action=action,
             status="success",
             routed_model=reply.routed_model,
             provider=reply.provider,
+            receipt_id=reply.receipt_id,
             retry_count=retries,
             duration_ms=reply.duration_ms,
+            latency_ms=reply.duration_ms,
+            usage_total=reply.usage.get("total_tokens"),
             output_summary=_summary(self._safe(reply.text)),
             **trace,
         )
@@ -334,6 +364,9 @@ class NightshiftClient:
         response_format: dict[str, Any] | None = None,
         temperature: float | None = None,
         run_id: str | None = None,
+        agent: str = "model_client",
+        action: str = "chat",
+        trace_fields: dict[str, Any] | None = None,
     ) -> tuple[Any, ModelReply]:
         """Ask for a single JSON value and parse it. Returns (parsed, reply)."""
         instruction = {
@@ -346,6 +379,9 @@ class NightshiftClient:
             response_format=response_format,
             temperature=temperature,
             run_id=run_id,
+            agent=agent,
+            action=action,
+            trace_fields=trace_fields,
         )
         return parse_json_text(reply.text), reply
 
@@ -423,6 +459,7 @@ class NightshiftClient:
             receipt=receipt,
             usage=usage,
             duration_ms=int((time.monotonic() - start) * 1000),
+            receipt_id=receipt_id_from(receipt),
         )
 
 
