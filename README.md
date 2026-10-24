@@ -36,23 +36,26 @@ Every step (query, hypothesis, critique, human-in-the-loop gate, source registra
 
 **Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. Live Nightshift models, memory, branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
 
-Needs Docker with Compose v2.
+Needs Docker Desktop (or Docker Engine) with **Compose v2.24 or later** (`docker compose version`), ports 8000 and 8100 free, and about 750 MB of disk for the two images. The first build also pulls the Python and Node base images, which can take a few minutes; later builds take seconds.
 
 ```bash
 git clone https://github.com/Palmlore/Tiresias && cd Tiresias
 cp .env.example .env              # keep SAMPLE_MODE=true; no keys needed
 docker compose up --build         # agent :8000, cognition :8100 (add -d to run in the background)
 
-# in another terminal: run the three examples (each prints a RunResult JSON)
+# in another terminal: wait until the agent answers, then run the three examples (each prints a RunResult JSON)
+until curl -sf localhost:8000/health >/dev/null; do sleep 1; done
 for f in input_examples/*.json; do
   curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d @"$f"; echo
 done
 ls logs/                          # one JSONL trace per run: logs/trace-<run_id>.jsonl
 ```
 
+The `trace_file` in each reply is the path inside the container (`/app/logs/…`); on your machine the same file is under `logs/`.
+
 Each result leads with the decision: `end_state` (`actionable`, `evidence-frontier`, …) and the recommended `action`, then the `effect`, the `why_tree` (each link with its SQL, rows and the critic's verdict), the `residual` (share of the effect left unexplained; negative when over-explained) and `stats`. In sample mode all three examples end `actionable`: 01 and 02 after Loop B reconciles the restatement to a spun-off business, 03 at the goodwill impairment. Write your own question in the same shape as [input_examples/](input_examples/) (schema: `RunRequest` in [contracts/openapi/agent.yaml](contracts/openapi/agent.yaml)); a malformed body gets a structured 422.
 
-**Watch a run live.** Pass your own run id with `X-Run-Id` (it is echoed, stamped on every trace line and names the trace file), start the run in the background, and stream its trace as Server-Sent Events:
+**Watch a run live.** Pass your own run id with `X-Run-Id` (it is echoed, stamped on every trace line and names the trace file), start the run in the background, and stream its trace as Server-Sent Events. A run id can be used once (reusing it returns 409 `RunConflict`), so pick a new one each time you repeat this:
 
 ```bash
 curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' \
@@ -61,12 +64,12 @@ curl -sN localhost:8000/runs/my-run-1/events      # one trace line per event, th
 curl -s  localhost:8000/runs/my-run-1             # {"status": "done", "result": {...RunResult...}}
 ```
 
-**Without Docker** (Python 3.11+ and [uv](https://docs.astral.sh/uv/)):
+**Without Docker** ([uv](https://docs.astral.sh/uv/); it fetches Python 3.11+ if needed). Stop the Docker stack first (`docker compose down`), or give the app another port, because both use :8000. The app runs in the foreground, so run the CLI line in a second terminal:
 
 ```bash
 cd services/agent && uv sync
-uv run python -m tiresias_agent.app                                                   # same API on :8000
-uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json   # CLI: RunResult on stdout
+uv run python -m tiresias_agent.app                       # same API on :8000 (or: AGENT_PORT=8001 uv run python -m tiresias_agent.app)
+uv run python -m tiresias_agent.orchestrator ../../input_examples/01_ge_2022_revenue_restated.json   # CLI: RunResult on stdout
 ```
 
 Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable. Every read, including the discovery of a missing entity, goes through Zetaris. See [deploy/README.md](deploy/README.md).
@@ -75,8 +78,8 @@ Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a
 
 - **Sample mode (default, offline) covers the GE family only**: GE, GE HealthCare and GE Vernova, because [data/sample/](data/sample/) is a cached slice of their SEC filings (that is what lets it run with no keys). Any other company ends in well under a second at `evidence-frontier`, with a reason that says the slice covers only those three and how to run live.
 - **Live mode works for any SEC registrant.** Name it by ticker, CIK or name (`"entity": {"ticker": "IBM"}`, `{"cik": "0000051143"}` or `{"name": "Hilton Worldwide Holdings Inc."}`). Tiresias resolves it through the SEC ticker list registered in Zetaris, asks the source gate, and registers the company's filings in Zetaris while the run is going. Measured on 2026-10-23 ([docs/measurements/live-any-company.md](docs/measurements/live-any-company.md)): **the first question about a new company takes about 15–21 s** (12–16 s of it is Zetaris downloading the company's SEC facts once); **the next one takes 3–11 s**. Progress shows on the trace stream as `phase_start` / `heartbeat` / `phase_done` lines.
-- **Pick a company / suggested questions.** `GET /entities?q=…` lists the companies ready now (registered; in sample mode the GE slice, and it says why nothing else) and, live, type-ahead over every SEC registrant, each with its expected first-run wait (the measured 3–11 s or 15–21 s). `GET /entities/{cik}/suggestions` derives questions from that company's own filings (restatements, the largest year-on-year changes), each checked by the framer and returned as a request you can post to `/run` as-is.
-- **Out-of-scope questions stop at once, with alternatives.** A forecast or what-if ("What would … if …?"), or a company that is not an SEC registrant, ends at `evidence-frontier` with a plain reason in `RunResult.scope` and up to three runnable alternatives checked against filed data (an SEC registrant the question names, the same company's latest filed change, a same-industry peer).
+- **Pick a company / suggested questions.** `GET /entities?q=…` lists the companies ready now (registered; in sample mode the GE slice, and it says why nothing else) and, live, type-ahead over every SEC registrant, each with its expected first-run wait (the measured 3–11 s or 15–21 s). `GET /entities/{cik}/suggestions` derives questions from that company's own filings (restatements, the largest year-on-year changes), each checked by the framer and returned as a request you can post to `/run` as-is. Some end at `evidence-frontier`: that shows where the rule set stops, with the reason, not a failure.
+- **Out-of-scope questions stop at once, with alternatives.** A forecast or what-if ("What would … if …?"), or a company that is not an SEC registrant, ends at `evidence-frontier` with a plain reason in `RunResult.scope` and up to three runnable alternatives checked against filed data (an SEC registrant the question names, the same company's latest filed change, a same-industry peer). In sample mode a company outside the GE slice gets the reason and how to run live, usually with no alternatives (the slice has no peers to offer).
 - Not every company gets a full answer: the rule set is small (disposals, impairments, restatements). Loop B finds a spun-off business by its filings, not its name: the new registrant whose Form 10 names the parent (IBM → Kyndryl, 3M → Solventum), found with EDGAR full-text search through Zetaris; a sale to an existing company is refused with the buyer named (DuPont → IFF), and two spin-offs on one day are followed one at a time (Hilton: the best-ranked, the rest stays in the residual). In the measurements GE, IBM, 3M, Crane NXT, J&J and Hilton end `actionable`; DuPont (a sale), Caterpillar and ExxonMobil end at `evidence-frontier`, each with the reason.
 
 ## Where to look (judging criteria → repository)
