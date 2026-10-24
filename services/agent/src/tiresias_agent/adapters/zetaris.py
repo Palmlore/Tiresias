@@ -363,8 +363,15 @@ class ZetarisClient:
         run_id: str | None = None,
         timeout: float | None = None,
         redact: Sequence[str] = (),
+        expected: Callable[[SourceError], str | None] | None = None,
     ) -> QueryResult:
-        """Run one statement. `redact` values are masked in the returned/traced SQL and errors."""
+        """Run one statement. `redact` values are masked in the returned/traced SQL and errors.
+
+        ``expected`` classifies a failure the caller treats as a benign outcome (e.g.
+        "already exists" -> "exists"): its line is traced ``success`` with that ``outcome``
+        instead of ``error``. It is consulted only for a non-recoverable failure: a timeout,
+        connection error or 5xx always traces ``error``. The error is raised either way, so
+        callers decide as before."""
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
         run_id = run_id or getattr(self.tracer, "run_id", None) or self._default_run_id
         shown_sql = self._scrub(sql, redact)
@@ -414,6 +421,22 @@ class ZetarisClient:
                 break
             self._sleep(self.BACKOFF_SECONDS * 2**attempt)
         assert error is not None
+        # A recoverable failure (timeout, connection, 5xx) is never benign, whatever its text says.
+        outcome = expected(error) if expected and not error.recoverable else None
+        if outcome:
+            self.tracer.emit(
+                agent=AGENT,
+                action=label,
+                status="success",
+                outcome=outcome,
+                sql=shown_sql,
+                rows=0,
+                duration_ms=_ms(start),
+                retry_count=error.retry_count,
+                source="zetaris",
+                output_summary=f"{outcome}: {error}",
+            )
+            raise error
         self.tracer.emit(
             agent=AGENT,
             action=label,
@@ -773,6 +796,22 @@ _DONE_STATUS = {
 }
 
 
+def already_exists(err: SourceError) -> str | None:
+    """Return "exists" when Zetaris refused a CREATE because the object is already there, else None.
+
+    Lightning SQL has no IF NOT EXISTS for databases, containers or REST tables."""
+    return "exists" if "already exist" in err.detail.lower() else None
+
+
+def bootstrap_outcome(step: str, err: SourceError) -> str | None:
+    """The benign outcome of a failed bootstrap statement ("exists" / "absent"), else None."""
+    if already_exists(err):
+        return "exists"
+    if step == "concept_view" and "FIELD_NOT_FOUND" in err.detail:
+        return "absent"  # the entity never reported this concept
+    return None
+
+
 def bootstrap_plan(
     sec_user_agent: str,
     entities: Sequence[Entity] = SHOWCASE_ENTITIES,
@@ -861,15 +900,19 @@ def bootstrap(
                 continue
             timeout = min(timeout, left)
         start = time.perf_counter()
+
+        def classify(err: SourceError, step: str = step) -> str | None:
+            return bootstrap_outcome(step, err)
+
         try:
-            client.run_sql(sql, label=f"bootstrap:{step}", timeout=timeout, redact=[ua])
+            client.run_sql(
+                sql, label=f"bootstrap:{step}", timeout=timeout, redact=[ua], expected=classify
+            )
             # Views use CREATE OR REPLACE, so a re-run reports them as "replaced".
             entry["status"] = _DONE_STATUS.get(step, "created")
         except SourceError as err:
-            if "already exist" in err.detail.lower():
-                entry["status"] = "exists"
-            elif step == "concept_view" and "FIELD_NOT_FOUND" in err.detail:
-                entry["status"] = "absent"  # the entity never reported this concept
+            if outcome := classify(err):
+                entry["status"] = outcome
             else:
                 entry["status"] = "failed"
                 entry["error"] = str(err)[:200]

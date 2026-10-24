@@ -79,7 +79,9 @@ These are the planned defaults, tunable through environment variables:
 
 Every action is one JSONL line in `logs/trace-<run_id>.jsonl` and is also printed to stdout. Both services write to the shared `logs/` volume and propagate `X-Run-Id`. Planned fields:
 
-`timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, retry_count, status, duration_ms`
+`timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, retry_count, status, outcome, duration_ms`
+
+`outcome` names a benign result under `status: success`: for example a registration step whose object already `exists`, or a concept view that is `absent`; such steps are never traced `error`.
 
 Slow phases are bracketed for progress UIs: `agent: orchestrator`, `action: phase_start` / `phase_done` (with `phase`, `target_agent` = the agent doing the work, and `duration_ms` on `phase_done`), plus `action: heartbeat` (`phase`, `elapsed_ms`) every `PHASE_HEARTBEAT_SECONDS` (default 5) while a phase runs. Phases: `resolve_entity`, `register_entity` (live, unregistered entity only), `loop_a` ⊃ `frame`, `loop_b` ⊃ `scout`, `onboard`, `reconcile`. Measured durations: [measurements/live-any-company.md](measurements/live-any-company.md).
 
