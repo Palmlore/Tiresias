@@ -8,6 +8,8 @@ as Server-Sent Events. Errors always use the contract's Error shape, never a sta
 import json
 import os
 import secrets
+import sys
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 
 import uvicorn
@@ -17,7 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__, entities
 from .adapters.catalog import make_discovery
-from .adapters.zetaris import make_source
+from .adapters.zetaris import WarmStatus, make_source, warm_on_start
 from .config import settings
 from .models import ErrorDetail, ErrorResponse, Role, RunRequest
 from .orchestrator import _find, depth_plan
@@ -26,8 +28,35 @@ from .runs import logs_dir as _logs_dir
 from .runs import wait_budget_seconds as _wait_budget
 from .trace import Tracer
 
-app = FastAPI(title="Tiresias agent", version=__version__)
 registry = RunRegistry()
+# Zetaris cache warm-up on start (BACKLOG B-20), reported by GET /health as zetaris_cache.
+zetaris_cache = WarmStatus()
+
+
+def start_cache_warm(sample_mode: bool | None = None, **kwargs):
+    """Start the background Zetaris cache warm (live mode, ZETARIS_WARM_ON_START, Zetaris
+    configured; see adapters.zetaris.warm_on_start). Returns at once and never raises: startup
+    is never delayed or broken by Zetaris."""
+    sample = settings.sample_mode if sample_mode is None else sample_mode
+    try:
+        tracer = None
+        if not sample:
+            run_id = f"warm-{datetime.now(UTC):%Y%m%dT%H%M%SZ}"
+            tracer = Tracer(run_id, logs_dir=_logs_dir(), defaults={"mode": "live"})
+        return warm_on_start(sample_mode=sample, status=zetaris_cache, tracer=tracer, **kwargs)
+    except Exception as exc:  # noqa: BLE001 - a warm that cannot even start must not stop the API
+        zetaris_cache.fail(f"warm did not start: {type(exc).__name__}")
+        print(f"zetaris cache warm did not start: {type(exc).__name__}", file=sys.stderr)
+        return None
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    start_cache_warm()
+    yield
+
+
+app = FastAPI(title="Tiresias agent", version=__version__, lifespan=_lifespan)
 
 _origins = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()]
 if _origins:  # off by default; set CORS_ALLOW_ORIGINS for a browser UI on another origin
@@ -90,6 +119,7 @@ def health() -> dict:
         "version": __version__,
         "sample_mode": settings.sample_mode,
         "hitl_mode": settings.hitl_mode,
+        "zetaris_cache": zetaris_cache.snapshot(),
     }
 
 

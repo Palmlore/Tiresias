@@ -8,7 +8,10 @@ paths:
   /health:
     get:
       summary: Liveness, with mode and dependency reachability (implemented)
-      responses: {"200": {description: OK}}
+      description: >
+        Never waits on a dependency. zetaris_cache reports the background Zetaris cache warm the
+        API starts in live mode (ZETARIS_WARM_ON_START, BACKLOG B-20); in sample mode it is "off".
+      responses: {"200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Health"}}}}}
   /run:
     post:
       summary: Run an investigation synchronously (implemented; Loop A then Loop B, sample mode by default)
@@ -134,6 +137,39 @@ components:
       description: Run id to use (else one is generated); echoed in the X-Run-Id response header, on every trace line and in the trace file name
       schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,100}$"}
   schemas:
+    Health:
+      type: object
+      required: [service, version, sample_mode, hitl_mode, zetaris_cache]
+      properties:
+        service: {type: string, const: agent}
+        version: {type: string}
+        sample_mode: {type: boolean}
+        hitl_mode: {type: string}
+        zetaris_cache: {$ref: "#/components/schemas/ZetarisCache"}
+    ZetarisCache:
+      type: object
+      description: >
+        Progress of the Zetaris cache warm on start (adapters/zetaris.py warm_on_start): re-issues
+        CACHE TABLE for every registered companyfacts, submissions and ticker-map raw table, one
+        at a time, in a daemon thread that never delays or stops the API.
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: ["off", not-started, warming, warm, partial, failed]
+          description: >
+            off: sample mode, ZETARIS_WARM_ON_START off or ZETARIS_REST_URL unset (see reason);
+            warming: done of total tables so far; warm: every table re-cached; partial: some
+            failed or were skipped for ZETARIS_WARM_BUDGET_SECONDS; failed: none re-cached, or the
+            table list could not be read (see error).
+        reason: {type: string}
+        total: {type: integer}
+        done: {type: integer}
+        counts: {type: object, additionalProperties: {type: integer}, description: "Tables per outcome: warmed, absent, failed, skipped"}
+        started_at: {type: string, format: date-time}
+        finished_at: {type: string, format: date-time}
+        duration_ms: {type: integer}
+        error: {type: string}
     RunStatus:
       type: object
       required: [run_id, status, created_at, events]

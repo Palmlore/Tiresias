@@ -65,6 +65,38 @@ class LoopBudgets:
         )
 
 
+@dataclass(frozen=True)
+class WarmSettings:
+    """Zetaris cache warm-up (adapters/zetaris.py ``warm``, BACKLOG B-20), read at call time.
+
+    ``CACHE TABLE`` is a Zetaris session cache, lost when Zetaris restarts; re-caching a raw
+    table refetches its SEC response, which took over 20 s (the source timeout) for 3M on
+    2026-10-24. Each statement gets ``timeout_seconds`` (ZETARIS_WARM_TIMEOUT_SECONDS, 5..600,
+    default 120) and the whole pass ``budget_seconds`` (ZETARIS_WARM_BUDGET_SECONDS, 10..3600,
+    default 600). At most ``max_tables`` (ZETARIS_WARM_MAX_TABLES, 0..200, default 7: the
+    showcase entities' facts and submissions plus the ticker map) are re-cached, because each
+    cached companyfacts table holds Zetaris driver heap (re-caching all 63 registered tables ran
+    the 2 GB heap out of memory on 2026-10-24). ``on_start`` (ZETARIS_WARM_ON_START, default
+    true) runs a warm in a background thread when the API starts in live mode; sample mode
+    ignores it."""
+
+    timeout_seconds: float = 120.0
+    budget_seconds: float = 600.0
+    max_tables: int = 7
+    on_start: bool = True
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "WarmSettings":
+        env = os.environ if env is None else env
+        flag = (env.get("ZETARIS_WARM_ON_START") or "true").strip().lower()
+        return cls(
+            timeout_seconds=_bounded_float(env, "ZETARIS_WARM_TIMEOUT_SECONDS", 120.0, 5.0, 600.0),
+            budget_seconds=_bounded_float(env, "ZETARIS_WARM_BUDGET_SECONDS", 600.0, 10.0, 3600.0),
+            max_tables=_bounded_int(env, "ZETARIS_WARM_MAX_TABLES", 7, 0, 200),
+            on_start=flag not in {"0", "false", "no", "off"},
+        )
+
+
 MODEL_LANES_MODES = ("auto", "on", "off")
 
 
