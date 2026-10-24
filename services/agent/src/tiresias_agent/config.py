@@ -65,6 +65,56 @@ class LoopBudgets:
         )
 
 
+WARM_ENTITIES_DEFAULT = ("mmm", "solv", "ge", "gehc", "gev")
+
+
+def warm_entities(value: str | None) -> tuple[str, ...]:
+    """ZETARIS_WARM_ENTITIES split on commas, trimmed, lower-cased, duplicates dropped (first
+    wins). Unset or blank gives the default. Names are not validated here: the Zetaris adapter
+    checks each against its object-ticker pattern before it builds SQL."""
+    if value is None or not value.strip():
+        return WARM_ENTITIES_DEFAULT
+    names = [n.strip().lower() for n in value.split(",") if n.strip()]
+    return tuple(dict.fromkeys(names))
+
+
+@dataclass(frozen=True)
+class WarmSettings:
+    """Zetaris cache warm-up (adapters/zetaris.py ``warm``, BACKLOG B-20), read at call time.
+
+    ``CACHE TABLE`` is a Zetaris session cache, lost when Zetaris restarts; re-caching a raw
+    table refetches its SEC response, which took over 20 s (the source timeout) for 3M on
+    2026-10-24. Each statement gets ``timeout_seconds`` (ZETARIS_WARM_TIMEOUT_SECONDS, 5..600,
+    default 120) and the whole pass ``budget_seconds`` (ZETARIS_WARM_BUDGET_SECONDS, 10..3600,
+    default 600). ``entities`` (ZETARIS_WARM_ENTITIES, comma-separated object tickers as
+    ``adapters.zetaris.object_ticker`` names them, default ``mmm,solv,ge,gehc,gev``: the demo
+    company 3M and its spin-off Solventum, then the GE showcase) are warmed first, in that
+    order; the adapter validates each name. At most ``max_tables`` (ZETARIS_WARM_MAX_TABLES,
+    0..200, default 11: the default entities' facts and submissions plus the ticker map) are
+    re-cached, because each cached companyfacts table holds Zetaris driver heap (re-caching all
+    63 registered tables ran the 2 GB heap out of memory on 2026-10-24, BACKLOG B-24).
+    ``on_start`` (ZETARIS_WARM_ON_START, default true) runs a warm in a background thread when
+    the API starts in live mode; sample mode ignores it."""
+
+    timeout_seconds: float = 120.0
+    budget_seconds: float = 600.0
+    max_tables: int = 11
+    entities: tuple[str, ...] = WARM_ENTITIES_DEFAULT
+    on_start: bool = True
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "WarmSettings":
+        env = os.environ if env is None else env
+        flag = (env.get("ZETARIS_WARM_ON_START") or "true").strip().lower()
+        return cls(
+            timeout_seconds=_bounded_float(env, "ZETARIS_WARM_TIMEOUT_SECONDS", 120.0, 5.0, 600.0),
+            budget_seconds=_bounded_float(env, "ZETARIS_WARM_BUDGET_SECONDS", 600.0, 10.0, 3600.0),
+            max_tables=_bounded_int(env, "ZETARIS_WARM_MAX_TABLES", 11, 0, 200),
+            entities=warm_entities(env.get("ZETARIS_WARM_ENTITIES")),
+            on_start=flag not in {"0", "false", "no", "off"},
+        )
+
+
 MODEL_LANES_MODES = ("auto", "on", "off")
 
 

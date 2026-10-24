@@ -72,6 +72,7 @@ cd ~/Repos/hackathon2026/zetaris/zetaris-platform && ./verify.sh   # UI localhos
 python3 scripts/zetaris_probe.py     # latency and registration probe (reads .env)
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris bootstrap   # register sources (needs ZETARIS_* and SEC_USER_AGENT)
 cd services/agent && uv run python -m tiresias_agent.adapters.zetaris smoke [--sample]   # entities, revenue facts, filings
+cd services/agent && uv run python -m tiresias_agent.adapters.zetaris warm   # after a Zetaris restart: re-cache the ZETARIS_WARM_ENTITIES raw tables (zetaris/README.md#apply)
 # Investigation (Loop A, then Loop B) on one request (sample mode by default; --live queries Zetaris with sample fallback; --loop-a stops after Loop A)
 cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples/01_ge_2022_revenue_restated.json [--live] [--loop-a] [--logs-dir DIR] [--depth quick|thorough|deep]
 #   --depth (ADR-0011): quick = rules only (default); thorough/deep add model lanes live (minutes); sample mode never calls a model

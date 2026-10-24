@@ -116,14 +116,6 @@ Found in: #15  ·  Status: open  ·  Severity: later
 - Review at: demo rehearsal (Mon 26 Oct): check the demo questions' raw shares
 - Evidence: `services/agent/src/tiresias_agent/agents/critic.py` (`"proposal": "accept-capped"` under `raw > OVER_EXPLAINED`); `MAX_OVER_EXPLAINED` in `config.py` (#15).
 
-## B-20: Zetaris loses its table cache on restart; the first query nearly times out
-Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: demo-risk
-- Out of scope because: found while moving the old AGENTS.md "Known gotchas" list into zetaris/README.md; `CACHE TABLE` is a Zetaris session cache, and re-warming it automatically (for example a `bootstrap` when the agent starts in live mode, or a warm-up probe) is a change to the adapter and the start-up path.
-- Safe to leave because: after a restart the first uncached query refetches from SEC in about 15 s, under the 20 s source timeout; a timeout is an outage, so the call degrades to the sample with a `degraded` trace line instead of failing. Re-running `bootstrap` re-warms every cache.
-- Urgent if: a live demo or a judge's live run starts on a freshly restarted Zetaris, or a slow day pushes the refetch past 20 s (GE took 36–46 s end to end on 23 Oct evening).
-- Review at: before recording (Tue 27 Oct): re-run `bootstrap`, then time a warm run.
-- Evidence: [zetaris/README.md](zetaris/README.md#quirks); `zetaris/sql/12_cache_table.sql`; source timeout in `adapters/zetaris.py`.
-
 ## B-21: Discovery tables are never dropped
 Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
 - Out of scope because: found while moving the old AGENTS.md "Known gotchas" list into zetaris/README.md; `bootstrap` never drops anything by design (idempotent, safe to re-run), and a clean-up needs its own rule for which `<ticker>_submissions_raw` and `fts_<hash>_raw` tables are still in use.
@@ -131,6 +123,14 @@ Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
 - Urgent if: the Zetaris table list slows queries or registration, or a shared Zetaris is used by others.
 - Review at: after submission.
 - Evidence: [zetaris/README.md](zetaris/README.md) ("Discovery goes through Zetaris too"); `adapters/catalog.py` (`ZetarisDiscovery`).
+
+## B-24: Cached companyfacts tables can run the Zetaris driver out of heap
+Found in: fix/b20-cache-warmup (24 Oct)  ·  Status: open  ·  Severity: demo-risk
+- Out of scope because: found by the first live `warm`, which re-cached every registered raw table (63); the fix for B-20 now caps the warm at `ZETARIS_WARM_MAX_TABLES` (11) and halts after two failures in a row, but bounding what the agent itself caches (each runtime registration, `onboard_entity` and Loop B's `onboard`, runs `CACHE TABLE` on a companyfacts table and never uncaches one) needs an eviction rule (`UNCACHE TABLE`, least recently used) or a larger driver heap in the vendor bundle.
+- Safe to leave because: a demo touches a handful of companies, well under the about ten companyfacts tables that filled the 2 GB heap; warm on start re-caches only the `ZETARIS_WARM_ENTITIES` (five by default) and the ticker map; restarting the driver container (`docker restart zetaris-driver-1`) restores Zetaris, and registrations survive it.
+- Urgent if: a session registers many new companies on one Zetaris, or a live run or `warm` fails with `Cannot call methods on a stopped SparkContext` or a `FetchIterator.fetchNext()` NullPointerException. Those come back as HTTP 400, which the adapter treats as non-recoverable: the run errors instead of degrading to the sample.
+- Review at: before recording (Tue 27 Oct): restart the driver, run `warm`, then keep the recorded session to the companies it needs.
+- Evidence: `docker logs zetaris-driver-1`, 2026-10-24 05:02:15 UTC: `java.lang.OutOfMemoryError: Java heap space` ... `stopping SparkContext` (G1 at 2046M of 2048M), while `warm` cached `ibm_facts_raw` after ten other companyfacts tables; every later statement failed in about 0.1 s.
 
 ## Closed
 
@@ -141,5 +141,6 @@ Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
 - **B-7** (found in #8, closed in #9): Loop B not yet run against live Zetaris: examples 01 and 02 and Hilton reconcile live, [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
 - **B-9** (found in #9, closed in #18): "already exists" registration steps were traced as `status: error`: `ZetarisClient.run_sql(..., expected=)` traces a benign reply `success` with `outcome` `exists`/`absent` (bootstrap and discovery registration); `tests/test_zetaris.py`, `tests/test_any_company.py`.
 - **B-15** (found in #13, closed in #15): Loop B accepts an add-back that over-explains far beyond tolerance: bounded by `MAX_OVER_EXPLAINED` (150%), beyond it the gate proposes `prune`; [docs/causal-criteria.md](docs/causal-criteria.md) §7, `tests/test_loop_b.py`.
+- **B-20** (found in housekeeping (24 Oct), closed in #27): Zetaris lost its table cache on restart and the first query could time out (3M: three 20 s timeouts, then the sample): `python -m tiresias_agent.adapters.zetaris warm` re-caches the raw tables of `ZETARIS_WARM_ENTITIES` (default 3M, Solventum, the GE showcase) first, one at a time, with a 120 s statement timeout, and the API runs it in the background on a live start (`ZETARIS_WARM_ON_START`, `GET /health` `zetaris_cache`); [zetaris/README.md](zetaris/README.md#apply), `tests/test_warm.py`. Heap limit found on the way: B-24.
 - **B-22** (found in the verifier audit #20, closed in #25): AGENTS.md rule 4 and the parallel-PR rule disagreed on who updates the status docs: rule 4 now says the same commit for a change that lands alone, the coordinator right after the merge for parallel PRs.
 - **B-23** (found in the verifier audit #20, closed in #25): Cursor read `planned` in metadata.json and `optional` elsewhere: README and sponsor-technology.md now say `planned` and why (the schema has no "optional").

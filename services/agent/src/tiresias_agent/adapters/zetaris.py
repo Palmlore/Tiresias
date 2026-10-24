@@ -14,14 +14,18 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Generic, Protocol, TypeVar
 
 import httpx
+
+from ..config import WARM_ENTITIES_DEFAULT, WarmSettings
 
 AGENT = "zetaris_adapter"
 REDACTED = "***"
@@ -364,6 +368,7 @@ class ZetarisClient:
         timeout: float | None = None,
         redact: Sequence[str] = (),
         expected: Callable[[SourceError], str | None] | None = None,
+        max_retries: int | None = None,
     ) -> QueryResult:
         """Run one statement. `redact` values are masked in the returned/traced SQL and errors.
 
@@ -371,14 +376,16 @@ class ZetarisClient:
         "already exists" -> "exists"): its line is traced ``success`` with that ``outcome``
         instead of ``error``. It is consulted only for a non-recoverable failure: a timeout,
         connection error or 5xx always traces ``error``. The error is raised either way, so
-        callers decide as before."""
+        callers decide as before. ``max_retries`` overrides the configured retries for this
+        call (``warm`` passes 0: a timed-out refetch is reported, not repeated)."""
+        retries = self.config.max_retries if max_retries is None else max(0, max_retries)
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
         run_id = run_id or getattr(self.tracer, "run_id", None) or self._default_run_id
         shown_sql = self._scrub(sql, redact)
         wait = timeout or self.config.timeout_seconds
         start = time.perf_counter()
         error: SourceError | None = None
-        for attempt in range(self.config.max_retries + 1):
+        for attempt in range(retries + 1):
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
                 "X-Org-ID": str(self.config.org_id),
@@ -417,7 +424,7 @@ class ZetarisClient:
                         detail=detail,
                     )
             error.retry_count = attempt
-            if not error.recoverable or attempt >= self.config.max_retries:
+            if not error.recoverable or attempt >= retries:
                 break
             self._sleep(self.BACKOFF_SECONDS * 2**attempt)
         assert error is not None
@@ -939,6 +946,273 @@ def endpoint_cik(endpoint: str) -> str | None:
     return match.group(1) if match else None
 
 
+# --- Cache warm-up (BACKLOG B-20) -------------------------------------------------------------
+
+# Raw tables warm re-caches: companyfacts ("facts"), submissions and the discovery ticker map. An
+# EDGAR full-text search table (fts_<hash>_raw) serves one past search only, so it is never
+# refetched. Each cached companyfacts table holds Zetaris driver heap: on 2026-10-24 re-caching
+# every registered table (63) ran the 2 GB driver heap out of memory after about ten companyfacts
+# tables, which stopped its SparkContext until the driver was restarted. So warm takes at most
+# ``WarmSettings.max_tables`` (ZETARIS_WARM_MAX_TABLES, default 11: the five default
+# ZETARIS_WARM_ENTITIES' facts and submissions, then the ticker map) in ``warm_order``, and stops
+# after ``WARM_MAX_CONSECUTIVE_FAILURES`` failures in a row (Zetaris itself is then likely down).
+WARM_KINDS = ("facts", "submissions", "tickers")
+WARM_MAX_CONSECUTIVE_FAILURES = 2
+
+
+def check_warm_entities(entities: Iterable[str]) -> tuple[str, ...]:
+    """Each ZETARIS_WARM_ENTITIES name checked against the object-ticker pattern used for SQL
+    placeholders (``object_ticker`` output, e.g. ``brkb``); raises ValueError otherwise."""
+    return tuple(_check(_TICKER, e, "ZETARIS_WARM_ENTITIES entry") for e in entities)
+
+
+def warm_kind(table: str) -> str | None:
+    """ "facts" / "submissions" / "tickers" for a raw table warm re-caches, else None."""
+    if table == TICKERS_TABLE:
+        return "tickers"
+    for kind in ("facts", "submissions"):
+        suffix = f"_{kind}_raw"
+        if table.endswith(suffix) and _TICKER.fullmatch(table.removesuffix(suffix)):
+            return kind
+    return None
+
+
+def warm_order(tables: Iterable[str], entities: Sequence[str] = WARM_ENTITIES_DEFAULT) -> list[str]:
+    """Warmable tables, most useful first: ``entities`` in the given order (each one's facts,
+    then its submissions; validated by ``check_warm_entities``), the ticker map, other
+    registered entities' facts, their submissions, then submissions tables only discovery
+    registered (scout candidates without a facts table)."""
+    priority = {e: i for i, e in reversed(list(enumerate(check_warm_entities(entities))))}
+    names = [t for t in tables if warm_kind(t)]
+    registered = {t.removesuffix("_facts_raw") for t in names if warm_kind(t) == "facts"}
+
+    def key(name: str) -> tuple[int, int, str]:
+        kind = warm_kind(name)
+        ticker = name.rsplit("_", 2)[0]
+        if kind == "tickers":
+            return (1, 0, name)
+        if ticker in priority:
+            return (0, priority[ticker] * 2 + (kind == "submissions"), name)
+        if kind == "facts":
+            return (2, 0, name)
+        return (3 if ticker in registered else 4, 0, name)
+
+    return sorted(names, key=key)
+
+
+def warm_outcome(err: SourceError) -> str | None:
+    """The benign outcome of a failed CACHE TABLE: the table was dropped after it was listed."""
+    return "absent" if "TABLE_OR_VIEW_NOT_FOUND" in err.detail else None
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+class WarmStatus:
+    """Thread-safe progress of one warm pass, for GET /health (``zetaris_cache``).
+
+    ``state``: ``off`` (sample mode, disabled or not configured; ``reason`` says which),
+    ``not-started``, ``warming`` (``done`` of ``total`` tables), then ``warm`` (every table
+    within the cap warmed), ``partial`` (some warmed, some failed or skipped) or ``failed``
+    (none warmed, or the table list could not be read; ``error`` says why)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._data: dict[str, Any] = {"state": "not-started"}
+
+    def snapshot(self) -> dict[str, Any]:
+        with self._lock:
+            return {k: dict(v) if isinstance(v, dict) else v for k, v in self._data.items()}
+
+    def off(self, reason: str) -> None:
+        with self._lock:
+            self._data = {"state": "off", "reason": reason}
+
+    def begin(self, total: int | None = None) -> None:
+        with self._lock:
+            self._data = {"state": "warming", "done": 0, "started_at": _utc_now()}
+            if total is not None:
+                self._data["total"] = total
+
+    def advance(self) -> None:
+        with self._lock:
+            self._data["done"] = self._data.get("done", 0) + 1
+
+    def finish(self, state: str, counts: Mapping[str, int], duration_ms: int) -> None:
+        with self._lock:
+            self._data.update(
+                state=state, counts=dict(counts), duration_ms=duration_ms, finished_at=_utc_now()
+            )
+
+    def fail(self, error: str) -> None:
+        with self._lock:
+            self._data.update(state="failed", error=error[:200], finished_at=_utc_now())
+
+
+def warm(
+    client: ZetarisClient,
+    *,
+    settings: WarmSettings | None = None,
+    status: WarmStatus | None = None,
+    clock: Callable[[], float] = time.monotonic,
+    directory: Path | None = None,
+) -> list[dict[str, Any]]:
+    """Re-issue ``CACHE TABLE`` (template 12) for the registered raw tables, one at a time.
+
+    The cache is lost when Zetaris restarts and the first query then refetches from SEC
+    (BACKLOG B-20). Tables are taken in ``warm_order`` with ``settings.entities``
+    (ZETARIS_WARM_ENTITIES) first; an invalid name raises ValueError before any SQL is sent.
+    At most ``settings.max_tables`` are re-cached (the
+    rest are ``capped``: listed, not touched). Each statement may take
+    ``settings.timeout_seconds``, with no retry (a timed-out refetch is reported; run warm
+    again), capped at what is left of ``settings.budget_seconds``. One entry per table:
+    ``warmed``, ``absent`` (dropped after it was listed), ``failed`` (with ``error`` and
+    ``recoverable``), ``skipped`` (``reason`` ``budget``, with ``budget: true``, or ``halted``
+    after WARM_MAX_CONSECUTIVE_FAILURES failures in a row) or ``capped``. Never creates,
+    replaces or drops anything. Raises SourceError only if the table list cannot be read."""
+    settings = settings or WarmSettings.from_env()
+    status = status or WarmStatus()
+    start = time.perf_counter()
+    deadline = clock() + settings.budget_seconds
+    try:
+        entities = check_warm_entities(settings.entities)  # before any SQL is sent
+    except ValueError as err:
+        status.fail(str(err))
+        raise
+    try:
+        tables = warm_order(lightning_tables(client, directory), entities)
+    except SourceError as err:
+        status.fail(str(err))
+        raise
+    chosen, capped = tables[: settings.max_tables], tables[settings.max_tables :]
+    status.begin(len(chosen))
+    report: list[dict[str, Any]] = []
+    failures_in_a_row = 0
+    for table in chosen:
+        entry: dict[str, Any] = {"table": f"TIRESIAS_SEC.{table}", "kind": warm_kind(table)}
+        left = deadline - clock()
+        if failures_in_a_row >= WARM_MAX_CONSECUTIVE_FAILURES:
+            report.append({**entry, "status": "skipped", "reason": "halted", "duration_ms": 0})
+            status.advance()
+            continue
+        if left < MIN_STATEMENT_SECONDS:
+            skip = {"status": "skipped", "reason": "budget", "budget": True, "duration_ms": 0}
+            report.append({**entry, **skip})
+            status.advance()
+            continue
+        sql = render_file("12_cache_table.sql", directory, table=table)
+        t0 = time.perf_counter()
+        try:
+            client.run_sql(
+                sql,
+                label="warm:cache",
+                timeout=min(settings.timeout_seconds, left),
+                max_retries=0,
+                expected=warm_outcome,
+            )
+            entry["status"] = "warmed"
+            failures_in_a_row = 0
+        except SourceError as err:
+            if outcome := warm_outcome(err):
+                entry["status"] = outcome
+                failures_in_a_row = 0
+            else:
+                entry.update(status="failed", error=str(err)[:200], recoverable=err.recoverable)
+                failures_in_a_row += 1
+        entry["duration_ms"] = _ms(t0)
+        report.append(entry)
+        status.advance()
+    for table in capped:
+        name = f"TIRESIAS_SEC.{table}"
+        report.append({"table": name, "kind": warm_kind(table), "status": "capped"})
+    counts = warm_counts(report)
+    if not counts.get("failed") and not counts.get("skipped"):  # capped is by design
+        state, trace_status = "warm", "success"
+    elif counts.get("warmed"):
+        state, trace_status = "partial", "degraded"
+    else:
+        state, trace_status = "failed", "error"
+    duration = _ms(start)
+    status.finish(state, counts, duration)
+    summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items())) or "no raw tables"
+    client.tracer.emit(
+        agent=AGENT,
+        action="warm",
+        status=trace_status,
+        outcome=state,
+        tables=len(report),
+        counts=counts,
+        duration_ms=duration,
+        source="zetaris",
+        output_summary=f"{state}: {summary}",
+    )
+    return report
+
+
+def warm_counts(report: Sequence[Mapping[str, Any]]) -> dict[str, int]:
+    """Tables per status in a ``warm`` report."""
+    counts: dict[str, int] = {}
+    for entry in report:
+        counts[entry["status"]] = counts.get(entry["status"], 0) + 1
+    return counts
+
+
+def warm_on_start(
+    *,
+    sample_mode: bool,
+    status: WarmStatus,
+    env: Mapping[str, str] | None = None,
+    make_client: Callable[[], ZetarisClient] | None = None,
+    tracer: Tracer | None = None,
+) -> threading.Thread | None:
+    """Start ``warm`` in a daemon thread when the API starts in live mode with Zetaris
+    configured (ZETARIS_REST_URL set) and ZETARIS_WARM_ON_START on (the default). Returns at
+    once: the thread, or None (``status`` then says ``off`` and why). The thread never raises;
+    any failure ends as ``status`` ``failed`` with a traced ``warm`` error line. Sample mode
+    never touches Zetaris."""
+    env = os.environ if env is None else env
+    if sample_mode:
+        status.off("sample mode")
+        return None
+    settings = WarmSettings.from_env(env)
+    if not settings.on_start:
+        status.off("ZETARIS_WARM_ON_START is off")
+        return None
+    if not (env.get("ZETARIS_REST_URL") or "").strip():
+        status.off("ZETARIS_REST_URL is not set")
+        return None
+    config = ZetarisConfig.from_env(env)
+    log = tracer or _NullTracer()
+
+    def body() -> None:
+        client: ZetarisClient | None = None
+        try:
+            client = make_client() if make_client else ZetarisClient(config, tracer=tracer)
+            warm(client, settings=settings, status=status)
+        except Exception as exc:  # noqa: BLE001 - never crash the app; /health reports it
+            message = f"{type(exc).__name__}: {exc}"
+            if config.api_key:
+                message = message.replace(config.api_key, REDACTED)
+            status.fail(message)
+            log.emit(
+                agent=AGENT,
+                action="warm",
+                status="error",
+                outcome="failed",
+                source="zetaris",
+                output_summary=message[:200],
+            )
+        finally:
+            if client is not None:
+                client.close()
+
+    status.begin()
+    thread = threading.Thread(target=body, name="zetaris-warm", daemon=True)
+    thread.start()
+    return thread
+
+
 # --- CLI --------------------------------------------------------------------------------------
 
 
@@ -984,15 +1258,33 @@ def _smoke(source: EvidenceSource) -> int:
     return 0 if fy2022 else 1
 
 
+def _warm(client: ZetarisClient) -> int:
+    """CLI ``warm``: one JSON line per raw table, then the counts. Exit 1 unless all warmed."""
+    start = time.perf_counter()
+    try:
+        report = warm(client)
+    except (SourceError, ValueError) as err:
+        print(json.dumps({"warm": "failed", "error": str(err)[:200]}), flush=True)
+        return 1
+    for entry in report:
+        print(json.dumps(entry), flush=True)
+    counts = warm_counts(report)
+    summary = {"warm": counts, "tables": len(report), "duration_ms": _ms(start)}
+    print(json.dumps(summary), flush=True)
+    return 1 if counts.get("failed") or counts.get("skipped") else 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m tiresias_agent.adapters.zetaris")
-    parser.add_argument("command", choices=["bootstrap", "smoke"])
+    parser.add_argument("command", choices=["bootstrap", "smoke", "warm"])
     parser.add_argument("--sample", action="store_true", help="smoke against data/sample only")
     args = parser.parse_args(argv)
     tracer = _PrintTracer()
     if args.command == "smoke":
         return _smoke(make_source(args.sample, tracer))
     client = ZetarisClient(ZetarisConfig.from_env(), tracer=tracer)
+    if args.command == "warm":
+        return _warm(client)
     report = bootstrap(client, discovery=True)
     for entry in report:
         print(json.dumps(entry), flush=True)
@@ -1016,6 +1308,7 @@ __all__ = [
     "QueryResult",
     "SampleSource",
     "SourceError",
+    "WarmStatus",
     "ZetarisClient",
     "ZetarisConfig",
     "bootstrap",
@@ -1023,6 +1316,8 @@ __all__ = [
     "lightning_tables",
     "make_source",
     "object_ticker",
+    "warm",
+    "warm_on_start",
 ]
 
 
