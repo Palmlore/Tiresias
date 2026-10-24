@@ -153,7 +153,6 @@ def test_dead_engine_is_classified_in_one_place():
     [
         "[PARSE_SYNTAX_ERROR] Syntax error at or near 'SELEC'",
         "Unauthorized: invalid token",
-        "java.lang.NullPointerException at Foo.bar",
     ],
 )
 def test_genuine_4xx_stays_non_recoverable_and_is_raised(body):

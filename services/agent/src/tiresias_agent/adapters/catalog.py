@@ -19,9 +19,11 @@ a catalog template and, in live mode, **only through Zetaris** (ADR-0003; BACKLO
   (``fulltext_hit_rows``); any other search returns no rows and says so.
 
 Sample mode reads ``data/sample/`` (company_tickers.json, <ticker>_submissions.json,
-fts_<hash>.json) and reports the SQL live mode would have run. Live mode falls back to the sample per call on an outage
-(recoverable SourceError), traced ``degraded``; a non-recoverable error (bad SQL, auth, a table
-bound to another CIK) is raised, never served from the sample.
+fts_<hash>.json) and reports the SQL live mode would have run. Live mode falls back to the sample per call on a
+recoverable SourceError (an outage, a dead engine, or an unclassified failure such as a row that
+does not parse; ``adapters.zetaris`` "Error classification"), traced ``degraded`` with its
+``cause``; a non-recoverable error (bad SQL, auth, a table bound to another CIK) is raised, never
+served from the sample.
 
 Discovery objects are not evidence sources: the ``sec_tickers`` table/view (registered once), the
 per-candidate submissions tables (at most MAX_CANDIDATES per scout run) and the full-text search
@@ -45,6 +47,7 @@ from typing import Any, Protocol
 from urllib.parse import quote
 
 from .zetaris import (
+    BEFORE_SENDING_ERRORS,
     BOOTSTRAP_TIMEOUT_SECONDS,
     TICKERS_VIEW,
     Evidence,
@@ -62,6 +65,7 @@ from .zetaris import (
     render_file,
     sample_dir,
     uncache,
+    unclassified,
 )
 
 AGENT = "catalog"
@@ -489,8 +493,8 @@ def _naming_rows(rows: Sequence[Mapping[str, Any]]) -> list[NamingRow]:
                 )
             )
         except (KeyError, TypeError, ValueError) as err:
-            raise SourceError(
-                f"{FULLTEXT}: malformed row ({type(err).__name__})", recoverable=False
+            raise unclassified(
+                f"{FULLTEXT}: malformed row ({type(err).__name__})", excerpt=str(r)[:160]
             ) from err
     return out
 
@@ -518,8 +522,8 @@ def _query_rows(result: QueryResult) -> list[TickerRow]:
         try:
             out.append(TickerRow(str(r["ticker"]), f"{int(r['cik']):010d}", str(r.get("name", ""))))
         except (KeyError, TypeError, ValueError) as err:
-            raise SourceError(
-                f"sec_tickers: malformed row ({type(err).__name__})", recoverable=False
+            raise unclassified(
+                f"sec_tickers: malformed row ({type(err).__name__})", excerpt=str(r)[:160]
             ) from err
     return out
 
@@ -565,7 +569,7 @@ def _json_list(text: Any) -> list[Any]:
     try:
         value = json.loads(text) if text not in (None, "", "null") else []
     except (TypeError, ValueError):
-        raise SourceError("sec_submissions: column is not JSON", recoverable=False) from None
+        raise unclassified("sec_submissions: column is not JSON", excerpt=str(text)[:160]) from None
     return value if isinstance(value, list) else []
 
 
@@ -865,6 +869,7 @@ class ZetarisDiscovery:
                 raise SourceError(
                     f"{TICKERS}: registration failed ({bad[0].get('error', bad[0]['status'])})",
                     recoverable=bool(bad[0].get("recoverable")),
+                    cause=bad[0].get("cause"),
                 )
             self.registered.append(TICKERS_VIEW)
         self._tickers_ready = True
@@ -1087,8 +1092,10 @@ class ZetarisDiscovery:
 
 
 class FallbackDiscovery:
-    """Live first; on a recoverable error serve the sample, traced degraded. A non-recoverable
-    error is raised, never papered over with sample rows (same contract as FallbackSource)."""
+    """Live first; on a recoverable error serve the sample, traced degraded with its ``cause``;
+    any other exception in the live read is wrapped as ``unclassified`` first (except
+    ``BEFORE_SENDING_ERRORS``). A non-recoverable error is raised, never papered over with sample
+    rows (same contract as FallbackSource)."""
 
     def __init__(self, primary: Discovery, fallback: Discovery, tracer: Any = None) -> None:
         self.primary = primary
@@ -1099,7 +1106,14 @@ class FallbackDiscovery:
 
     def _call(self, method: str, *args: Any, **kwargs: Any) -> Evidence[Any]:
         try:
-            return getattr(self.primary, method)(*args, **kwargs)
+            try:
+                return getattr(self.primary, method)(*args, **kwargs)
+            except (SourceError, *BEFORE_SENDING_ERRORS):
+                raise  # classified, or raised before any SQL was sent (CatalogError too)
+            except Exception as exc:  # rule 8: an unknown failure in a live read is an outage
+                raise unclassified(
+                    f"Zetaris discovery {method}: unexpected {type(exc).__name__} in the live read"
+                ) from exc
         except SourceError as err:
             if not err.recoverable:
                 raise
@@ -1117,6 +1131,7 @@ class FallbackDiscovery:
                 retry_count=err.retry_count,
                 source=result.source,
                 output_summary=f"Zetaris discovery read failed, served from sample: {err}",
+                **err.trace_fields(),
             )
             return result
 

@@ -367,7 +367,7 @@ def test_onboarder_live_outage_degrades_but_a_bad_request_never_uses_the_sample(
     bad, registry, _ = _onboard(
         scout,
         sample=False,
-        client=_client(lambda r: httpx.Response(400, text="syntax")),
+        client=_client(lambda r: httpx.Response(400, text="[PARSE_SYNTAX_ERROR] Syntax error")),
         sec_user_agent="Test t@x.io",
     )
     assert bad.status == "failed" and bad.mode == "zetaris" and not registry.onboarded

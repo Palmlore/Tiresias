@@ -18,7 +18,7 @@ Open the rest only when the task needs them:
 ## Layout
 | Path | What |
 |---|---|
-| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `runs.py`, `app.py`, `agents/`, `adapters/` (see Building blocks). **Loop A + Loop B (`run_investigation`) run as a library, a CLI and over HTTP (sample mode): `POST /run` (sync), `POST /runs` + `GET /runs/{id}` (async) and `GET /runs/{id}/events` (SSE) work, plus the entity directory `GET /entities` and `GET /entities/{cik}/suggestions`; `/runs/{id}/branch` and `/memory/purge` return a structured 501.** |
+| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `runs.py`, `app.py`, `agents/`, `adapters/` (see Building blocks). **Loop A + Loop B (`run_investigation`) run as a library, a CLI and over HTTP (sample mode): `POST /run` (sync), `POST /runs` + `GET /runs/{id}` (async) and `GET /runs/{id}/events` (SSE) work, plus the entity directory `GET /entities` and `GET /entities/{cik}/suggestions`; `POST /memory/purge` purges H-MEM lessons through cognition; `/runs/{id}/branch` returns a structured 501.** |
 | `services/cognition/` | TypeScript / Node ≥22.18, no npm dependencies. H-MEM memory over REST. **Working.** |
 | `services/cognition/engine/hmem/` | Vendored Meterless H-MEM reference (commit `1742dec`). **Never edit**; wrap it in `src/`. |
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |

@@ -117,7 +117,9 @@ class FakeZetaris:
             return self._filings(s)
         if s.startswith("SELECT concept"):
             return self._series(s)
-        return bad(f"fake Zetaris does not understand: {s[:80]}")
+        # A known SQL error (fatal), so a statement the fake lacks fails the test loudly instead
+        # of being served from the sample as an unclassified reply.
+        return bad(f"ParseException: fake Zetaris does not understand: {s[:80]}")
 
     def _tickers(self, s):
         cols = ["cik", "name", "ticker", "exchange"]
