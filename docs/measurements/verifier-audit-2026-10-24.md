@@ -12,6 +12,25 @@ Every merged pull request in Palmlore/Tiresias carries an `## ACCEPTANCE CRITERI
 - **Not run:** nothing needing live Zetaris, Nightshift, Docker or network beyond GitHub. None of the 158 verifiers required it: the live-mode tests use a fake Zetaris over `httpx.MockTransport`. PR #3's live round trip was run against a local cognition server (`npm start` on port 8199 with a temporary `MEMORY_DIR`), not Docker. `.env` was not read (the worktree has none, so the Nightshift probe ran unconfigured as its verifier intends).
 - **Branch-diff verifiers.** Several docs-PR verifiers start with `git diff origin/main -- …` ("what this branch changes"). After the merge that diff is empty, so they were **adapted**: the PR's own change was read from its squash-merge commit (`git show <merge sha>`), and the evidence it cites was checked on current `main`. Rows marked "adapted" say so.
 
+### Reproduce
+
+Every row is recorded in [verifier-audit-2026-10-24.criteria.json](verifier-audit-2026-10-24.criteria.json): PR, index, statement, falsifier, the original verifier, the exact command run (with a one-line reason wherever it differs from the original beyond the interpreter path), the recorded class, and for superseded rows the PR that moved the claim and the command that checks it at its new location. [`scripts/verify_audit.py`](../../scripts/verify_audit.py) (stdlib only, Python 3.11, no `uv`, no network, no `gh`) runs every command from the repo root with a 300 s timeout and checks each row's class mechanically: `pass` = exit 0 and every pytest run in the command selected and passed at least one test; `fail` = the contradiction is still there (a fixed fail is reported `changed`); `superseded` = the new-location command passes (otherwise `broken`); `not-runnable` is reported, not run. It exits non-zero if any row's observed class differs from the recorded one. `--refresh` re-extracts the criteria from the PR bodies with `gh` and reports differences (on 2026-10-24: 16 bodies, 0 differences).
+
+```bash
+python3 scripts/verify_audit.py --python /tmp/duelloop-py/bin/python --with-cognition   # any Python with pytest, ruff, fastapi, httpx, pydantic, PyYAML
+python3 scripts/verify_audit.py --python services/agent/.venv/bin/python --with-cognition
+```
+
+`--with-cognition` starts the cognition server (node, temporary `MEMORY_DIR` and `LOGS_DIR`) for #3.7; without it that row is `skipped`. Rows needing `npx` (`validate_metadata.sh`) or `node` are skipped if the tool is missing. Runs on 2026-10-24, branch `chore/verifier-audit` (main 5790962 plus the merge of #19), both exit 0:
+
+| Interpreter | Recorded | Observed |
+|---|---|---|
+| `/tmp/duelloop-py/bin/python`, `--with-cognition` | pass 143, fail 3, superseded 11, not-runnable 1 | pass 143, fail 3, superseded 11, not-runnable 1 |
+| `services/agent/.venv/bin/python` (uv venv), `--with-cognition` | pass 143, fail 3, superseded 11, not-runnable 1 | pass 143, fail 3, superseded 11, not-runnable 1 |
+| `/tmp/duelloop-py/bin/python`, no cognition | pass 143, fail 3, superseded 11, not-runnable 1 | pass 142, fail 3, superseded 11, not-runnable 1, skipped 1 (#3.7) |
+
+Making the runs mechanical turned up two verifier problems; neither changes a recorded class. **#4 criterion 3:** `python -m tiresias_agent.adapters.nightshift --help` exits 2 (the CLI has no argparse and prints its usage for anything but `probe`, as it did at #4's merge), so the verifier as written has always exited non-zero; the first pass read its output, and the reproducible command checks the usage line. **#10 criterion 3 (superseded):** `grep -rln … services/agent/src` also matches compiled `__pycache__/*.pyc` files once tests have run, so the new-location command greps `*.py` only. A check that the runner rejects a 0-test selector (`-k no_such_selector_xyz`, pytest exit 5) reported it as a mismatch, as intended.
+
 ### Classification rules
 
 - `pass`: the verifier ran and its output supports the statement.
@@ -92,7 +111,7 @@ Verifier text is shortened: `pytest` = the pytest invocation, `module::test` = `
 |---|---|---|---|---|
 | 1 | Every CHECKLIST line this PR ticks `[x]` or `[~]` cites evidence that exists on this branch: | `git diff origin/main -- docs/CHECKLIST.md \| grep '^+' ; git log --oneline \| grep -E '\(#[0-9]+\)' ; ls services/agent…` | **pass** | adapted (branch diff is empty after merge): the 6 lines #4 added to CHECKLIST (`git show 50c4fb6`) cite #1, #2, #3, #5, all `(#N)` commits in `git log`; the 4 cited modules exist; `zetaris/sql/` has 22 templates (12 at #4, more added later) |
 | 2 | The status of each sponsor and feature is the same across CHECKLIST, README, metadata.json and AGENTS.md, and… | `grep -n '"status"' metadata.json ; grep -n '^\| \*\*' README.md ; grep -n -i 'zetaris\\|nightshift\\|/run' docs/CHECKLIS…` | **superseded** | #7 made `/run` work (now `@app.post("/run")`, only `/runs/{id}/branch` and `/memory/purge` are 501) and #10 rewrote the status rows. Moved claim holds: metadata.json, README sponsor table, CHECKLIST and sponsor-technology.md all say Zetaris and Meterless `in-progress`, none `working` |
-| 3 | Every module, class, function and CLI command named in AGENTS.md (Layout, Building blocks, Commands) exists w… | `python -c "from tiresias_agent.trace import Tracer, NullTracer; from tiresias_agent.models import RunRequest, RunResu…` | **pass** | imports print `ok`; `adapters.zetaris --help` lists `{bootstrap,smoke}` and `--sample`; `adapters.nightshift --help` prints the `probe` usage (the Building blocks names now live in docs/agents-reference.md, #17) |
+| 3 | Every module, class, function and CLI command named in AGENTS.md (Layout, Building blocks, Commands) exists w… | `python -c "from tiresias_agent.trace import Tracer, NullTracer; from tiresias_agent.models import RunRequest, RunResu…` | **pass** | imports print `ok`; `adapters.zetaris --help` lists `{bootstrap,smoke}` and `--sample`; `adapters.nightshift --help` prints the `probe` usage but exits 2 (no argparse, same at #4's merge), so the verifier as written exits non-zero; the statement holds and the reproducible command checks the usage line instead (the Building blocks names now live in docs/agents-reference.md, #17) |
 | 4 | AGENTS.md and the PR template are internally consistent: | `grep -n -i 'round\\|merge\\|MERGE_PERMITTED\\|AGENTS.md\\|status docs\\|CHECKLIST' AGENTS.md .github/pull_request_template…` | **fail** | AGENTS.md:103 (rule 4) says update CHECKLIST, STATUS and metadata.json "in the same commit as the work"; AGENTS.md:97 says parallel PRs don't edit them and the coordinator does after each merge; the PR template line 27 repeats "in the same change". Both lines were already present at #4's merge |
 | 5 | Metadata stays valid against the schema and the secret scan passes. | `./scripts/validate_metadata.sh && ./scripts/check_secrets.sh` | **pass** | `metadata.json valid`; secret scan PASS |
 
