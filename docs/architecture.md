@@ -54,6 +54,7 @@ The services talk over REST/JSON. Contracts are in [`contracts/openapi/`](../con
 | Source scout | Chooses a template from the bounded [catalog](../catalog/) and resolves the join key | Only from the catalog |
 | Onboarder | Registers the new source in Zetaris (dry run first, one statement at a time), behind the source gate | Gate-controlled |
 | Reporter | Builds the why-tree, labels, end state, action and residuals | — |
+| Memory | Recalls H-MEM lessons after the framer (warm runs), hands their steps to the hypothesiser, sends the critic's verdict on each lesson back as feedback, and distils a successful run's path into a generic lesson behind the memory gate ([ADR-0005](decisions/ADR-0005-memory-lessons-purgeable.md)) | Gate-controlled; the critic decides whether a lesson fits |
 
 ## Human in the loop (ADR-0006)
 
@@ -62,7 +63,11 @@ The services talk over REST/JSON. Contracts are in [`contracts/openapi/`](../con
 | Framing | Asker profile (role, levers, horizon) | input |
 | Source gate | Register a new source in Zetaris | `interactive` / `auto` / `scripted` |
 | Critic escalation | Accept or reject a link when the margin is too small | same |
-| Memory gate | Store a lesson in H-MEM | same |
+| Memory gate | Store a lesson in H-MEM (options `store` / `discard`; auto: store) | same |
+
+### Memory in a run (agents/memory.py)
+
+Warm (`options.memory`, default `MEMORY_MODE=warm`): after the framer, one recall whose query names only the kind of effect and the metric family. A recalled lesson is a path of generic steps (`rule=key>outcome`); the hypothesiser tests candidates with those steps first (node ids keep the rules' order). When the critic prunes a lesson's step, the lesson is rejected for the run and H-MEM gets `wrong` (same kind of question) or `not_helpful` (misapplied). When the step holds as recorded on the same kind of question, the level's other candidates are not tested (fewer hops; listed in `RunResult.memory.skipped`); if the run then reaches no cause, Loop A runs again testing everything. A run ending `actionable` or `branched` stores its path behind the memory gate, unless the same path is already stored. Cold: no memory call. Cognition down: one `degraded` line, the run goes on without memory.
 
 Judges run in `auto` mode. After a run, a user can **branch** from any node of the why-tree with a new question or another asker profile. The branch is a new run carrying `parent_run_id` and `parent_node_id`.
 

@@ -21,17 +21,17 @@ Status: **in-progress**. In live mode the agent drives Zetaris end to end, measu
 ## Meterless
 
 **H-MEM (engine, Build rule).** The `cognition` service runs the Meterless H-MEM reference engine (Apache-2.0) behind REST.
-- It will store **lessons** from past investigations (procedural memory), never answers.
-- It will recall them to seed the hypothesiser.
-- The memory gate is H-MEM's *programmable approval boundary*.
-- Purge will be exposed for the demo (today `/memory/purge` on the agent returns 501); the purge is itself recorded in the append-only trust ledger.
+- It stores **lessons** from past investigations (procedural memory), never answers: the generic path of hypothesiser steps that led to the cause, with no company, ticker, CIK, amount or date (`agents/memory.py`).
+- It recalls them after the framer to seed the hypothesiser, which tests a lesson's steps first; the critic judges each recalled lesson and rejects one whose step it prunes, with negative feedback to H-MEM.
+- The memory gate is H-MEM's *programmable approval boundary*: the agent's `memory` gate decides, and the decision travels with the lesson (a discarded lesson is ledgered, not stored).
+- Purge is exposed (`POST /memory/purge` on the agent, proxied to cognition); the purge is itself recorded in the append-only trust ledger. `scripts/memory_demo.py` shows cold → warm (fewer hops) → rejected lesson → purge → cold, in sample mode.
 - Evidence: the official H-MEM conformance runner passes against our service module.
 
 **Nightshift (Power rule).** All model calls from the agent will go to the Meterless Runtime (OpenAI-compatible; `meterless-app` and `meterless-scope` headers). It will be the primary provider.
 
 **Candidates for later:** the Markovian engine (each "why" as a bounded step with compressed carryover) and World Model (the why-tree as entities and edges with provenance).
 
-Status: **in-progress**. The H-MEM service works and passes conformance 13/13, but the agent does not call it yet (memory demo planned). Nightshift is live in live mode: the model lanes (ADR-0010) call it for extra candidates, the critic's second opinion and the action wording, traced with the routed model; measured once on case 01 on 2026-10-24 (4 calls). A live run calls it only when the user asks for depth `thorough` (critic) or `deep` (all lanes); the default `quick` is rules only (ADR-0011). Sample mode stays rule-based.
+Status: **in-progress**. The H-MEM service works and passes conformance 13/13, and the agent uses it in warm runs, sample mode included (memory demo in CI). Nightshift is live in live mode: the model lanes (ADR-0010) call it for extra candidates, the critic's second opinion and the action wording, traced with the routed model; measured once on case 01 on 2026-10-24 (4 calls). A live run calls it only when the user asks for depth `thorough` (critic) or `deep` (all lanes); the default `quick` is rules only (ADR-0011). Sample mode stays rule-based.
 
 ## NVIDIA
 

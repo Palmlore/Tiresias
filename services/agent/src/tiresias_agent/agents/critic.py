@@ -7,11 +7,15 @@
   a corrected scope), or frontier (the cause probably exists but no registered source can test
   it). It can block: nothing reaches the report without its verdict.
 - escalates borderline calls to the critic-escalation gate (ADR-0006) with a proposal.
+- judges a recalled lesson (``judge_lesson``, causal-criteria.md §6): the step it suggested is
+  tested like any other candidate; if the critic prunes it, the lesson is rejected for the run
+  (negative feedback to H-MEM), so a lesson that does not fit never shapes the answer.
 """
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Literal
 
 from .common import (
     ESCALATION_MARGIN,
@@ -22,6 +26,7 @@ from .common import (
     Candidate,
     Frame,
     Measurement,
+    Node,
     Verdict,
 )
 from .knowledge import money, pct
@@ -233,4 +238,58 @@ def trace_verdict(tracer: Any, candidate: Candidate, m: Measurement, v: Verdict)
         output_summary=v.reason,
         sql=m.primary_sql,
         rows=m.rows,
+    )
+
+
+# --- recalled lessons (causal-criteria.md §6) ---------------------------------------------------
+
+
+@dataclass(frozen=True)
+class LessonVerdict:
+    """The critic's call on a recalled lesson, once the step it suggested has been tested."""
+
+    decision: Literal["support", "reject"]
+    feedback: Literal["wrong", "not_helpful"] | None  # sent now for a reject; None for support
+    conclusive: bool  # the step held as the lesson recorded it: the level's other candidates wait
+    reason: str
+
+
+def judge_lesson(node: Node, *, expected: str, exact: bool, fits: bool) -> LessonVerdict:
+    """Judge a lesson from the tested node of the step it suggested.
+
+    ``expected``: the step's recorded outcome (accepted or frontier); ``exact``: the node is the
+    lesson's own step (not an equivalent one); ``fits``: the lesson was learnt on the same kind
+    of effect and metric family. Pruned means the lesson does not hold here: rejected, feedback
+    ``wrong`` if it was learnt on this kind of question, ``not_helpful`` if it was misapplied.
+    Conclusive (the remaining candidates of the level are not tested unless the run later fails)
+    only for the lesson's own step, on a fitting question, with the recorded outcome, and, for an
+    accepted step, most of the effect explained."""
+    if node.verdict == "pruned":
+        return LessonVerdict(
+            "reject",
+            "wrong" if fits else "not_helpful",
+            False,
+            f"the lesson's step ({node.rule} {node.variable}) was pruned here: {node.reason}"
+            + ("" if fits else "; the lesson was learnt on another kind of question"),
+        )
+    held = node.verdict == expected
+    strong = node.verdict == "frontier" or (node.raw_share or 0) >= MOST_OF_EFFECT
+    conclusive = bool(exact and fits and held and strong)
+    reason = f"the lesson's step ({node.rule} {node.variable}) is {node.verdict} here"
+    if conclusive:
+        reason += " as the lesson recorded; the level's other candidates are not tested"
+    return LessonVerdict("support", None, conclusive, reason)
+
+
+def trace_lesson(tracer: Any, node: Node, memory_id: str, v: LessonVerdict) -> None:
+    tracer.emit(
+        agent=AGENT,
+        action="lesson_" + v.decision,
+        status="rejected" if v.decision == "reject" else "success",
+        node_id=node.node_id,
+        memory_ids=[memory_id],
+        target_agent="memory",
+        output_summary=v.reason,
+        feedback=v.feedback,
+        conclusive=v.conclusive,
     )

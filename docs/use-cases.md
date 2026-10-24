@@ -14,7 +14,7 @@ Who the users are and why they need this: [problem-and-users.md](problem-and-use
 | 6. Decide at a gate | Approves or denies, e.g. "Register the spun-off company's filings as a new source?" | The source gate and the critic-escalation gate pause for a person in interactive mode; judges' runs use `auto`. | gates and modes work; answering a gate over HTTP: planned |
 | 7. Act | Reads the decision first, then the evidence. | `end_state` and the recommended `action` for this asker, then every link's SQL, rows, share explained and the residual left over. | works today |
 | 8. Follow up | Asks again as an auditor, or digs under one node. | Same question, different asker stops at a different cause; branching from a node of a finished run. | asker profiles work; branching planned |
-| 9. Next time | — | Lessons (not answers) from past runs shorten the next similar investigation; memory can be purged. | planned (H-MEM service works; the agent does not use it yet) |
+| 9. Next time | — | Lessons (not answers) from past runs shorten the next similar investigation; memory can be purged. | works (H-MEM, sample and live): `scripts/memory_demo.py` shows 5 → 3 hops on a similar case, a rejected misapplied lesson and the purge |
 
 ## Where it fits in an analyst's week
 

@@ -15,7 +15,11 @@ MAX_CAUSAL_DEPTH levels and RUN_BUDGET_SECONDS. Every run ends in exactly one en
 ``run_investigation`` runs Loop A, then Loop B when Loop A ends at the evidence frontier with an
 information need; ``run_loop_a`` runs Loop A only. Both take the same arguments and never raise.
 
-CLI: python -m tiresias_agent.orchestrator <request.json> [--live] [--loop-a] [--logs-dir DIR] [--depth D]
+Memory (``run_investigation`` only, agents/memory.py, ADR-0005): in warm mode the framed effect is
+the recall query, recalled lessons make the hypothesiser test their steps first and the critic
+judges each lesson; a successful run stores its lesson behind the memory gate. Cold: no memory.
+
+CLI: python -m tiresias_agent.orchestrator <request.json> [--live] [--loop-a] [--logs-dir DIR] [--depth D] [--memory warm|cold]
 runs run_investigation (Loop A only with --loop-a) and prints the RunResult JSON on stdout (trace lines go to stderr and logs/trace-<run_id>.jsonl).
 """
 
@@ -35,6 +39,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from .adapters.catalog import CatalogError, Discovery, make_discovery
+from .adapters.cognition import CognitionClient, CognitionConfig
 from .adapters.nightshift import NightshiftConfig
 from .adapters.zetaris import (
     DEFAULT_FORMS,
@@ -54,6 +59,7 @@ from .agents import (
     entity_resolver,
     gap_analyst,
     hypothesiser,
+    memory,
     model_lanes,
     onboarder,
     reconciler,
@@ -135,8 +141,10 @@ class LoopA:
         budgets: LoopBudgets,
         clock: Callable[[], float] = time.monotonic,
         lanes: model_lanes.ModelLanes | None = None,
+        memory_run: memory.MemoryRun | None = None,
     ) -> None:
         self.request = request
+        self.memory = memory_run
         self.source = CountingSource(source)
         self.tracer = tracer
         self.gate = gate
@@ -280,6 +288,7 @@ class LoopA:
                     max_branches=self.budgets.max_branches_per_level,
                     tracer=self.tracer,
                     exclude=tested,
+                    prefer=self.memory.preferences() if self.memory else None,
                 )
                 free = self.budgets.max_branches_per_level - len(cands)
                 if free > 0 and self.lanes.allows("hypothesiser"):  # fast lane: free slots only
@@ -296,11 +305,17 @@ class LoopA:
                 if not cands:
                     return self._no_more_rules(frame, parent, frontier)
                 level_nodes = []
-                for cand in cands:
+                for i, cand in enumerate(cands):
                     node = self._test(frame, cand)
                     tested.add(cand.variable)
-                    self.nodes.append(node)
                     level_nodes.append(node)
+                    # A recalled lesson's step held as recorded: the rest of the level waits
+                    # (memory.py; run_investigation re-runs Loop A in full if no cause follows).
+                    if self.memory and self.memory.observe(node, frame) and cands[i + 1 :]:
+                        self.memory.skip(cands[i + 1 :], node)
+                        break
+                level_nodes.sort(key=_rules_order)  # the why-tree keeps the rules' order
+                self.nodes.extend(level_nodes)
                 frontier += [n for n in level_nodes if n.verdict == "frontier"]
                 accepted = [n for n in level_nodes if n.verdict == "accepted"]
                 causal = [n for n in accepted if n.label == "causal"]
@@ -392,6 +407,11 @@ class LoopA:
         )
 
 
+def _rules_order(node: Node) -> tuple[int, str]:
+    tail = node.node_id.rsplit(".", 1)[-1]
+    return (int(tail) if tail.isdigit() else 10**6, node.node_id)
+
+
 @dataclass
 class _Run:
     """One run's shared state: Loop A's outcome, which Loop B may continue, then the report."""
@@ -419,6 +439,7 @@ class _Run:
     scope: ScopeCheck | None = None  # set when the scope check stopped the run
     lanes: model_lanes.ModelLanes | None = None
     pinned: list[str] = field(default_factory=list)  # facts tables this run keeps cached
+    memory: memory.MemoryRun | None = None  # H-MEM (run_investigation only)
 
 
 def _check_zetaris(run: _Run, source: EvidenceSource) -> None:
@@ -728,15 +749,19 @@ def _prepare_entity(run: _Run, source: EvidenceSource) -> bool:
     return True
 
 
-def _loop_a(run: _Run, source: EvidenceSource) -> None:
-    """Entity check, framer + Loop A. Records the outcome on ``run``; never raises."""
+def _loop_a(run: _Run, source: EvidenceSource, *, again: bool = False) -> None:
+    """Entity check, framer + Loop A. Records the outcome on ``run``; never raises.
+
+    ``again``: the memory fallback, Loop A once more from the frame (entity checks done, no new
+    recall), carrying the first pass's counters so the stats show the full cost."""
     tracer = run.tracer
     try:
-        if not _prepare_entity(run, source):
+        if not again and not _prepare_entity(run, source):
             return
         request = run.request
         assert run.gate is not None
         with phase(tracer, "loop_a", owner=AGENT) as done:
+            prior = run.loop
             run.loop = LoopA(
                 request,
                 source=source,
@@ -745,10 +770,15 @@ def _loop_a(run: _Run, source: EvidenceSource) -> None:
                 budgets=run.budgets,
                 clock=run.clock,
                 lanes=run.lanes,
+                memory_run=run.memory,
             )
             run.loop.started = run.started  # one budget for the run, registration included
             run.loop.gate_decisions += run.prelude_gate_decisions
             run.loop.prelude_evidence = list(run.prelude_evidence)
+            if prior is not None:
+                for name in ("hops", "retries", "prunes", "gate_decisions"):
+                    setattr(run.loop, name, getattr(prior, name))
+                run.loop.source.queries = prior.source.queries
             try:
                 with phase(tracer, "frame", owner="framer"):
                     run.frame = frame_question(request, run.loop.source, tracer)
@@ -764,6 +794,13 @@ def _loop_a(run: _Run, source: EvidenceSource) -> None:
                 _unframed(run, str(err))
                 done.update(end_state=run.end_state)
                 return
+            if run.memory is not None and not again and run.memory.mode == "warm":
+                with phase(tracer, "recall", owner=memory.AGENT) as recalled:
+                    run.memory.recall(run.frame)
+                    recalled.update(
+                        outcome="recalled" if run.memory.available else "unavailable",
+                        memory_ids=[lsn.memory_id for lsn in run.memory.lessons],
+                    )
             run.end_state, run.chosen, run.need, run.note = run.loop.run(run.frame)
             done.update(end_state=run.end_state)
     except Exception as err:  # noqa: BLE001 - LoopError or a bug: a structured result either way
@@ -774,6 +811,8 @@ def _report(run: _Run) -> RunResult:
     loop = run.loop
     stats = loop.stats() if loop else RunStats(gate_decisions=run.prelude_gate_decisions)
     stats.sources_onboarded = run.sources_onboarded
+    if run.memory is not None:
+        stats.gate_decisions = (stats.gate_decisions or 0) + run.memory.gate_decisions
     if run.lanes is not None:
         stats.model_calls = run.lanes.calls
         stats.tokens = run.lanes.tokens
@@ -820,6 +859,8 @@ def _report(run: _Run) -> RunResult:
 
 
 def _with_depth(result: RunResult, run: _Run) -> RunResult:
+    if run.memory is not None:
+        result.memory = run.memory.report()
     if run.lanes is not None:
         result.depth = depth_plan(run.request, run.lanes.switch, unavailable=run.lanes.unavailable)
     return result
@@ -875,11 +916,13 @@ def run_investigation(
     zetaris_client: ZetarisClient | None = None,
     data_dir: Path | None = None,
     lanes: model_lanes.ModelLanes | None = None,
+    memory_client: Any | None = None,
 ) -> RunResult:
     """Loop A, then Loop B when Loop A ends at the evidence frontier with an information need.
 
     Same keyword arguments and result as ``run_loop_a`` (plus optional ``discovery``, the
-    Zetaris client for live registration, and the sample directory). Never raises."""
+    Zetaris client for live registration, the sample directory and the cognition client for
+    H-MEM memory, made from COGNITION_URL when not given). Never raises."""
     run, source = _start(
         request,
         source=source,
@@ -892,13 +935,89 @@ def run_investigation(
         clock=clock,
         lanes=lanes,
     )
+    owned = _attach_memory(run, memory_client)
     try:
         _investigate(
             run, source, discovery=discovery, zetaris_client=zetaris_client, data_dir=data_dir
         )
+        if _needs_fallback(run, source):
+            run.memory.fall_back(run.end_state)  # the shortcut found no cause: test every one
+            run.end_state, run.chosen, run.need, run.note = None, [], None, None
+            _investigate(
+                run,
+                source,
+                discovery=discovery,
+                zetaris_client=zetaris_client,
+                data_dir=data_dir,
+                again=True,
+            )
+        _remember(run)
     finally:
         _finish_live(run)
+        if owned is not None:
+            owned.close()
     return _report(run)
+
+
+def _needs_fallback(run: _Run, source: EvidenceSource | None) -> bool:
+    """A lesson let a level's candidates wait and the run then found no cause."""
+    mem = run.memory
+    return bool(
+        mem is not None
+        and mem.skipped
+        and not mem.fallback
+        and run.error is None
+        and run.loop is not None
+        and source is not None
+        and run.end_state not in memory.SUCCESS_STATES
+    )
+
+
+def _remember(run: _Run) -> None:
+    """Feedback for the lessons that held, then the write-back behind the memory gate."""
+    if run.memory is None or not run.memory.on:
+        return
+    try:
+        with phase(run.tracer, "remember", owner=memory.AGENT):
+            run.memory.finish(
+                frame=run.frame,
+                nodes=run.loop.nodes if run.loop else [],
+                chosen=run.chosen,
+                end_state=run.end_state,
+                error=run.error is not None,
+                scoped=run.scope is not None,
+            )
+    except Exception as err:  # noqa: BLE001 - memory never fails a run (rule 8)
+        run.tracer.emit(
+            agent=memory.AGENT,
+            action="remember",
+            status="degraded",
+            output_summary=f"write-back failed: {type(err).__name__}: {err}"[:300],
+        )
+
+
+def _attach_memory(run: _Run, client: Any | None) -> CognitionClient | None:
+    """The run's MemoryRun (RunOptions.memory, else MEMORY_MODE). Warm without a client: one
+    from COGNITION_URL, returned so the caller closes it. Never raises."""
+    mode, why = memory.resolve_mode(run.request.options.memory)
+    owned = None
+    try:
+        if mode == "warm" and client is None and run.error is None:
+            client = owned = CognitionClient(
+                CognitionConfig.from_env(), run_id=run.common["run_id"], tracer=run.tracer
+            )
+    except Exception as err:  # noqa: BLE001 - a bad COGNITION_* setting means no memory
+        run.tracer.emit(
+            agent=memory.AGENT,
+            action="off",
+            status="degraded",
+            output_summary=f"memory off: {type(err).__name__}: {err}"[:300],
+        )
+        client = None
+    run.memory = memory.MemoryRun(mode, client=client, tracer=run.tracer, gate=run.gate)
+    if mode == "cold":
+        run.memory.announce_cold(why)
+    return owned
 
 
 def _investigate(
@@ -908,9 +1027,10 @@ def _investigate(
     discovery: Discovery | None,
     zetaris_client: ZetarisClient | None,
     data_dir: Path | None,
+    again: bool = False,
 ) -> None:
     if run.error is None and source is not None:
-        _loop_a(run, source)
+        _loop_a(run, source, again=again)
     if (
         run.error is None
         and run.end_state == "evidence-frontier"
@@ -1160,6 +1280,8 @@ class LoopB:
             },
         )
         self.loop.nodes.append(node)
+        if self.run_state.memory is not None:
+            self.run_state.memory.observe(node, frame)
         if v.decision != "accept":
             return self._frontier(f"reconcile against {entity.name}: {v.reason}")
         self._stop_rule(node)
@@ -1209,6 +1331,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="investigation depth (ADR-0011): quick = rules only (the default), thorough = + the "
         "critic's model second opinion, deep = every model lane; overrides options.depth",
     )
+    parser.add_argument(
+        "--memory",
+        choices=memory.MODES,
+        default=None,
+        help="H-MEM memory (ADR-0005): warm = recall and store lessons through COGNITION_URL, "
+        "cold = no memory call; overrides options.memory (default MEMORY_MODE, warm)",
+    )
     args = parser.parse_args(argv)
     try:
         data = json.loads(_resolve(args.request).read_text(encoding="utf-8"))
@@ -1220,6 +1349,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     request.options.sample_mode = not args.live
     if args.depth:
         request.options.depth = args.depth
+    if args.memory:
+        request.options.memory = args.memory
     logs_dir = args.logs_dir or os.getenv("LOGS_DIR") or REPO_ROOT / "logs"
     with contextlib.redirect_stdout(sys.stderr):  # keep stdout for the result only
         run = run_loop_a if args.loop_a else run_investigation

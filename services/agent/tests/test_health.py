@@ -11,9 +11,9 @@ def test_health_reports_service_and_mode():
     assert "sample_mode" in body
 
 
-def test_branch_and_purge_are_explicitly_not_implemented_yet():
-    for path in ("/runs/run-x/branch", "/memory/purge"):
-        response = client.post(path, json={})
-        assert response.status_code == 501
-        body = response.json()
-        assert body["status"] == "error" and body["error"]["type"] == "NotImplemented"
+def test_branch_is_explicitly_not_implemented_yet():
+    # POST /memory/purge is implemented since feat/memory (tests/test_memory.py).
+    response = client.post("/runs/run-x/branch", json={})
+    assert response.status_code == 501
+    body = response.json()
+    assert body["status"] == "error" and body["error"]["type"] == "NotImplemented"

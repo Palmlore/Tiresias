@@ -303,6 +303,70 @@ def metric_label(metric: str) -> str:
     return METRIC_LABELS.get(metric, metric)
 
 
+# --- Memory lessons (ADR-0005, causal-criteria.md §6) -----------------------------------------
+# A lesson is a path of hypothesiser steps, each named by (rule, key): the key is the event key
+# of a filing event, the concept of a component or event concept, "counterparty" for the Loop B
+# reconciliation and the rule itself otherwise. Never an entity, a value or a date.
+
+RECONCILE_KEY = "counterparty"
+
+
+def step_key(rule: str | None, variable: str, params: dict | None = None) -> str:
+    """The generic key of one hypothesis step (see above)."""
+    if rule == "filing_event":
+        if params and params.get("event"):
+            return str(params["event"])
+        for fe in FILING_EVENTS:
+            if variable == f"8-K {'/'.join(fe.items)}":
+                return fe.key
+        return variable
+    if rule in ("component", "event_concept"):
+        return variable
+    if rule == "reconcile":
+        return RECONCILE_KEY
+    return rule or variable
+
+
+# Steps that test the same mechanism under another name, so a recalled lesson is tried (and
+# judged by the critic) where its own step cannot be proposed: a disposal reaches an income
+# total through discontinued operations (the hypothesiser tests it under that component).
+STEP_EQUIVALENTS: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
+    ("filing_event", DISPOSAL.key): (("component", DISCONTINUED_OPS),),
+}
+
+# How a lesson words each step (generic; {concept} is a US-GAAP concept name). Kept short: the
+# model-free H-MEM embedder scores a short lesson closer to the recall query (memory.py).
+LESSON_STEP_TEXT: dict[tuple[str, str], str] = {
+    ("filing_event", "accepted"): "the {event} in the window carried most of the effect",
+    ("filing_event", "frontier"): (
+        "test the {event} in the window first (frontier: the amount moved to the separate "
+        "registrant it created)"
+    ),
+    ("reconcile", "accepted"): "reconcile against that registrant",
+    ("component", "accepted"): "the {concept} component carries most of the change",
+    ("event_concept", "accepted"): "under it, test the {concept} event concept",
+    ("concept_switch", "accepted"): "the two filings report the figure under different concepts",
+    ("comparative_restated", "accepted"): "the prior-period comparative was itself restated",
+}
+LESSON_KIND_TEXT: dict[str, str] = {
+    "restatement": "was restated between two annual reports",
+    "change": "changed between two periods",
+}
+
+
+def lesson_event_text(rule: str, key: str) -> str:
+    """Generic words for the event a lesson step tests."""
+    if rule == "filing_event":
+        for fe in FILING_EVENTS:
+            if fe.key == key:
+                return f"8-K item {'/'.join(fe.items)} {fe.key.replace('_', ' ')}"
+    if rule == "event_concept":
+        for ev in EVENT_CONCEPTS:
+            if ev.concept == key:
+                return "an abnormal " + ev.description.split(" (")[0]
+    return key
+
+
 def ruled_out_text(rule: str | None, variable: str) -> str:
     """What a pruned event candidate ruled out, in words (generic, from its rule)."""
     if rule == "filing_event":

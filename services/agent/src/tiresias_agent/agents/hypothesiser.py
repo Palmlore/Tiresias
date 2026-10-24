@@ -7,10 +7,15 @@ Proposes up to MAX_BRANCHES_PER_LEVEL candidate causes for one node, from generi
 - for a restatement: a switch of the reported concept between the two filings;
 - for a change: whether the prior-period comparative was itself restated (like-for-like check).
 A candidate whose variable is already on the path from the root is dropped (no cycles).
+
+Recalled lessons (agents/memory.py) only reorder: a candidate whose (rule, key) step a lesson
+names is tested first, and is kept within the cap ahead of the others. Node ids keep the rules'
+order, so the why-tree reads the same; a lesson never adds a candidate or a fact.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from .common import Candidate, Frame, Node
@@ -21,6 +26,7 @@ from .knowledge import (
     FILING_EVENTS,
     family,
     money,
+    step_key,
 )
 
 AGENT = "hypothesiser"
@@ -34,8 +40,12 @@ def propose(
     max_branches: int,
     tracer: Any,
     exclude: set[str] | None = None,
+    prefer: Sequence[tuple[str, str, str]] | None = None,
 ) -> list[Candidate]:
-    """Candidates for the next level under ``parent``, best first, capped at max_branches."""
+    """Candidates for the next level under ``parent``, best first, capped at max_branches.
+
+    ``prefer``: (rule, key, memory id) steps from recalled lessons, best first. A candidate with
+    such a step is returned (and so tested) first and carries the memory id in ``lesson``."""
     exclude = exclude or set()
     fam = family(frame.metric)
     var = parent.variable
@@ -104,18 +114,33 @@ def propose(
             )
         )
 
-    candidates: list[Candidate] = []
+    rank: dict[tuple[str, str], tuple[int, str]] = {}
+    for i, (p_rule, p_key, memory_id) in enumerate(prefer or ()):
+        rank.setdefault((p_rule, p_key), (i, memory_id))
+    eligible: list[int] = []
     dropped: list[str] = []
-    for rule, variable, claim, category, params in raw:
+    for i, (_rule, variable, *_rest) in enumerate(raw):
         if variable in path_variables or variable in exclude:
             dropped.append(variable)
-            continue
-        if len(candidates) >= max_branches:
-            dropped.append(variable)
-            continue
+        else:
+            eligible.append(i)
+
+    def lesson_of(i: int) -> tuple[int, str] | None:
+        rule, variable, _claim, _category, params = raw[i]
+        return rank.get((rule, step_key(rule, variable, params)))
+
+    preferred = sorted((i for i in eligible if lesson_of(i)), key=lambda i: lesson_of(i)[0])
+    order = [*preferred, *(i for i in eligible if i not in preferred)]
+    kept, dropped_cap = order[:max_branches], order[max_branches:]
+    dropped += [raw[i][1] for i in sorted(dropped_cap)]
+    ids = {i: n for n, i in enumerate(sorted(kept), start=1)}  # node ids in the rules' order
+    candidates: list[Candidate] = []
+    for i in kept:
+        rule, variable, claim, category, params = raw[i]
+        hit = lesson_of(i)
         candidates.append(
             Candidate(
-                node_id=f"{parent.node_id}.{len(candidates) + 1}",
+                node_id=f"{parent.node_id}.{ids[i]}",
                 parent_id=parent.node_id,
                 depth=parent.depth + 1,
                 rule=rule,
@@ -123,6 +148,7 @@ def propose(
                 claim=claim,
                 category=category,
                 params=params,
+                lesson=hit[1] if hit else None,
             )
         )
     for c in candidates:
@@ -136,6 +162,7 @@ def propose(
             output_summary=c.claim,
             rule=c.rule,
             depth=c.depth,
+            **({"memory_ids": [c.lesson], "preferred_by": "memory"} if c.lesson else {}),
         )
     if dropped:
         tracer.emit(

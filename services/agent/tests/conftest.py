@@ -14,6 +14,15 @@ def _no_ambient_nightshift(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_ambient_memory(monkeypatch):
+    """No test reaches a real cognition service by default (the input examples ask for warm
+    memory): MEMORY_MODE=off forces cold. Memory tests set MEMORY_MODE and inject a fake
+    transport, or opt in to a real service with monkeypatch."""
+    monkeypatch.setenv("MEMORY_MODE", "off")
+    monkeypatch.delenv("MEMORY_NAMESPACE", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _fresh_zetaris_process_state():
     """The liveness verdict, the companyfacts cache LRU and the released discovery tables are
     per process; each test starts with none of them."""
