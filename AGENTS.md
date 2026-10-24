@@ -26,7 +26,7 @@ Open the rest only when the task needs them:
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
 | `input_examples/` | 3 GE cases (inputs) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
-| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase) |
+| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes) |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |
@@ -66,6 +66,7 @@ curl -s 'localhost:8000/entities?q=super%20micro&sample_mode=false'  # live: nee
 curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d '{"question": "What will GE revenue be in FY2027?", "entity": {"ticker": "GE"}, "metric": "Revenues", "period": {"start": "2027-01-01", "end": "2027-12-31"}, "asker": {"role": "analyst"}}'
 # checks before every push
 ./scripts/check_secrets.sh && ./scripts/validate_metadata.sh
+python3 scripts/verify_audit.py [--python services/agent/.venv/bin/python] [--with-cognition]   # re-run docs/measurements/verifier-audit-2026-10-24 (no uv, no network)
 # Zetaris (local, outside this repo)
 cd ~/Repos/hackathon2026/zetaris/zetaris-platform && ./verify.sh   # UI localhost:3000, REST :8888
 python3 scripts/zetaris_probe.py     # latency and registration probe (reads .env)
