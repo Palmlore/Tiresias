@@ -126,7 +126,7 @@ Found in: #15  ·  Status: open  ·  Severity: later
 
 ## B-20: Zetaris loses its table cache on restart; the first query nearly times out
 Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: demo-risk
-- Out of scope because: found while moving AGENTS.md gotchas; `CACHE TABLE` is a Zetaris session cache, and re-warming it automatically (for example a `bootstrap` when the agent starts in live mode, or a warm-up probe) is a change to the adapter and the start-up path.
+- Out of scope because: found while moving the old AGENTS.md "Known gotchas" list into zetaris/README.md; `CACHE TABLE` is a Zetaris session cache, and re-warming it automatically (for example a `bootstrap` when the agent starts in live mode, or a warm-up probe) is a change to the adapter and the start-up path.
 - Safe to leave because: after a restart the first uncached query refetches from SEC in about 15 s, under the 20 s source timeout; a timeout is an outage, so the call degrades to the sample with a `degraded` trace line instead of failing. Re-running `bootstrap` re-warms every cache.
 - Urgent if: a live demo or a judge's live run starts on a freshly restarted Zetaris, or a slow day pushes the refetch past 20 s (GE took 36–46 s end to end on 23 Oct evening).
 - Review at: before recording (Tue 27 Oct): re-run `bootstrap`, then time a warm run.
@@ -134,7 +134,7 @@ Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: demo-risk
 
 ## B-21: Discovery tables are never dropped
 Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
-- Out of scope because: found while moving AGENTS.md gotchas; `bootstrap` never drops anything by design (idempotent, safe to re-run), and a clean-up needs its own rule for which `<ticker>_submissions_raw` and `fts_<hash>_raw` tables are still in use.
+- Out of scope because: found while moving the old AGENTS.md "Known gotchas" list into zetaris/README.md; `bootstrap` never drops anything by design (idempotent, safe to re-run), and a clean-up needs its own rule for which `<ticker>_submissions_raw` and `fts_<hash>_raw` tables are still in use.
 - Safe to leave because: each scout run adds at most two full-text tables and `MAX_CANDIDATES` submissions tables, and later runs reuse them; none counts toward `MAX_NEW_SOURCES_PER_RUN`. The growth is in the local Zetaris only.
 - Urgent if: the Zetaris table list slows queries or registration, or a shared Zetaris is used by others.
 - Review at: after submission.
