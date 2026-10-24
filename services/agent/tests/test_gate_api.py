@@ -163,9 +163,7 @@ def _inflated_runner(req, *, tracer, run_id, logs_dir, ask=None):
     )
 
 
-def test_critic_escalation_answered_accept_capped_takes_the_human_choice(
-    monkeypatch, tmp_path
-):
+def test_critic_escalation_answered_accept_capped_takes_the_human_choice(monkeypatch, tmp_path):
     client = _client(monkeypatch, tmp_path, runner=_inflated_runner)
     rid = _start(client)
     _answer(client, rid, _waiting(client, rid, "critic_escalation")["gate_id"], "frontier")
