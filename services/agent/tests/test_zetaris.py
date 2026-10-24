@@ -449,6 +449,18 @@ def test_server_error_with_expected_classifier_still_traces_error_after_retries(
     assert [e["status"] for e in tracer.events] == ["error"]
 
 
+def test_server_error_saying_already_exists_is_still_an_error():
+    tracer = RecordingTracer()
+    client, _ = make_client(
+        lambda request: httpx.Response(503, text="Database X already exists"), tracer=tracer
+    )
+    with pytest.raises(z.SourceError) as info:
+        client.run_sql("CREATE DATABASE X", label="db", expected=z.already_exists)
+    assert info.value.recoverable is True
+    assert [e["status"] for e in tracer.events] == ["error"]
+    assert "outcome" not in tracer.events[0]
+
+
 def test_bootstrap_masks_sec_user_agent_in_traces():
     tracer = RecordingTracer()
     client, _ = make_client(lambda request: ok([], []), tracer=tracer)

@@ -369,7 +369,9 @@ class ZetarisClient:
 
         ``expected`` classifies a failure the caller treats as a benign outcome (e.g.
         "already exists" -> "exists"): its line is traced ``success`` with that ``outcome``
-        instead of ``error``. The error is raised either way, so callers decide as before."""
+        instead of ``error``. It is consulted only for a non-recoverable failure: a timeout,
+        connection error or 5xx always traces ``error``. The error is raised either way, so
+        callers decide as before."""
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
         run_id = run_id or getattr(self.tracer, "run_id", None) or self._default_run_id
         shown_sql = self._scrub(sql, redact)
@@ -419,7 +421,8 @@ class ZetarisClient:
                 break
             self._sleep(self.BACKOFF_SECONDS * 2**attempt)
         assert error is not None
-        outcome = expected(error) if expected else None
+        # A recoverable failure (timeout, connection, 5xx) is never benign, whatever its text says.
+        outcome = expected(error) if expected and not error.recoverable else None
         if outcome:
             self.tracer.emit(
                 agent=AGENT,
