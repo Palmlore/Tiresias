@@ -44,14 +44,6 @@ Found in: #9  ·  Status: open  ·  Severity: later
 - Review at: when the hypothesiser gains rules over new concepts
 - Evidence: `services/agent/src/tiresias_agent/agents/entity_resolver.py` (`_ready`); `onboarder.onboard_entity` (`concepts`).
 
-## B-9: "already exists" registration steps are traced as `status: error`
-Found in: #9  ·  Status: open  ·  Severity: demo-risk
-- Out of scope because: the client traces every failed statement as `error` before `bootstrap` classifies the reply ("already exists" → `exists`, `FIELD_NOT_FOUND` → `absent`); changing the client's trace contract touches every adapter test.
-- Safe to leave because: the outcome is on the `onboarder` `register` line and on `phase_done` (`outcome`), and `bootstrap` reports `exists`/`absent` correctly; nothing reads the client's per-statement status to decide anything.
-- Urgent if: a UI colours trace lines by `status` (a live registration shows red lines for `database`, `container` and absent concepts).
-- Review at: before the UI colours trace lines (Sat 24 Oct); fix planned as its own PR
-- Evidence: `services/agent/src/tiresias_agent/adapters/zetaris.py` (`ZetarisClient.run_sql` error trace, `bootstrap`); any live trace's `bootstrap:database` line.
-
 ## B-10: Only SEC's `filings.recent` block is read (about the last 1,000 filings)
 Found in: #9  ·  Status: open  ·  Severity: later
 - Out of scope because: SEC's submissions JSON lists older filings in separate `filings.files` pages (one URL each); reading them means one more REST table per page. The filings view (`21_filings_view.sql`) and the scout's profile query (`37_submissions_profile.sql`) read `filings.recent` only.
@@ -163,4 +155,5 @@ Found in: verifier audit (24 Oct)  ·  Status: open  ·  Severity: judge-visible
 - **B-4** (found in #8, closed in #9): Live Loop B discovery reads SEC directly: discovery is Lightning SQL through Zetaris only ([zetaris/README.md](zetaris/README.md)), guarded by `tests/test_any_company.py`.
 - **B-5** (found in #8, closed in #13): Source scout resolves only same-brand separations: the counterparty comes from Form 10 full-text evidence, with an 8-K fallback that refuses a sale to an existing company; `tests/test_spinoff_match.py`. Remaining limits: B-16, B-17.
 - **B-7** (found in #8, closed in #9): Loop B not yet run against live Zetaris: examples 01 and 02 and Hilton reconcile live, [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
+- **B-9** (found in #9, closed in this PR): "already exists" registration steps were traced as `status: error`: `ZetarisClient.run_sql(..., expected=)` traces a benign reply `success` with `outcome` `exists`/`absent` (bootstrap and discovery registration); `tests/test_zetaris.py`, `tests/test_any_company.py`.
 - **B-15** (found in #13, closed in #15): Loop B accepts an add-back that over-explains far beyond tolerance: bounded by `MAX_OVER_EXPLAINED` (150%), beyond it the gate proposes `prune`; [docs/causal-criteria.md](docs/causal-criteria.md) §7, `tests/test_loop_b.py`.

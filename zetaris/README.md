@@ -37,7 +37,7 @@ uv run python -m tiresias_agent.adapters.zetaris smoke            # entities, re
 uv run python -m tiresias_agent.adapters.zetaris smoke --sample   # same checks, offline
 ```
 
-`bootstrap` is safe to run twice. Lightning SQL has no `IF NOT EXISTS` for databases, containers or REST tables, so an "already exists" reply is reported as `exists`; views use `CREATE OR REPLACE` and report `replaced`. A view on a concept the entity never reported fails with `FIELD_NOT_FOUND` and is reported as `absent` (for example `gev_goodwill_impairment`); the adapter only queries views that exist. Bootstrap never drops anything. To remove a REST table by hand use `DROP LIGHTNING DATABASE TABLE TIRESIAS_SEC.<table>` (not `DROP TABLE`), and a view with `DROP SCHEMASTORE VIEW <view> FROM tiresias`.
+`bootstrap` is safe to run twice. Lightning SQL has no `IF NOT EXISTS` for databases, containers or REST tables, so an "already exists" reply is reported as `exists`; views use `CREATE OR REPLACE` and report `replaced`. A view on a concept the entity never reported fails with `FIELD_NOT_FOUND` and is reported as `absent` (for example `gev_goodwill_impairment`); the adapter only queries views that exist. These expected replies are traced `status: "success"` with `outcome: "exists"` / `"absent"` on the statement's `bootstrap:<step>` line (the same for discovery registrations), so only a real failure (bad SQL, auth, 5xx, timeout) shows `status: "error"`. Bootstrap never drops anything. To remove a REST table by hand use `DROP LIGHTNING DATABASE TABLE TIRESIAS_SEC.<table>` (not `DROP TABLE`), and a view with `DROP SCHEMASTORE VIEW <view> FROM tiresias`.
 
 The cache is a session cache: after a Zetaris restart, re-run `bootstrap` so the first query doesn't wait on the SEC fetch.
 
