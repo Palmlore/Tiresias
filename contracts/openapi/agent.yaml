@@ -11,6 +11,8 @@ paths:
       description: >
         Never waits on a dependency. zetaris_cache reports the background Zetaris cache warm the
         API starts in live mode (ZETARIS_WARM_ON_START, BACKLOG B-20); in sample mode it is "off".
+        zetaris reports the last Zetaris liveness probe (taken before a live run, never by this
+        endpoint) and the companyfacts tables kept cached under ZETARIS_MAX_CACHED_FACTS (B-24).
       responses: {"200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/Health"}}}}}
   /run:
     post:
@@ -139,13 +141,36 @@ components:
   schemas:
     Health:
       type: object
-      required: [service, version, sample_mode, hitl_mode, zetaris_cache]
+      required: [service, version, sample_mode, hitl_mode, zetaris_cache, zetaris]
       properties:
         service: {type: string, const: agent}
         version: {type: string}
         sample_mode: {type: boolean}
         hitl_mode: {type: string}
         zetaris_cache: {$ref: "#/components/schemas/ZetarisCache"}
+        zetaris: {$ref: "#/components/schemas/ZetarisHealth"}
+    ZetarisHealth:
+      type: object
+      description: >
+        Zetaris as this process last saw it (adapters/zetaris.py LIVENESS and FACTS_CACHE). The
+        liveness probe (zetaris/sql/42_liveness.sql, SELECT 1 AS alive, 3 s, no retry) runs before
+        a live run and its result is reused for ZETARIS_LIVENESS_TTL_SECONDS; this endpoint only
+        reads it.
+      required: [state, cached_facts, max_cached_facts]
+      properties:
+        state:
+          type: string
+          enum: ["off", not-checked, alive, down, inconclusive]
+          description: >
+            off: sample mode; not-checked: no live run has probed yet; alive: answered; down: a
+            timeout, connection error, 5xx or a dead-engine reply (stopped SparkContext), so runs
+            serve the offline sample; inconclusive: refused otherwise (e.g. auth), runs go ahead live.
+        reason: {type: string}
+        checked_at: {type: string, format: date-time}
+        duration_ms: {type: integer}
+        cached_facts: {type: array, items: {type: string}, description: "companyfacts raw tables this process cached, least recently used first"}
+        max_cached_facts: {type: integer, description: ZETARIS_MAX_CACHED_FACTS (1..50, default 5)}
+        pinned: {type: array, items: {type: string}, description: "tables a running run needs; never evicted"}
     ZetarisCache:
       type: object
       description: >

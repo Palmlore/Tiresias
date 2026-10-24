@@ -5,7 +5,8 @@ zetaris/sql templates, nothing executed) -> source gate -> registration, one sta
 
 - Live: ``adapters.zetaris.bootstrap`` for the one entity and only the template's raw table (and
   the concept views for the variable and its aliases), then the evidence source forgets its cached
-  view list. An outage (recoverable SourceError) degrades the registration to the sample slice,
+  view list. Its companyfacts CACHE TABLE counts toward ZETARIS_MAX_CACHED_FACTS: bootstrap may
+  uncache the least recently used companyfacts table first, never this run's entities. An outage (recoverable SourceError) degrades the registration to the sample slice,
   traced ``degraded``; a non-recoverable failure (bad SQL, auth) fails the registration and is
   never served from the sample.
 - Sample: no Zetaris call. "Registration" makes the entity's slice in data/sample/ visible to the
@@ -234,6 +235,8 @@ def onboard(
         tables=(kind,),
         deadline=deadline,
         clock=clock,
+        # ZETARIS_MAX_CACHED_FACTS: never evict the asked entity (or another registered one).
+        protect=sorted(registry.allowed),
     )
     table = next(e for e in report if e["step"] == f"{kind}_table")
     steps = [{k: e.get(k) for k in ("step", "object", "status")} for e in report]

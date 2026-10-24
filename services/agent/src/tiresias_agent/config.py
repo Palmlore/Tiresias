@@ -115,6 +115,43 @@ class WarmSettings:
         )
 
 
+MAX_CACHED_FACTS_DEFAULT = 5
+
+
+def max_cached_facts(env: Mapping[str, str] | None = None) -> int:
+    """ZETARIS_MAX_CACHED_FACTS, read at call time and clamped to 1..50 (default 5): how many
+    companyfacts raw tables (``<ticker>_facts_raw``) this process keeps cached in Zetaris at once.
+
+    Each cached companyfacts table (one very wide row, ~1,000 concepts) retained about 150 MB of
+    Zetaris driver heap outside Spark's storage pool, and caching one needed another 0.6-0.9 GB
+    while it ran; 7-10 of them crashed a 2 GB driver (2026-10-24, BACKLOG B-24). Before caching
+    one more beyond the cap, the adapter uncaches the least recently used one (never one the
+    current run needs). Five leaves room for one cold registration on a 2 GB heap."""
+    env = os.environ if env is None else env
+    return _bounded_int(env, "ZETARIS_MAX_CACHED_FACTS", MAX_CACHED_FACTS_DEFAULT, 1, 50)
+
+
+@dataclass(frozen=True)
+class LivenessSettings:
+    """The Zetaris liveness probe before a live run (adapters/zetaris.py ``LivenessProbe``).
+
+    ``ttl_seconds`` (ZETARIS_LIVENESS_TTL_SECONDS, 0..600, default 30): how long one probe
+    result is reused, so concurrent or back-to-back runs probe once; 0 probes before every run.
+    ``timeout_seconds`` (ZETARIS_LIVENESS_TIMEOUT_SECONDS, 0.5..30, default 3): the probe's own
+    timeout, with no retry: a live engine answers a constant query in well under a second."""
+
+    ttl_seconds: float = 30.0
+    timeout_seconds: float = 3.0
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> "LivenessSettings":
+        env = os.environ if env is None else env
+        return cls(
+            ttl_seconds=_bounded_float(env, "ZETARIS_LIVENESS_TTL_SECONDS", 30.0, 0.0, 600.0),
+            timeout_seconds=_bounded_float(env, "ZETARIS_LIVENESS_TIMEOUT_SECONDS", 3.0, 0.5, 30.0),
+        )
+
+
 MODEL_LANES_MODES = ("auto", "on", "off")
 
 

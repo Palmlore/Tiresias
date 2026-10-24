@@ -83,6 +83,10 @@ class FakeZetaris:
             return bad("An object named X already exists.")
         if s.startswith("CACHE TABLE"):
             return ok([], [])
+        if s.startswith("UNCACHE TABLE"):
+            return ok([], [])
+        if s == "SELECT 1 AS alive":  # the liveness probe (42_liveness.sql)
+            return ok(["alive"], [[1]])
         m = re.match(
             r'CREATE LIGHTNING REST TABLE (\w+) FROM TIRESIAS_SEC REQUEST\( endpoint "([^"]+)"', s
         )

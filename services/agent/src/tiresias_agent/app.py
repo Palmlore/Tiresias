@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__, entities
 from .adapters.catalog import make_discovery
-from .adapters.zetaris import WarmStatus, make_source, warm_on_start
+from .adapters.zetaris import FACTS_CACHE, LIVENESS, WarmStatus, make_source, warm_on_start
 from .config import settings
 from .models import ErrorDetail, ErrorResponse, Role, RunRequest
 from .orchestrator import _find, depth_plan
@@ -112,6 +112,16 @@ async def _unexpected_error(request: Request, exc: Exception) -> JSONResponse:
     )
 
 
+def zetaris_health() -> dict:
+    """GET /health ``zetaris``: the last liveness probe (taken before a live run, cached for
+    ZETARIS_LIVENESS_TTL_SECONDS; /health never probes) and the companyfacts tables this process
+    keeps cached under ZETARIS_MAX_CACHED_FACTS. Sample mode: state ``off``."""
+    cache = FACTS_CACHE.snapshot()
+    if settings.sample_mode:
+        return {"state": "off", "reason": "sample mode", **cache}
+    return {**LIVENESS.snapshot(), **cache}
+
+
 @app.get("/health")
 def health() -> dict:
     return {
@@ -120,6 +130,7 @@ def health() -> dict:
         "sample_mode": settings.sample_mode,
         "hitl_mode": settings.hitl_mode,
         "zetaris_cache": zetaris_cache.snapshot(),
+        "zetaris": zetaris_health(),
     }
 
 

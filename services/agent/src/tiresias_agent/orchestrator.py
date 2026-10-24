@@ -38,11 +38,15 @@ from .adapters.catalog import CatalogError, Discovery, make_discovery
 from .adapters.nightshift import NightshiftConfig
 from .adapters.zetaris import (
     DEFAULT_FORMS,
+    FACTS_CACHE,
     Entity,
     EvidenceSource,
     ZetarisClient,
     ZetarisConfig,
+    check_liveness,
+    facts_table,
     make_source,
+    object_ticker,
 )
 from .agents import (
     analyst,
@@ -414,6 +418,72 @@ class _Run:
     discovery: Discovery | None = None
     scope: ScopeCheck | None = None  # set when the scope check stopped the run
     lanes: model_lanes.ModelLanes | None = None
+    pinned: list[str] = field(default_factory=list)  # facts tables this run keeps cached
+
+
+def _check_zetaris(run: _Run, source: EvidenceSource) -> None:
+    """Live: the liveness probe (adapters.zetaris.LIVENESS, cached for its TTL), traced as one
+    ``liveness`` line. If Zetaris is down the run's client sends nothing more, so every read and
+    registration degrades to the sample at once instead of waiting on timeouts. Never raises."""
+    client = _find(source, "client")
+    if not isinstance(client, ZetarisClient):
+        return
+    try:
+        check_liveness(client, tracer=run.tracer)
+    except Exception as err:  # noqa: BLE001 - the probe is advisory
+        run.tracer.emit(
+            agent=AGENT,
+            action="liveness",
+            status="error",
+            outcome="inconclusive",
+            output_summary=f"liveness probe failed: {type(err).__name__}",
+        )
+
+
+def _pin(run: _Run, ticker: str | None) -> None:
+    """Live: keep this entity's companyfacts table cached while the run goes on (it is never the
+    least recently used table evicted under ZETARIS_MAX_CACHED_FACTS)."""
+    if run.sample or not ticker:
+        return
+    try:
+        table = facts_table(object_ticker(ticker))
+    except ValueError:
+        return
+    if table not in run.pinned:
+        FACTS_CACHE.pin(table)
+        run.pinned.append(table)
+
+
+def _release_discovery(run: _Run, discovery: Any, keep: Sequence[str | None]) -> None:
+    """Live: uncache the discovery tables this run cached (candidate submissions tables that were
+    not chosen, full-text search tables), except ``keep``'s. Never raises (BACKLOG B-24)."""
+    release = getattr(discovery, "release_cache", None)
+    if run.sample or not callable(release):
+        return
+    try:
+        release([k for k in keep if k])
+    except Exception as err:  # noqa: BLE001 - releasing a cache never fails a run
+        run.tracer.emit(
+            agent=AGENT,
+            action="uncache",
+            status="error",
+            output_summary=f"discovery cache release failed: {type(err).__name__}",
+        )
+
+
+def _keep(run: _Run, *extra: str | None) -> list[str | None]:
+    asked = run.request.entity.ticker if run.request.entity else None
+    return [asked, *(e.ticker for e in run.onboarded), *extra]
+
+
+def _finish_live(run: _Run) -> None:
+    """End of a run: release the discovery tables it still holds and unpin its tables."""
+    try:
+        _release_discovery(run, run.discovery, _keep(run))
+    finally:
+        for table in run.pinned:
+            FACTS_CACHE.unpin(table)
+        run.pinned.clear()
 
 
 def _fail(run: _Run, err: Exception) -> None:
@@ -483,6 +553,8 @@ def _start(
         source = source or make_source(sample, tracer)
     except Exception as err:  # noqa: BLE001 - a run must end in a structured result
         _fail(run, err)
+    if run.error is None and source is not None and not sample:
+        _check_zetaris(run, source)
     return run, source
 
 
@@ -624,6 +696,7 @@ def _prepare_entity(run: _Run, source: EvidenceSource) -> bool:
         _unframed(run, res.reason)
         return False
     entity = res.entity
+    _pin(run, entity.ticker)
     if not res.registered:
         assert run.gate is not None
         with phase(tracer, "register_entity", owner=onboarder.AGENT) as done:
@@ -779,8 +852,11 @@ def run_loop_a(
         clock=clock,
         lanes=lanes,
     )
-    if run.error is None and source is not None:
-        _loop_a(run, source)
+    try:
+        if run.error is None and source is not None:
+            _loop_a(run, source)
+    finally:
+        _finish_live(run)
     return _report(run)
 
 
@@ -816,6 +892,23 @@ def run_investigation(
         clock=clock,
         lanes=lanes,
     )
+    try:
+        _investigate(
+            run, source, discovery=discovery, zetaris_client=zetaris_client, data_dir=data_dir
+        )
+    finally:
+        _finish_live(run)
+    return _report(run)
+
+
+def _investigate(
+    run: _Run,
+    source: EvidenceSource | None,
+    *,
+    discovery: Discovery | None,
+    zetaris_client: ZetarisClient | None,
+    data_dir: Path | None,
+) -> None:
     if run.error is None and source is not None:
         _loop_a(run, source)
     if (
@@ -861,7 +954,6 @@ def run_investigation(
             output_summary="Loop B skipped: the effect could not be framed, so there is no "
             "baseline to reconcile a new source against",
         )
-    return _report(run)
 
 
 def _find(obj: Any, attr: str, depth: int = 4) -> Any:
@@ -944,9 +1036,14 @@ class LoopB:
             )
         except CatalogError as err:
             return self._frontier(f"catalog unavailable: {err}")
+        if run.discovery is None:
+            run.discovery = discovery
         with phase(tracer, "scout", owner=source_scout.AGENT) as done:
             scout = source_scout.resolve(need, discovery=discovery, tracer=tracer)
             done.update(outcome="resolved" if scout.resolved else "unresolved")
+        chosen = scout.entity.ticker if scout.entity else None
+        _pin(run, chosen)  # the Loop B counterparty is never evicted while this run goes on
+        _release_discovery(run, discovery, _keep(run, self.frame.ticker, chosen))
         if not scout.resolved:
             return self._frontier(f"source scout could not resolve the hint: {scout.reason}")
         try:
