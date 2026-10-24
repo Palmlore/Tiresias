@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 Role = Literal["analyst", "auditor", "board"]
 HitlMode = Literal["auto", "interactive", "scripted"]
 MemoryMode = Literal["warm", "cold"]
+ModelLanesMode = Literal["auto", "on", "off"]
 LinkLabel = Literal["breakdown", "causal", "leverage", "background"]
 EvidenceStatus = Literal["evidenced", "partially-evidenced", "hypothesis"]
 RunStatus = Literal["success", "partial", "error"]
@@ -42,6 +43,11 @@ class RunOptions(BaseModel):
     memory: MemoryMode | None = None
     sample_mode: bool | None = None
     decisions: dict[str, Any] | None = Field(default=None, description="Scripted gate decisions")
+    model_lanes: ModelLanesMode | None = Field(
+        default=None,
+        description="Model-backed lanes through Nightshift (ADR-0010): auto (on in live mode when "
+        "Nightshift is configured, off in sample mode), on, off. Overrides MODEL_LANES",
+    )
 
 
 class RunRequest(BaseModel):
@@ -78,6 +84,32 @@ class EvidenceItem(BaseModel):
     note: str | None = None
 
 
+class ModelOpinion(BaseModel):
+    """The deep lane's second opinion on a link (ADR-0010). Advisory: the rule critic's verdict
+    stays the decision; a disagreement goes to the critic_escalation gate."""
+
+    lane: str
+    requested_model: str
+    routed_model: str | None = Field(
+        default=None, description="Model that answered, from the Nightshift receipt"
+    )
+    provider: str | None = None
+    receipt_id: str | None = None
+    decision: Literal["accept", "prune"]
+    label: Literal["breakdown", "causal", "background"]
+    rationale: str | None = Field(
+        default=None,
+        description="One paragraph from the model; dropped (None) when it quotes a number that is "
+        "not in the measurement it was shown",
+    )
+    grounded: bool = Field(description="Every number in the rationale is in the measurement")
+    agrees: bool = Field(description="Same decision (and label, for an accepted link) as the rules")
+    rule_decision: str = Field(description="The rule critic's decision when the model was asked")
+    gate_choice: str | None = Field(
+        default=None, description="critic_escalation gate choice when the two disagreed"
+    )
+
+
 class Link(BaseModel):
     """One node of the why-tree: a labelled link from its parent, with its evidence."""
 
@@ -96,6 +128,12 @@ class Link(BaseModel):
     reason: str | None = Field(default=None, description="The critic's reason")
     attempts: int = 1
     evidence: list[EvidenceItem] = Field(default_factory=list)
+    proposed_by: Literal["rules", "model"] = Field(
+        default="rules", description="Who proposed the hypothesis (the model lane, ADR-0010)"
+    )
+    model_opinion: ModelOpinion | None = Field(
+        default=None, description="The model's second opinion on the critic's verdict (live)"
+    )
 
 
 class Observation(BaseModel):
@@ -268,6 +306,14 @@ class RunResult(BaseModel):
 
     end_state: EndState | None = None
     action: str | None = Field(default=None, description="Recommended action for the asker")
+    action_source: Literal["template", "model"] = Field(
+        default="template",
+        description="template: the rule template; model: drafted by the fast lane from the "
+        "template and validated (no number or name absent from it)",
+    )
+    action_template: str | None = Field(
+        default=None, description="The template action, set when the model's wording replaced it"
+    )
     root_cause: str | None = None
     residual: float | None = Field(default=None, description="Share of the effect left unexplained")
     run_id: str

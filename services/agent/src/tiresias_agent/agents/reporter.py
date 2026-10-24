@@ -60,6 +60,8 @@ def link(node: Node) -> Link:
         reason=node.reason,
         attempts=node.attempts,
         evidence=node.evidence,
+        proposed_by="model" if node.proposed_by == "model" else "rules",
+        model_opinion=node.model_opinion,
     )
 
 

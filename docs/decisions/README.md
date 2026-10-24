@@ -11,3 +11,4 @@
 | [ADR-0007](ADR-0007-offline-sample-mode.md) | Offline sample mode with no keys |
 | [ADR-0008](ADR-0008-local-first-cloud-ready.md) | Local first, ready for the cloud |
 | [ADR-0009](ADR-0009-track-reasoning-architecture.md) | Track: Reasoning Architecture |
+| [ADR-0010](ADR-0010-model-lanes.md) | Model lanes through Nightshift: the model proposes, the rules and the data decide |

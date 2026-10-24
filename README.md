@@ -34,7 +34,7 @@ Every step (query, hypothesis, critique, human-in-the-loop gate, source registra
 
 ## Quickstart (judges)
 
-**Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. Live Nightshift models, memory, branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
+**Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. In live mode the agent also calls Nightshift models (see Models below); memory, branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
 
 Needs Docker Desktop (or Docker Engine) with **Compose v2.24 or later** (`docker compose version`), ports 8000 and 8100 free, and about 750 MB of disk for the two images. The first build also pulls the Python and Node base images, which can take a few minutes; later builds take seconds.
 
@@ -114,14 +114,18 @@ scripts/              Checks: secrets scan, metadata validation
 metadata.json         Sponsor and submission metadata (community schema 0.1)
 ```
 
+## Models
+
+**The model proposes, the rules and the data decide** ([ADR-0010](docs/decisions/ADR-0010-model-lanes.md)). In live mode (`SAMPLE_MODE=false` with a configured Nightshift Runtime) three lanes call Meterless Nightshift: a fast lane proposes extra candidate causes from the evidence vocabulary the source can query (each is then measured with SQL and judged by the rule critic like any other), a deep lane gives the critic an independent second opinion (a disagreement goes to the `critic_escalation` gate, whose auto policy keeps the rule verdict; the opinion is on `why_tree[].model_opinion`), and a fast lane may reword the action (used only when it adds no number or name). Every call is traced with the lane, the requested lane id and the `routed_model` from Nightshift's receipt (Nemotron models on 2026-10-24), and counted in `stats.model_calls` (cap `MAX_MODEL_CALLS_PER_RUN`, default 12). If Nightshift is down, the run continues on the rules. **Sample mode uses the rule lanes only** and makes no model call (`MODEL_LANES=on` turns them on there too; `off` turns them off everywhere).
+
 ## Sponsor technology (summary)
 
 | Sponsor | Role in Tiresias | Status |
 |---|---|---|
 | **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | in progress: in live mode the agent drives Zetaris end to end (resolves the asked company, registers it and the spun-off business at runtime when Zetaris lacks them; discovery and evidence are SQL), measured in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md); the default quickstart is sample mode, which runs the same logic on cached rows without Zetaris |
-| **Meterless** | **H-MEM** will store lessons from past investigations (purgeable). **Nightshift** will be the primary model provider. | in progress: H-MEM service working (conformance 13/13), not yet used by the agent (memory demo planned); Nightshift client built, not live (agents are rule-based for now) |
+| **Meterless** | **H-MEM** will store lessons from past investigations (purgeable). **Nightshift** will be the primary model provider. | in progress: H-MEM service working (conformance 13/13), not yet used by the agent (memory demo planned); Nightshift model lanes (extra hypotheses, a second opinion for the critic, action wording) run in live mode, measured once on case 01 (2026-10-24); the rules still decide, and sample mode stays rule-based |
 | **Cursor** | Optional since 23 Oct (organizer update); Claude Code is the main coding agent | optional |
-| **NVIDIA** | Nemotron models to be served through Nightshift lanes (fast hypothesiser, deep critic) | planned |
+| **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser and reporter, deep critic) | planned (the lanes are built, ADR-0010; on 2026-10-24 Nightshift routed every live lane call to a Nemotron model, `routed_model` in the trace; Nightshift picks the model, not Tiresias) |
 
 Details are in [docs/sponsor-technology.md](docs/sponsor-technology.md). Status is only `working` when a judge can see it run.
 

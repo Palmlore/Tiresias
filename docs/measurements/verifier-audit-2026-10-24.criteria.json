@@ -2,7 +2,7 @@
  "audit": "docs/measurements/verifier-audit-2026-10-24.md",
  "main_sha": "5790962c06418f565bced7b2a4c78313259f9eeb",
  "baseline_sha": "7da47689712aad9e941cea20507c0bea8e544e58",
- "baseline_note": "first run on main at 5790962 (#17); classes re-baselined on main at 7da4768 (#18), which superseded #9.11 (B-9 closed) and #17.2 (adapters/zetaris.py row). Later merges are expected to supersede more rows: re-classify them here with a new-location command.",
+ "baseline_note": "first run on main at 5790962 (#17); classes re-baselined on main at 7da4768 (#18), which superseded #9.11 (B-9 closed) and #17.2 (adapters/zetaris.py row). Later merges are expected to supersede more rows: re-classify them here with a new-location command. feat/model-lanes (ADR-0010) superseded #10.3 and #11.1 (an agent module now uses the Nightshift adapter, through agents/model_lanes.py, only when the lanes are on) and #17.2 (one new Building blocks row, agents/model_lanes.py, and seven rows with text added only).",
  "prs": [
   1,
   2,
@@ -1569,8 +1569,8 @@
    "command": null,
    "adapted": null,
    "expected_class": "superseded",
-   "superseded_by": "#12",
-   "new_location_command": "! (grep -rln --include='*.py' 'cognition\\|nightshift' services/agent/src/tiresias_agent | grep -v adapters/ | grep -v 'config.py\\|trace.py') && test \"$(grep -rn --include='*.py' '\"cyclic\"' services/agent/src | wc -l)\" -eq 2 && ! grep -q 'ask=' services/agent/src/tiresias_agent/orchestrator.py services/agent/src/tiresias_agent/app.py services/agent/src/tiresias_agent/runs.py && grep -q '@app.get(\"/entities\")' services/agent/src/tiresias_agent/app.py",
+   "superseded_by": "#12, feat/model-lanes (this PR)",
+   "new_location_command": "test \"$(grep -rln --include='*.py' 'cognition\\|nightshift' services/agent/src/tiresias_agent | grep -v adapters/ | grep -v 'config.py\\|trace.py' | sort | tr '\\n' ' ')\" = 'services/agent/src/tiresias_agent/agents/model_lanes.py services/agent/src/tiresias_agent/orchestrator.py ' && test \"$(grep -c 'nightshift' services/agent/src/tiresias_agent/orchestrator.py)\" -eq 1 && grep -q '^from .adapters.nightshift import NightshiftConfig$' services/agent/src/tiresias_agent/orchestrator.py && grep -q 'NightshiftClient(' services/agent/src/tiresias_agent/agents/model_lanes.py && ! (grep -rln --include='*.py' 'cognition' services/agent/src/tiresias_agent | grep -v adapters/ | grep -v 'config.py\\|trace.py') && test \"$(grep -rn --include='*.py' '\"cyclic\"' services/agent/src | wc -l)\" -eq 2 && ! grep -q 'ask=' services/agent/src/tiresias_agent/orchestrator.py services/agent/src/tiresias_agent/app.py services/agent/src/tiresias_agent/runs.py && grep -q '@app.get(\"/entities\")' services/agent/src/tiresias_agent/app.py && cd services/agent && {py} -m pytest -q -p no:cacheprovider tests/test_model_lanes.py -k 'sample_mode_default or switch_resolves or every_model_call_writes_one_line'",
    "requires": []
   },
   {
@@ -1640,9 +1640,9 @@
    "original_verifier": "grep -n -i 'memory\\|recall\\|lesson\\|nightshift\\|model call\\|purge' README.md docs/sponsor-technology.md ; grep -rln 'cognition\\|nightshift' services/agent/src/tiresias_agent --include=*.py | grep -v adapters/ | grep -v 'config.py\\|trace.py' ; echo \"importers above (expect none)\"",
    "command": "! (grep -rln 'cognition\\|nightshift' services/agent/src/tiresias_agent --include='*.py' | grep -v adapters/ | grep -v 'config.py\\|trace.py') && ! grep -qi 'stores lessons\\|recalls them\\|is the primary' README.md docs/sponsor-technology.md",
    "adapted": "the greps made into assertions: no agent importer of the memory/model adapters and no present-tense memory/model claim",
-   "expected_class": "pass",
-   "superseded_by": null,
-   "new_location_command": null,
+   "expected_class": "superseded",
+   "superseded_by": "feat/model-lanes (this PR)",
+   "new_location_command": "! (grep -rln --include='*.py' 'cognition' services/agent/src/tiresias_agent | grep -v adapters/ | grep -v 'config.py\\|trace.py') && ! grep -qi 'stores lessons\\|recalls them' README.md docs/sponsor-technology.md && test \"$(grep -rln --include='*.py' 'cognition\\|nightshift' services/agent/src/tiresias_agent | grep -v adapters/ | grep -v 'config.py\\|trace.py' | sort | tr '\\n' ' ')\" = 'services/agent/src/tiresias_agent/agents/model_lanes.py services/agent/src/tiresias_agent/orchestrator.py ' && test \"$(grep -c 'nightshift' services/agent/src/tiresias_agent/orchestrator.py)\" -eq 1 && grep -q '^from .adapters.nightshift import NightshiftConfig$' services/agent/src/tiresias_agent/orchestrator.py && grep -q 'NightshiftClient(' services/agent/src/tiresias_agent/agents/model_lanes.py && grep -q 'Sample mode uses the rule lanes only' README.md && cd services/agent && {py} -m pytest -q -p no:cacheprovider tests/test_model_lanes.py -k 'sample_mode_default or switch_resolves or every_model_call_writes_one_line'",
    "requires": []
   },
   {
@@ -2177,8 +2177,8 @@
    "command": null,
    "adapted": null,
    "expected_class": "superseded",
-   "superseded_by": "#18",
-   "new_location_command": "git show 9a4e6da:AGENTS.md | {py} -c '\nimport re, sys\nB = chr(96)\ndef rows(ls):\n    i = next(k for k, l in enumerate(ls) if l.startswith(\"| \" + B + \"trace.py\"))\n    j = next(k for k, l in enumerate(ls) if l.startswith(\"| \" + B + \"adapters/cognition.py\"))\n    return ls[i : j + 1]\no = rows(sys.stdin.read().splitlines())\nn = rows(open(\"docs/agents-reference.md\").read().splitlines())\nassert len(o) == len(n), (len(o), len(n))\nd = [(a, b) for a, b in zip(o, n) if a != b]\nassert len(d) == 1 and d[0][0].startswith(\"| \" + B + \"adapters/zetaris.py\"), [a[:40] for a, _ in d]\nassert re.sub(r\" An expected reply .*? are unchanged[.]\", \"\", d[0][1]) == d[0][0], \"zetaris.py row differs beyond the #18 sentence\"\nprint(\"24 rows verbatim; adapters/zetaris.py differs only by the #18 expected= sentence\")\n' && grep -q 'expected: Callable' services/agent/src/tiresias_agent/adapters/zetaris.py",
+   "superseded_by": "#18, feat/model-lanes (this PR)",
+   "new_location_command": "git show 9a4e6da:AGENTS.md | {py} -c '\nimport difflib, re, sys\nB = chr(96)\ndef rows(ls):\n    i = next(k for k, l in enumerate(ls) if l.startswith(\"| \" + B + \"trace.py\"))\n    j = next(k for k, l in enumerate(ls) if l.startswith(\"| \" + B + \"adapters/cognition.py\"))\n    return ls[i : j + 1]\nname = lambda l: l.split(B)[1]\no = rows(sys.stdin.read().splitlines())\nn = rows(open(\"docs/agents-reference.md\").read().splitlines())\nassert len(o) == 25 and len(n) == 26, (len(o), len(n))\nnew = [l for l in n if name(l) not in {name(x) for x in o}]\nassert [name(l) for l in new] == [\"agents/model_lanes.py\"], [name(l) for l in new]\nn = [l for l in n if l not in new]\nassert [name(l) for l in o] == [name(l) for l in n], \"row order changed\"\nlanes = {\"config.py\", \"orchestrator.py\", \"models.py\", \"agents/hypothesiser.py\", \"agents/critic.py\", \"agents/reporter.py\", \"adapters/nightshift.py\"}\nd = [(a, b) for a, b in zip(o, n) if a != b]\nassert {name(a) for a, _ in d} <= lanes | {\"adapters/zetaris.py\"}, sorted(name(a) for a, _ in d)\nfor a, b in d:\n    if name(a) == \"adapters/zetaris.py\":\n        assert re.sub(r\" An expected reply .*? are unchanged[.]\", \"\", b) == a, \"zetaris.py row differs beyond the #18 sentence\"\n    else:\n        ops = {t for t, *_ in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes()}\n        assert ops <= {\"equal\", \"insert\"}, (name(a), ops)\nprint(f\"26 rows: 25 old rows in order, {25 - len(d)} verbatim; zetaris.py differs only by the #18 sentence; {len(d) - 1} model-lanes rows only add text; new row agents/model_lanes.py\")\n' && grep -q 'expected: Callable' services/agent/src/tiresias_agent/adapters/zetaris.py",
    "requires": []
   },
   {

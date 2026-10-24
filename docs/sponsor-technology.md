@@ -31,13 +31,13 @@ Status: **in-progress**. In live mode the agent drives Zetaris end to end, measu
 
 **Candidates for later:** the Markovian engine (each "why" as a bounded step with compressed carryover) and World Model (the why-tree as entities and edges with provenance).
 
-Status: **in-progress**. The H-MEM service works and passes conformance 13/13, but the agent does not call it yet (memory demo planned). The Nightshift client is built; it is not live and no agent calls a model yet (the agents are rule-based for now).
+Status: **in-progress**. The H-MEM service works and passes conformance 13/13, but the agent does not call it yet (memory demo planned). Nightshift is live in live mode: the model lanes (ADR-0010) call it for extra candidates, the critic's second opinion and the action wording, traced with the routed model; measured once on case 01 on 2026-10-24 (4 calls). Sample mode stays rule-based.
 
 ## NVIDIA
 
-Nemotron models to be served through Nightshift lanes: a fast lane for the hypothesiser and a deep lane for the critic. Runs will pin a Nemotron-backed lane so the evidence is unambiguous. The NVIDIA key lives only in Nightshift's Providers tab.
+Nemotron models serve the Nightshift lanes: a fast lane for the hypothesiser and reporter, a deep lane for the critic's second opinion. Nightshift 1.2.1 does not let a request pin a model, so the evidence is the receipt: every model call's trace line records `routed_model` and `provider` (on 2026-10-24 every live call was routed to a Nemotron model). The NVIDIA key lives only in Nightshift's Providers tab.
 
-Status: **planned**
+Status: **planned** (the lanes are built and were measured live once; the status is updated with metadata.json after review; sample mode makes no model call)
 
 ## Cursor
 

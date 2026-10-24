@@ -3,8 +3,8 @@
 This file gives the disclosure the event's AI Usage Policy §6 asks for. It is kept current as the build progresses.
 
 ## Models (in the product)
-- **Live mode:** Meterless Nightshift (Runtime, OpenAI-compatible) routing to NVIDIA Nemotron lanes. Exact model IDs are recorded here once pinned.
-- **Sample mode:** no model calls. A rule-based hypothesiser and critic run the same orchestration over cached data (ADR-0007).
+- **Live mode:** Meterless Nightshift (Runtime, OpenAI-compatible) is the only model provider. The agent asks for a lane (`meterless/fast` for the hypothesiser and reporter lanes, `meterless/deep` for the critic's second opinion, ADR-0010); Nightshift 1.2.1 picks the model itself and does not honour explicit ids, so each trace line records the `routed_model` from the receipt. On 2026-10-24 the receipts named `nvidia/nemotron-3.5-lightning-30b-a3b`, `nvidia/nemotron-3.5-super-vl-120b-a12b` and `nvidia/nemotron-3-ultra-550b-a55b`. Model output is advisory: candidates are validated and tested on SQL rows, and the rule critic decides.
+- **Sample mode:** no model calls by default (`MODEL_LANES=auto`). A rule-based hypothesiser and critic run the same orchestration over cached data (ADR-0007).
 
 ## Agent framework
 A custom orchestrator in Python (FastAPI). No third-party agent framework so far.

@@ -50,6 +50,7 @@ class LoopBudgets:
     max_retries_per_node: int = 1
     run_seconds: float = 600.0
     max_new_sources: int = 2  # Loop B: sources onboarded per run (MAX_NEW_SOURCES_PER_RUN)
+    max_model_calls: int = 12  # model lanes: Nightshift calls per run (MAX_MODEL_CALLS_PER_RUN)
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "LoopBudgets":
@@ -60,7 +61,19 @@ class LoopBudgets:
             max_retries_per_node=_bounded_int(env, "MAX_RETRIES_PER_NODE", 1, 0, 3),
             run_seconds=_bounded_float(env, "RUN_BUDGET_SECONDS", 600.0, 1.0, 3600.0),
             max_new_sources=_bounded_int(env, "MAX_NEW_SOURCES_PER_RUN", 2, 0, 5),
+            max_model_calls=_bounded_int(env, "MAX_MODEL_CALLS_PER_RUN", 12, 0, 50),
         )
+
+
+MODEL_LANES_MODES = ("auto", "on", "off")
+
+
+def model_lanes_mode(env: Mapping[str, str] | None = None) -> str:
+    """MODEL_LANES (ADR-0010), read at call time: auto (default), on or off. Anything else is
+    auto."""
+    env = os.environ if env is None else env
+    value = (env.get("MODEL_LANES") or "auto").strip().lower()
+    return value if value in MODEL_LANES_MODES else "auto"
 
 
 # Loop B critic (agents/reconciler.py): the largest share of the root effect a counterparty's
