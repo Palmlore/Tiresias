@@ -20,6 +20,8 @@ FALSIFIED-BY and one VERIFIER; an entry ends at a blank line. Entries without FA
 
 ## Checks
 
+CI runs all of these on the PR; tick only what you also ran yourself.
+
 - [ ] `uv run --group dev pytest -q` and `ruff check` / `ruff format --check` (services/agent)
 - [ ] `npm test` (services/cognition), if touched
 - [ ] `./scripts/check_secrets.sh && ./scripts/validate_metadata.sh`
