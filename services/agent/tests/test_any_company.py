@@ -185,6 +185,12 @@ def test_live_unknown_company_is_resolved_registered_and_investigated(
     # Discovery and evidence SQL all went to Zetaris; nothing fetched SEC directly.
     assert any("FROM tiresias.sec_tickers" in s for s in fake.sql)
     assert all(x.get("source") != "sec" for x in lines)
+    # B-9: re-registering the database and container ("already exists") is no red line.
+    zetaris_lines = [x for x in lines if x["agent"] == z.AGENT]
+    assert not [x for x in zetaris_lines if x["status"] == "error"]
+    assert {"bootstrap:database", "bootstrap:container"} <= {
+        x["action"] for x in zetaris_lines if x.get("outcome") == "exists"
+    }
 
 
 def test_live_second_run_reuses_the_registration(tmp_path, monkeypatch, no_real_http):

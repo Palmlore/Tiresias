@@ -50,6 +50,7 @@ from .zetaris import (
     ZetarisClient,
     ZetarisConfig,
     _NullTracer,
+    already_exists,
     bootstrap,
     endpoint_cik,
     lightning_tables,
@@ -795,9 +796,11 @@ class ZetarisDiscovery:
         for label, sql in (("discovery_submissions_table", create), ("discovery_cache", cache)):
             self._pace(SUBMISSIONS)
             try:
-                self.client.run_sql(sql, label=label, timeout=timeout, redact=[ua])
+                self.client.run_sql(
+                    sql, label=label, timeout=timeout, redact=[ua], expected=already_exists
+                )
             except SourceError as err:
-                if "already exist" not in err.detail.lower():
+                if not already_exists(err):
                     raise
         self._tables[table] = self.catalog.get(SUBMISSIONS).url(cik10=cik10)
         self.registered.append(table)
@@ -862,9 +865,11 @@ class ZetarisDiscovery:
         for label, sql in (("discovery_fulltext_table", create), ("discovery_cache", cache)):
             self._pace(FULLTEXT)
             try:
-                self.client.run_sql(sql, label=label, timeout=timeout, redact=[ua])
+                self.client.run_sql(
+                    sql, label=label, timeout=timeout, redact=[ua], expected=already_exists
+                )
             except SourceError as err:
-                if "already exist" not in err.detail.lower():
+                if not already_exists(err):
                     raise
         self._tables[table] = endpoint
         self.registered.append(table)

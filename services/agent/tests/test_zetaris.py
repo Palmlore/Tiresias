@@ -334,6 +334,121 @@ def test_bootstrap_is_idempotent_and_never_drops():
     assert not any(re.match(r"\s*(DROP|DELETE|TRUNCATE)", s, re.IGNORECASE) for s in sent)
 
 
+def _rerun_handler(sent=None):
+    """Every CREATE of a database/container/table already exists; gev goodwill is absent."""
+
+    def handler(request):
+        sql = json.loads(request.content)["sql"]
+        if sent is not None:
+            sent.append(sql)
+        if "gev_goodwill" in sql:
+            msg = "[FIELD_NOT_FOUND] No such struct field GoodwillImpairmentLoss"
+            return httpx.Response(400, json={"msg": msg})
+        if sql.startswith(("CACHE", "CREATE OR REPLACE")):
+            return ok([], [])
+        name = re.search(r"(?:DATABASE|CONTAINER|TABLE) (\w+)", sql).group(1)
+        return httpx.Response(400, json={"msg": f'A table named "{name}" already exists.'})
+
+    return handler
+
+
+def test_bootstrap_traces_already_exists_as_success_with_outcome_exists():
+    # B-9: an "already exists" reply is a benign outcome, never a red error line.
+    tracer = RecordingTracer()
+    client, _ = make_client(_rerun_handler(), tracer=tracer)
+    report = z.bootstrap(client, sec_user_agent=UA, entities=z.SHOWCASE_ENTITIES[:1])
+    assert {e["status"] for e in report if e["step"] in {"database", "container"}} == {"exists"}
+    assert {e["status"] for e in report if e["step"].endswith("_table")} == {"exists"}
+    assert not [e for e in tracer.events if e["status"] == "error"]
+    for step in ("database", "container", "facts_table", "submissions_table"):
+        (line,) = [e for e in tracer.events if e["action"] == f"bootstrap:{step}"]
+        assert line["status"] == "success" and line["outcome"] == "exists"
+        assert line["rows"] == 0 and "already exists" in line["output_summary"]
+
+
+def test_bootstrap_traces_field_not_found_view_as_success_with_outcome_absent():
+    tracer = RecordingTracer()
+    client, _ = make_client(_rerun_handler(), tracer=tracer)
+    report = z.bootstrap(client, sec_user_agent=UA, entities=z.SHOWCASE_ENTITIES[2:3])
+    assert z.SHOWCASE_ENTITIES[2].ticker == "gev"
+    assert [e["object"] for e in report if e["status"] == "absent"] == [
+        "tiresias.gev_goodwill_impairment"
+    ]
+    assert not [e for e in tracer.events if e["status"] == "error"]
+    (line,) = [
+        e
+        for e in tracer.events
+        if e["action"] == "bootstrap:concept_view" and "gev_goodwill" in e["sql"]
+    ]
+    assert line["status"] == "success" and line["outcome"] == "absent"
+    assert UA not in json.dumps(tracer.events)
+
+
+def test_field_not_found_outside_a_concept_view_is_still_an_error():
+    # FIELD_NOT_FOUND is only benign on a concept view; on a filings view it is a failure.
+    def handler(request):
+        sql = json.loads(request.content)["sql"]
+        if "_filings" in sql:
+            return httpx.Response(400, json={"msg": "[FIELD_NOT_FOUND] No such struct field x"})
+        return ok([], [])
+
+    tracer = RecordingTracer()
+    client, _ = make_client(handler, tracer=tracer)
+    report = z.bootstrap(client, sec_user_agent=UA, entities=z.SHOWCASE_ENTITIES[:1])
+    (entry,) = [e for e in report if e["step"] == "filings_view"]
+    assert entry["status"] == "failed" and entry["recoverable"] is False
+    (line,) = [e for e in tracer.events if e["action"] == "bootstrap:filings_view"]
+    assert line["status"] == "error" and "outcome" not in line
+
+
+def test_genuine_sql_error_still_traces_error_and_raises_unchanged():
+    def handler(request):
+        return httpx.Response(400, json={"msg": "syntax error at SELEC"})
+
+    tracer = RecordingTracer()
+    client, sleeps = make_client(handler, tracer=tracer)
+    with pytest.raises(z.SourceError) as info:
+        client.run_sql("SELEC 1", label="bad", expected=z.already_exists)
+    assert info.value.recoverable is False and info.value.status_code == 400 and sleeps == []
+    (line,) = tracer.events
+    assert line["status"] == "error" and "outcome" not in line
+    report = z.bootstrap(client, sec_user_agent=UA, entities=z.SHOWCASE_ENTITIES[:1])
+    assert {e["status"] for e in report} <= {"failed", "skipped"}
+    assert all(e["recoverable"] is False for e in report if e["status"] == "failed")
+    assert {e["status"] for e in tracer.events} == {"error"}
+
+
+def test_expected_outcome_still_raises_so_callers_decide_as_before():
+    def handler(request):
+        return httpx.Response(400, json={"msg": "An object named X already exists."})
+
+    tracer = RecordingTracer()
+    client, _ = make_client(handler, tracer=tracer)
+    with pytest.raises(z.SourceError) as info:
+        client.run_sql("CREATE DATABASE X", label="db", expected=z.already_exists)
+    assert info.value.recoverable is False and info.value.status_code == 400
+    assert [e["status"] for e in tracer.events] == ["success"]
+    # Without a classifier the client keeps its old contract: the line is an error.
+    with pytest.raises(z.SourceError):
+        client.run_sql("CREATE DATABASE X", label="db")
+    assert [e["status"] for e in tracer.events] == ["success", "error"]
+
+
+def test_server_error_with_expected_classifier_still_traces_error_after_retries():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(503, text="unavailable")
+
+    tracer = RecordingTracer()
+    client, sleeps = make_client(handler, tracer=tracer)
+    with pytest.raises(z.SourceError) as info:
+        client.run_sql("CREATE DATABASE X", label="db", expected=z.already_exists)
+    assert info.value.recoverable is True and len(calls) == 3 and len(sleeps) == 2
+    assert [e["status"] for e in tracer.events] == ["error"]
+
+
 def test_bootstrap_masks_sec_user_agent_in_traces():
     tracer = RecordingTracer()
     client, _ = make_client(lambda request: ok([], []), tracer=tracer)
