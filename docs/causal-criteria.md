@@ -48,3 +48,11 @@ A root cause depends on **who asks and what they can change**. Each run takes an
 ## 6. Memory: lessons, not answers
 
 Each run can produce a reusable **lesson**, e.g. "restatement → look for an 8-K item 2.01 disposal → reconcile against the spun-off entity". The lesson goes into H-MEM after the memory gate. Final answers are never stored. The critic must still reject a recalled lesson that doesn't fit: a spin-off lesson applied to an impairment question is rejected.
+
+## 7. How the rules are applied
+
+- **Time window.** A restatement of a closed period is caused by an event **after the period ends and no later than the restating filing** (`Frame.window()`); a change between periods is caused during the period. The critic's "earlier in time" test (§2) uses this window.
+- **Shares.** Every share is measured against the **root** effect and capped at 100%. A candidate that over-explains (offsetting factors) goes through the critic-escalation gate. In Loop B an add-back that explains more than `MAX_OVER_EXPLAINED` (150%) is treated as the **wrong counterparty**: the gate's proposal is `prune`, so in `auto` mode the run ends at `evidence-frontier` with the share and the bound in the reason.
+- **Signed residual.** A Loop B residual keeps its sign: an add-back that over-explains within tolerance leaves a negative residual (input example 02). It is reported, not hidden.
+- **Out of scope keeps the six end states.** A forecast or what-if question, or a company outside SEC, ends at `evidence-frontier` with `status: partial`, `RunResult.scope` (reasons and runnable alternatives) and no effect. Nothing is registered by the check.
+- **Breakdown frontier.** When every candidate Loop A tested was an accounting or filing event and each was ruled out (a plain rise, no disposal or restatement), the frontier says so and asks for a segment or product breakdown. SEC company facts hold no segment data, so Loop B is skipped.

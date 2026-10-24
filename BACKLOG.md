@@ -2,156 +2,149 @@
 
 Known gaps that a change deliberately left for later. Each pull request is reviewed by an adversarial second model ([DuelLoop](docs/ai-usage.md#development-tools)); when a real finding is out of scope for that change, it is **deferred** here rather than dropped, in the same commit as the deferral.
 
-Every item states all four: why it is out of scope for the change that found it, what bounds the harm meanwhile, where it was found (PR), and what would make it urgent. Items that survive to submission are summarised in [docs/limitations.md](docs/limitations.md).
+Only **open** items are kept in full. When one is resolved, it becomes one line under [Closed](#closed) naming the PR; git keeps the full text. Items that survive to submission are summarised in [docs/limitations.md](docs/limitations.md).
+
+**Severity**: `demo-risk` (could break the demo or a judge's run), `judge-visible` (a judge would notice the gap), `later` (after submission). Only the first two can block submission. **Review at** names the task or date when the item is looked at again; the session handover lists the items whose review point has come.
 
 Format:
 
 ```
 ## B-<n>: <title>
-Found in: #<PR>  ·  Status: open | done (#<PR>)
+Found in: #<PR>  ·  Status: open  ·  Severity: demo-risk | judge-visible | later
 - Out of scope because: …
 - Safe to leave because: …
 - Urgent if: …
+- Review at: <task or date>
 - Evidence: <command, file:line, or trace>
 ```
 
 ---
 
-## B-1: Agent Docker image can't see `data/sample/` or `zetaris/sql/`
-Found in: #5  ·  Status: done (#7)
-- Out of scope because: #5 builds the adapter; the Dockerfile and `docker-compose.yml` belong to the packaging task (judge setup and quickstart).
-- Safe to leave because: nothing calls the adapter inside the container yet (`/run` returns 501); the adapter reads `SAMPLE_DATA_DIR` and `ZETARIS_SQL_DIR`, so a mount or a `COPY` is enough.
-- Urgent if: `/run` is wired to the adapter, or before the first `docker compose up` test of sample mode.
-- Evidence: `services/agent/Dockerfile` copies only `src/`; `sample_dir()` and `sql_dir()` in `services/agent/src/tiresias_agent/adapters/zetaris.py`.
-- Resolved in #7: the agent is built from the repo root (`compose.yaml`, allow-list `.dockerignore`); the image copies `data/sample/`, `zetaris/sql/`, `catalog/`, `input_examples/` under `/app` and sets `SAMPLE_DATA_DIR`, `ZETARIS_SQL_DIR`, `LOGS_DIR`; checked by `services/agent/tests/test_packaging.py` and a `docker compose up --build` run (PR #7 Evidence).
-
 ## B-2: Rule-based hypothesiser knows a small, fixed rule set; `cyclic` is only a guard
-Found in: #6  ·  Status: open
+Found in: #6  ·  Status: open  ·  Severity: judge-visible
 - Out of scope because: #6 builds Loop A in sample mode with the rule-based agents of ADR-0007. A wider rule set (segments, restructuring, tax items) needs more concepts in the sample trim and live views, and feedback-loop detection needs a model-backed hypothesiser (Nightshift lane).
 - Safe to leave because: a question no rule explains ends in `evidence-frontier` with an `InformationNeed` for the unexplained variable, never in a crash or an invented cause; the hypothesiser drops any candidate already on the path, so the loop cannot cycle.
 - Urgent if: a demo or judge question needs a driver outside `agents/knowledge.py` (e.g. segment revenue), or the `cyclic` end state must be shown.
+- Review at: demo rehearsal (Mon 26 Oct): pick demo questions inside the rule set
 - Evidence: `services/agent/src/tiresias_agent/agents/knowledge.py` (`COMPONENTS`, `EVENT_CONCEPTS`, `FILING_EVENTS`); `orchestrator.LoopA._no_more_rules`.
 
-## B-3: Loop A not yet run against live Zetaris
-Found in: #6  ·  Status: done (#9)
-- Out of scope because: #6 is sample mode first (task scope); `--live` goes through `make_source(False)` = `FallbackSource(LiveZetarisSource, SampleSource)` but was only exercised by the existing adapter tests, not end to end.
-- Safe to leave because: an outage degrades per call to the sample (traced `degraded`); a non-recoverable `SourceError` (e.g. a concept view that does not exist) is caught by the analyst, traced `error` and the candidate is pruned as "not testable", so the run still ends in an end state.
-- Urgent if: the demo or `/run` uses live mode, or a pruned-as-not-testable candidate hides a real SQL bug (check `analyst`/`measure` lines with `status: error` in the trace).
-- Evidence: `services/agent/src/tiresias_agent/agents/analyst.py` (`except SourceError`); `orchestrator.main --live`.
-- Resolved in #9: the three input examples and seven other companies (IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT) were run live end to end against local Zetaris, cold and warm, with no `degraded` line; timings and end states in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md) (`scripts/perf_smoke.py`).
-
-## B-4: Live Loop B discovery reads SEC directly, not through Zetaris
-Found in: #8  ·  Status: done (#9)
-- Out of scope because: the scout's two discovery reads (`sec_tickers`, `sec_submissions` per candidate) would each need a Zetaris REST table per candidate, which would spend the source budget (`MAX_NEW_SOURCES_PER_RUN`) on discovery instead of evidence. This PR is sample mode first.
-- Safe to leave because: discovery only picks *which* entity to onboard; every number the critic reconciles is queried through `EvidenceSource` (Zetaris in live mode, with sample fallback). Live discovery uses only catalog endpoints, with `SEC_USER_AGENT`, a 20 s timeout, bounded retries and the catalog rate limit; an outage degrades to the sample (traced `degraded`), a non-recoverable error is raised.
-- Urgent if: ADR-0003 ("Zetaris is the only path to evidence in live mode") is read as covering discovery, or a judge's live run must show discovery SQL.
-- Evidence: `services/agent/src/tiresias_agent/adapters/catalog.py` (`LiveDiscovery`, `FallbackDiscovery`).
-- Resolved in #9: `LiveDiscovery` (httpx GETs to SEC) is gone. Live discovery is `ZetarisDiscovery`, Lightning SQL through `ZetarisClient` only: `sec_tickers` is a Zetaris REST table + view (`zetaris/sql/13_tickers_table.sql`, `22_tickers_view.sql`, registered by `bootstrap` or on first use) queried with `34`..`36_tickers_by_*.sql`; a candidate's `sec_submissions` is the same per-ticker REST table as bootstrap's (`11_submissions_table.sql`, CREATE + CACHE on demand) read with `37_submissions_profile.sql`. A REST table binds one URL, so a per-CIK table is the Zetaris-only way to read one registrant's submissions; these are discovery objects (at most one tickers table and `MAX_CANDIDATES` submissions tables per scout run), not evidence sources, so they never count toward `MAX_NEW_SOURCES_PER_RUN`. Guarded by `tests/test_any_company.py::test_only_the_sponsor_adapters_import_an_http_client_and_no_code_names_sec` and the live tests that refuse any non-mocked HTTP.
-
-## B-5: Source scout resolves only separations into a new, same-brand registrant
-Found in: #8  ·  Status: done (#13)
-- Out of scope because: the rules (brand pre-filter; registrant by the disposal date, no annual report before it, own 8-K within 7 days, item 5.01 preferred) cover spin-offs and split-offs. A sale to an existing company needs the 8-K exhibit text (the counterparty's name), which is not in the catalog's structured data.
-- Safe to leave because: an unmatched or ambiguous hint is refused and the run stays at `evidence-frontier` with the reason in `information_need.reason`; nothing is guessed by name.
-- Urgent if: a judge's restatement comes from a sale to an existing company, or from a spin-off with a new brand.
-- Evidence: `services/agent/src/tiresias_agent/agents/source_scout.py` (`assess`, `_resolve`); `tests/test_loop_b.py::test_scout_refuses_a_tie_and_an_unmatched_disposal`.
-- Resolved in #13: the counterparty now comes from filing evidence. A new catalog template, `sec_fulltext` (EDGAR full-text search, queried through Zetaris: `zetaris/sql/14_fulltext_table.sql`, `40_fulltext_total.sql`, `41_fulltext_hits.sql`), finds the filers whose **Form 10** (10-12B/10-12G) in the 540 days before the disposal contains the source's name as it was at that date; those are the first candidates, whatever their own name, and the brand is only a ranking signal. If nothing qualifies, a second search looks at **8-Ks within 7 days** of the disposal that name the source: an existing registrant there with item 2.01 is reported as *a sale to an existing company* and refused, with the buyer and the reason. Live (`docs/measurements/live-any-company.md`, 2026-10-23 section): IBM FY2020 → Kyndryl, 3M FY2023 → Solventum and Crane NXT FY2022 → Crane Co now reconcile within 5% and end `actionable`; DuPont FY2020 (N&B merged into IFF) is refused as a sale to IFF. Tests: `tests/test_spinoff_match.py`. Remaining limits: B-15..B-18.
-
 ## B-6: The add-back test is defined for restatements only
-Found in: #8  ·  Status: open
+Found in: #8  ·  Status: open  ·  Severity: later
 - Out of scope because: for a period-over-period change, the disposed business's contribution to each period depends on the completion date, which needs quarterly data that the sample slice and the concept views do not hold.
 - Safe to leave because: for a `change` frame, `reconciler.measure` records the missing test and the critic returns `frontier`, so the run ends at `evidence-frontier` with the need recorded, never with an invented share.
 - Urgent if: an input asks why a metric changed year on year because of a disposal and Loop A hands it to Loop B.
+- Review at: demo rehearsal (Mon 26 Oct)
 - Evidence: `services/agent/src/tiresias_agent/agents/reconciler.py` (`frame.kind != "restatement"`); `tests/test_loop_b.py::test_reconcile_small_share_is_pruned_and_missing_data_is_a_frontier`.
 
-## B-7: Loop B not yet run against live Zetaris
-Found in: #8  ·  Status: done (#9)
-- Out of scope because: this PR is sample mode first; the live registration path (`bootstrap(..., tables=("facts",))`, view refresh, outage → degraded, non-recoverable → failed) is exercised with a mocked Zetaris transport only.
-- Safe to leave because: sample mode is the default and what judges run; in live mode a failed registration ends the run at `evidence-frontier` (non-recoverable) or degrades to the sample with a `degraded` trace line (outage).
-- Urgent if: the demo uses `--live`, or `/run` is switched to `run_investigation` with `SAMPLE_MODE=false`.
-- Evidence: `tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views`, `::test_onboarder_live_outage_degrades_but_a_bad_request_never_uses_the_sample`.
-- Resolved in #9: input examples 01 and 02 run live end to end (Zetaris discovery → scout → onboard → reconcile) and end `actionable`, as in sample mode, and a company outside the showcase (Hilton FY2016, asked by name) reaches Loop B cold and reconciles to Hilton Grand Vacations; see [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
-
 ## B-8: A registered entity gets no view for a concept outside `CONCEPT_SLUGS`
-Found in: #9  ·  Status: open
+Found in: #9  ·  Status: open  ·  Severity: later
 - Out of scope because: #9 registers an **unregistered** asked entity with views for `CONCEPT_SLUGS` plus the asked metric and its aliases. For an entity already registered (the showcase, or one a previous run onboarded) it only checks that the filings view and a metric view exist; when the metric view is missing it re-runs the registration, but does not add a view for a concept outside that list on an otherwise complete entity later in Loop A (the hypothesiser only uses `CONCEPT_SLUGS` concepts anyway).
 - Safe to leave because: a metric with no view ends at `evidence-frontier` (`MetricNotFound`) with the reason, never a crash or an invented value; the entity resolver re-registers when the asked metric's view is missing.
 - Urgent if: a judge asks about a metric outside the seven showcase concepts for GE/GEHC/GEV in live mode, or the hypothesiser gains rules over new concepts.
+- Review at: when the hypothesiser gains rules over new concepts
 - Evidence: `services/agent/src/tiresias_agent/agents/entity_resolver.py` (`_ready`); `onboarder.onboard_entity` (`concepts`).
 
 ## B-9: "already exists" registration steps are traced as `status: error`
-Found in: #9  ·  Status: open
+Found in: #9  ·  Status: open  ·  Severity: demo-risk
 - Out of scope because: the client traces every failed statement as `error` before `bootstrap` classifies the reply ("already exists" → `exists`, `FIELD_NOT_FOUND` → `absent`); changing the client's trace contract touches every adapter test.
 - Safe to leave because: the outcome is on the `onboarder` `register` line and on `phase_done` (`outcome`), and `bootstrap` reports `exists`/`absent` correctly; nothing reads the client's per-statement status to decide anything.
 - Urgent if: a UI colours trace lines by `status` (a live registration shows red lines for `database`, `container` and absent concepts).
+- Review at: before the UI colours trace lines (Sat 24 Oct); fix planned as its own PR
 - Evidence: `services/agent/src/tiresias_agent/adapters/zetaris.py` (`ZetarisClient.run_sql` error trace, `bootstrap`); any live trace's `bootstrap:database` line.
 
 ## B-10: Only SEC's `filings.recent` block is read (about the last 1,000 filings)
-Found in: #9  ·  Status: open
+Found in: #9  ·  Status: open  ·  Severity: later
 - Out of scope because: SEC's submissions JSON lists older filings in separate `filings.files` pages (one URL each); reading them means one more REST table per page. The filings view (`21_filings_view.sql`) and the scout's profile query (`37_submissions_profile.sql`) read `filings.recent` only.
 - Safe to leave because: for a large filer whose `recent` block no longer reaches the event, the hypothesiser finds no 8-K for the window and the run ends at `evidence-frontier`, never with an invented event; a candidate whose early filings fell out of `recent` fails the scout's "registrant by the disposal" rule and is refused, not guessed.
 - Urgent if: a judge's question is about an event several years back at a filer with many filings (for example insider Forms 3/4/5 push old 8-Ks out of `recent`).
+- Review at: after submission
 - Evidence: `zetaris/sql/21_filings_view.sql`, `zetaris/sql/37_submissions_profile.sql`; see the end states in `docs/measurements/live-any-company.md`.
 
 ## B-11: Revenue is only recognised under three us-gaap concepts
-Found in: #9  ·  Status: open
-- Out of scope because: the concept alias group is `Revenues`, `RevenueFromContractWithCustomerExcludingAssessedTax` and (added in #9) `…IncludingAssessedTax`. Some filers report total revenue under another concept (ExxonMobil's companyfacts holds only four recent `Revenues` facts); finding the right concept needs a concept-discovery step over the companyfacts map, which is the slow full explode (18 s, AGENTS.md gotcha).
+Found in: #9  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: the concept alias group is `Revenues`, `RevenueFromContractWithCustomerExcludingAssessedTax` and (added in #9) `…IncludingAssessedTax`. Some filers report total revenue under another concept (ExxonMobil's companyfacts holds only four recent `Revenues` facts); finding the right concept needs a concept-discovery step over the companyfacts map, which is the slow full explode (18 s, [zetaris/README.md](zetaris/README.md#quirks)).
 - Safe to leave because: the framer ends at `evidence-frontier` (`MetricNotFound`, "no Revenues value for … in the registered sources") in under a second; nothing is guessed.
 - Urgent if: a judge asks about revenue for an energy or financial filer, or for any company whose total revenue sits under another concept.
+- Review at: demo rehearsal (Mon 26 Oct): try an energy and a financial filer live
 - Evidence: `docs/measurements/live-any-company.md` (case s4, XOM); `adapters/zetaris.py` (`CONCEPT_ALIASES`).
 
 ## B-12: Peers come only from registered entities; a non-SEC company gets no industry
-Found in: #12  ·  Status: open
+Found in: #12  ·  Status: open  ·  Severity: later
 - Out of scope because: the catalog has no SIC index (SEC publishes SIC per registrant in its submissions, not a list by code), so the scope check reads the SIC of the asked entity and of at most `MAX_PEER_PROBES` registered entities. A company outside SEC has no SIC in our data at all; proposing its industry needs a model (Nightshift: the model proposes an industry or peers, the agent validates each against filed data, the model never answers).
 - Safe to leave because: the alternatives that are offered are each validated; with no peer the check still offers registrants named in the question and the same entity's past period, and the `note` says why there are no peers.
 - Urgent if: the demo or a judge expects same-industry peers for a non-SEC company (e.g. a hardware maker outside SEC) or for an industry with no registered entity yet.
+- Review at: when Nightshift lanes land
 - Evidence: `services/agent/src/tiresias_agent/agents/scope.py` (`alternatives`, `_sic`, `MAX_PEER_PROBES`); `zetaris/sql/38_registrant_profile.sql`.
 
 ## B-13: Suggestions and alternatives for an unregistered registrant are thin
-Found in: #12  ·  Status: open
+Found in: #12  ·  Status: open  ·  Severity: judge-visible
 - Out of scope because: suggestions are derived from the company's own companyfacts, which exist only once it is registered (12–16 s cold), and a GET should not register sources. `GET /entities/{cik}/suggestions` therefore answers 409 `EntityNotRegistered` for a searchable entity, and a scope-check alternative about an unregistered registrant takes its fiscal year from its submissions (two 10-K report dates) without checking that the metric is present.
 - Safe to leave because: the 409 says what to do (ask any question, which registers it, then call again); an alternative whose metric turns out to be missing ends at `evidence-frontier` (`MetricNotFound`) with the reason, never an invented value.
 - Urgent if: a UI needs suggestions for a company before its first run (add an explicit `register=true`, behind the source gate and `MAX_NEW_SOURCES_PER_RUN`).
+- Review at: when the UI picker is built
 - Evidence: `services/agent/src/tiresias_agent/entities.py` (`_refuse`); `agents/scope.py` (`_alternative`, `_fiscal_year`).
 
 ## B-14: The scope check's text rules are English keyword rules
-Found in: #12  ·  Status: open
+Found in: #12  ·  Status: open  ·  Severity: judge-visible
 - Out of scope because: forecast/what-if detection (`forward_cue`) and named-company extraction (`name_phrases`: capitalised phrases matched to exactly one CIK in `sec_tickers`) are fixed rules (ADR-0007: rule-based without a model). They miss a lowercase company name, a brand shared by several registrants, or a forward question phrased without a cue word; parsing free text with a Nightshift model is planned (model proposes, agent validates).
 - Safe to leave because: false positives are kept low by design and tested (`tests/test_scope.py`); a missed forward question still runs and ends on the evidence (usually `MetricNotFound` or `NoEffect` for a future period, which the period-after-today rule also catches); an unmatched name just yields no alternative.
 - Urgent if: judges type free-form questions in other phrasings, or the UI accepts questions without a structured entity.
+- Review at: when Nightshift lanes land, or the UI accepts free-text questions
 - Evidence: `services/agent/src/tiresias_agent/agents/scope.py` (`_STRONG`, `_WEAK`, `_PAST_FRAME`, `_NOT_A_NAME`); `tests/test_scope.py` (`FORWARD`, `IN_SCOPE`).
 
-## B-15: Loop B accepts an add-back that over-explains far beyond tolerance
-Found in: #13  ·  Status: done (#15)
-- Out of scope because: the reconciler and its `critic_escalation` proposal (`accept-capped`) are the reconcile step's design (#8); this PR changes only who is reconciled. Found while a scout rule was too loose: DuPont FY2020 was matched to Dow Inc. (an earlier spin-off), the add-back explained 636% of the restatement, and the auto gate accepted it capped at 100% (`actionable`). The scout rule was fixed in the same PR (a Form 10 older than the lookback no longer excuses an annual report), so that run now ends at the frontier.
-- Safe to leave because: the reason text and the trace state the over-explanation ("explains 636% … over-explains beyond tolerance"), and a scripted or interactive gate can prune it; with the scout's rules a gross mismatch needs a wrong counterparty that also passes every new-registrant test.
-- Urgent if: any live run shows an `actionable` Loop B link with a share far above 100% (for example over 150%), or a judge reads the 100%-capped share without the residual.
-- Evidence: `services/agent/src/tiresias_agent/agents/reconciler.py` (`"proposal": "accept-capped"`); trace of the DuPont run before the fix (scratch, not committed).
-- Resolved in #15: a bound, `MAX_OVER_EXPLAINED` (`config.max_over_explained()`, default 1.5 = 150% of the root effect, clamped 1.05..10.0). Beyond tolerance and up to the bound the reconciler's `critic_escalation` proposal stays `accept-capped`; beyond the bound it is `prune`, with the reason "the add-back of X explains N% of the change, beyond the 150% bound (MAX_OVER_EXPLAINED), so the match is likely wrong", so under the auto policy the run ends at `evidence-frontier` with that reason in `information_need.reason`. A scripted or interactive `accept-capped` still accepts it (share capped at 100%, `partially-evidenced`). The critic trace line carries `over_explained_bound` and `gate_choice`. Within tolerance (case 02, residual −0.0194) nothing changes. Tests: `tests/test_loop_b.py` (`test_reconcile_over_explained_bands`, `test_beyond_bound_add_back_*`).
-
 ## B-16: One counterparty per disposal
-Found in: #13  ·  Status: open
+Found in: #13  ·  Status: open  ·  Severity: later
 - Out of scope because: the onboarder and reconciler take one entity per scout result; following two separations at one date (Hilton 2017: Hilton Grand Vacations and Park Hotels & Resorts, both new registrants named by Hilton's name in their Form 10s) needs a multi-entity add-back and two registrations against `MAX_NEW_SOURCES_PER_RUN`.
 - Safe to leave because: the scout ranks the qualifying candidates (Form 10 naming, item 5.01, brand, distance), follows the best and says which also qualified ("also qualified, ranked lower: PK"); the unexplained part stays as the residual (Hilton: 63%) and a tie on every signal ends at `evidence-frontier`.
 - Urgent if: a judge's restatement comes from two or more simultaneous spin-offs and the residual is read as unexplained.
+- Review at: after submission
 - Evidence: `source_scout.Assessment.rank`; Hilton rows in `docs/measurements/live-any-company.md`.
 
 ## B-17: Full-text search bounds and blind spots
-Found in: #13  ·  Status: open
+Found in: #13  ·  Status: open  ·  Severity: later
 - Out of scope because: each search is one Zetaris REST table over one page (at most 100 matching documents, `FULLTEXT_LIMIT` = 20 filers), and only the source's name in force at the disposal is searched. Separations registered on another form (an IPO carve-out on S-1, an exchange offer or Reverse Morris Trust on S-4) are found only by the 8-K fallback; a counterparty no longer in `sec_tickers` (delisted, acquired) cannot be registered; sample mode has no full-text data, so it keeps the brand rule only.
 - Safe to leave because: every miss is a refusal with the searched phrase and the candidates checked in `information_need.reason` and the trace (`source_scout` `candidates`); nothing is guessed, and every registration still goes through the `source` gate.
 - Urgent if: a judge asks about a carve-out IPO or a split-off by exchange offer, a spin-off whose company was later acquired, or a parent with a very common name (the page fills with passing mentions).
+- Review at: after submission
 - Evidence: `catalog/sources.yaml` (`sec_fulltext`); `source_scout._named`, `REGISTRATION_FORMS`; `tests/test_spinoff_match.py`.
 
 ## B-18: A registration that fails with an empty HTTP 400 is not retried
-Found in: #13  ·  Status: open
+Found in: #13  ·  Status: open  ·  Severity: demo-risk
 - Out of scope because: in the 2026-10-23 live pass, DuPont's first registration (`bootstrap:submissions_table`) took 79 s and Zetaris answered HTTP 400 with an empty message; the client treats every 4xx as non-recoverable, so the run ended at `evidence-frontier` while the next run registered it fine. Telling a Zetaris-side fetch timeout from a bad statement needs a look at Zetaris's error shapes, unrelated to this PR's scout change.
 - Safe to leave because: the run ends at `evidence-frontier` with the error in the reason; nothing is served from the sample, and a second run succeeds (registration is idempotent).
 - Urgent if: cold registrations fail this way more than occasionally, or during a demo.
+- Review at: before recording (Tue 27 Oct): warm every demo company first
 - Evidence: `adapters/zetaris.py` (`ZetarisClient.run_sql`, `recoverable=response.status_code >= 500`); DuPont cold row in `docs/measurements/live-any-company.md`.
 
 ## B-19: Loop A's critic also proposes `accept-capped` for any over-explaining component
-Found in: #15  ·  Status: open
+Found in: #15  ·  Status: open  ·  Severity: later
 - Out of scope because: #15 bounds Loop B's add-back, where an over-explanation means the wrong counterparty; in Loop A a component that explains more than 100% means offsetting factors inside the same entity (`agents/critic.py`, "it over-explains, so offsetting factors exist"), which can be legitimate, so the same bound needs its own reasoning and tests.
 - Safe to leave because: Loop A only measures the asked entity's own filed figures, so a gross over-explanation is real arithmetic on its own numbers, not a mismatched entity; the reason text and the `critic_escalation` trace line state the raw share, and a scripted or interactive gate can prune it.
 - Urgent if: a Loop A link ends `actionable` with a raw share far above 100% (for example over 150%) on a question a judge or the demo asks, or the 100%-capped share is shown without the raw one.
+- Review at: demo rehearsal (Mon 26 Oct): check the demo questions' raw shares
 - Evidence: `services/agent/src/tiresias_agent/agents/critic.py` (`"proposal": "accept-capped"` under `raw > OVER_EXPLAINED`); `MAX_OVER_EXPLAINED` in `config.py` (#15).
+
+## B-20: Zetaris loses its table cache on restart; the first query nearly times out
+Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: demo-risk
+- Out of scope because: found while moving the old AGENTS.md "Known gotchas" list into zetaris/README.md; `CACHE TABLE` is a Zetaris session cache, and re-warming it automatically (for example a `bootstrap` when the agent starts in live mode, or a warm-up probe) is a change to the adapter and the start-up path.
+- Safe to leave because: after a restart the first uncached query refetches from SEC in about 15 s, under the 20 s source timeout; a timeout is an outage, so the call degrades to the sample with a `degraded` trace line instead of failing. Re-running `bootstrap` re-warms every cache.
+- Urgent if: a live demo or a judge's live run starts on a freshly restarted Zetaris, or a slow day pushes the refetch past 20 s (GE took 36–46 s end to end on 23 Oct evening).
+- Review at: before recording (Tue 27 Oct): re-run `bootstrap`, then time a warm run.
+- Evidence: [zetaris/README.md](zetaris/README.md#quirks); `zetaris/sql/12_cache_table.sql`; source timeout in `adapters/zetaris.py`.
+
+## B-21: Discovery tables are never dropped
+Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
+- Out of scope because: found while moving the old AGENTS.md "Known gotchas" list into zetaris/README.md; `bootstrap` never drops anything by design (idempotent, safe to re-run), and a clean-up needs its own rule for which `<ticker>_submissions_raw` and `fts_<hash>_raw` tables are still in use.
+- Safe to leave because: each scout run adds at most two full-text tables and `MAX_CANDIDATES` submissions tables, and later runs reuse them; none counts toward `MAX_NEW_SOURCES_PER_RUN`. The growth is in the local Zetaris only.
+- Urgent if: the Zetaris table list slows queries or registration, or a shared Zetaris is used by others.
+- Review at: after submission.
+- Evidence: [zetaris/README.md](zetaris/README.md) ("Discovery goes through Zetaris too"); `adapters/catalog.py` (`ZetarisDiscovery`).
+
+## Closed
+
+- **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.
+- **B-3** (found in #6, closed in #9): Loop A not yet run against live Zetaris: three examples and seven other companies run live, [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
+- **B-4** (found in #8, closed in #9): Live Loop B discovery reads SEC directly: discovery is Lightning SQL through Zetaris only ([zetaris/README.md](zetaris/README.md)), guarded by `tests/test_any_company.py`.
+- **B-5** (found in #8, closed in #13): Source scout resolves only same-brand separations: the counterparty comes from Form 10 full-text evidence, with an 8-K fallback that refuses a sale to an existing company; `tests/test_spinoff_match.py`. Remaining limits: B-16, B-17.
+- **B-7** (found in #8, closed in #9): Loop B not yet run against live Zetaris: examples 01 and 02 and Hilton reconcile live, [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md).
+- **B-15** (found in #13, closed in #15): Loop B accepts an add-back that over-explains far beyond tolerance: bounded by `MAX_OVER_EXPLAINED` (150%), beyond it the gate proposes `prune`; [docs/causal-criteria.md](docs/causal-criteria.md) §7, `tests/test_loop_b.py`.

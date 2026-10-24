@@ -44,3 +44,14 @@ The cache is a session cache: after a Zetaris restart, re-run `bootstrap` so the
 **Discovery goes through Zetaris too** (ADR-0003). `bootstrap` registers the `sec_tickers` table and view; the live discovery adapter (`adapters/catalog.py`, `ZetarisDiscovery`) also registers them on first use. A REST table binds one URL, so reading one candidate's submissions means one `<ticker>_submissions_raw` table, registered on demand with the same template as bootstrap (CREATE + CACHE) and refused if an existing table of that name points at another CIK. The source scout's full-text searches work the same way: one `fts_<hash>_raw` table per search (at most two per scout run). These discovery objects are catalog reads, not evidence sources: they never count toward `MAX_NEW_SOURCES_PER_RUN`.
 
 **Runtime registration.** An asked entity outside the showcase set is registered while the run is going (`onboarder.onboard_entity`: both raw tables, caches, the concept views and the filings view, behind the source gate); Loop B registers a discovered entity's companyfacts table and the views for the variable (`onboarder.onboard`). Both use these templates and count toward `MAX_NEW_SOURCES_PER_RUN`. Measured timings: [docs/measurements/live-any-company.md](../docs/measurements/live-any-company.md).
+
+## Quirks
+
+Found while building; each is handled in the code or the templates named here.
+
+- **`companyfacts`, not `companyconcept`.** On 22 Oct 2026 SEC's `companyconcept` returned empty `units` for GE HealthCare while `companyfacts` had the data. The concept views therefore read `companyfacts` by struct path (`facts.us-gaap.<Concept>.units.USD`); exploding the whole facts map takes about 18 s, so nothing does that.
+- **`sec_tickers` comes from `company_tickers_exchange.json`** (row arrays), not `company_tickers.json`: the latter is one object keyed `"0".."N"`, which Zetaris would infer as a struct with about 10,000 fields. The offline sample keeps a trimmed `company_tickers.json`; both carry CIK, ticker and name.
+- **EDGAR full-text search** (`14_fulltext_table.sql`): the `forms` list must hold root forms only (`8-K`, not `8-K,8-K/A`; an `/A` form makes the search return nothing, and amendments match their root form anyway). A search with no hit makes Zetaris infer `hits.hits` as `array<string>`, so `40_fulltext_total.sql` runs first and `41_fulltext_hits.sql` only when the total is non-zero.
+- **SEC fair access**: every SEC-fetching statement carries `SEC_USER_AGENT` (a contact email) and is paced at the catalog rate limit (at most 10 requests/s).
+- **The cache does not survive a Zetaris restart** (see Apply): the first uncached query then takes about 15 s against a 20 s source timeout. Tracked as BACKLOG B-20.
+- **Discovery tables are never dropped** (`<ticker>_submissions_raw`, `fts_<hash>_raw`): bounded per run, but they accumulate across runs. Tracked as BACKLOG B-21.
