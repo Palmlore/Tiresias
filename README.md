@@ -1,5 +1,7 @@
 # Tiresias
 
+[![CI](https://github.com/Palmlore/Tiresias/actions/workflows/ci.yml/badge.svg)](https://github.com/Palmlore/Tiresias/actions/workflows/ci.yml)
+
 **An evidence-backed "5 Whys" root-cause agent for financial analysts, built on SEC filings.**
 
 > *Tiresias, the blind seer of Sophocles' Oedipus Rex, named the cause of Thebes' plague first, but had no evidence and was not believed. This Tiresias brings the evidence.*
