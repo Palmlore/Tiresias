@@ -37,13 +37,13 @@ Status: **in-progress**. The H-MEM service works and passes conformance 13/13, b
 
 Nemotron models serve the Nightshift lanes: a fast lane for the hypothesiser and reporter, a deep lane for the critic's second opinion. Nightshift 1.2.1 does not let a request pin a model, so the evidence is the receipt: every model call's trace line records `routed_model` and `provider` (on 2026-10-24 every live call was routed to a Nemotron model). The NVIDIA key lives only in Nightshift's Providers tab.
 
-Status: **planned** (the lanes are built and were measured live once; the status is updated with metadata.json after review; sample mode makes no model call)
+Status: **in progress** (the lanes are built and were measured live once on 2026-10-24; sample mode makes no model call, so a judge sees them only in a live run at depth `thorough` or `deep`)
 
 ## Cursor
 
 Cursor became optional on 23 Oct 2026. The organizers' update to the Build section reads: "Cursor is now optional. You can use any AI coding tool you're comfortable with, such as Cursor, Claude Code, Windsurf or GitHub Copilot." Tiresias is built mainly with Claude Code (see [ai-usage.md](ai-usage.md#development-tools)). The core Build requirement is unchanged: a Meterless engine (H-MEM here) in a working feature, shown with a passing test or a live demo.
 
-Status: **optional, not a Tiresias dependency**
+Status: **planned** in metadata.json, the closest value the community schema allows (planned / in-progress / working); in practice Cursor is optional and not a Tiresias dependency
 
 ## What was unique
 

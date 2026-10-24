@@ -24,7 +24,7 @@ Open the rest only when the task needs them:
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |
 | `catalog/sources.yaml` | Bounded source catalog: the only sources the agent may discover |
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
-| `input_examples/` | 3 GE cases (inputs) |
+| `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
 | `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes) |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
@@ -81,7 +81,7 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 #   any SEC registrant live: {"entity": {"ticker": "IBM"}} or {"entity": {"name": "Hilton Worldwide Holdings Inc."}}
 # Live latency per phase (needs Zetaris + .env; cold = first run for an entity, then warm). Writes no repo files
 cd services/agent && uv run python ../../scripts/perf_smoke.py [request.json ...] [--runs 2] [--logs-dir DIR] [--out FILE.jsonl] [--env-file PATH]
-#   defaults: the three input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
+#   defaults: the four input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
 ```
 
 ## External services (live mode only; sample mode needs none)
@@ -103,7 +103,7 @@ Zetaris (local Docker bundle, REST `:8888`) and Meterless Nightshift (macOS VM, 
 1. **No hardcoded or replayed outputs, no hand-written traces.** Judges test with their own inputs. Sample mode runs real logic on cached data.
 2. **Every agent action writes a JSONL trace line** (schema: `docs/architecture.md#tracing`), propagating `X-Run-Id`.
 3. **Secrets only in `.env`** (gitignored). Never print keys; mask them in logs and screenshots.
-4. **Honest status.** `metadata.json` and the checklist say `working` or `done` only when a judge can see it run. Update `docs/CHECKLIST.md`, `docs/STATUS.md` and `metadata.json` in the same commit as the work.
+4. **Honest status.** `metadata.json` and the checklist say `working` or `done` only when a judge can see it run. Update `docs/CHECKLIST.md`, `docs/STATUS.md` and `metadata.json` together with the work: in the same commit for a change that lands alone, or, for parallel PRs, by the coordinator right after the merge (How work lands).
 5. **Destructive operations run alone.** Any `rm`, overwrite, `git reset`, `docker compose down -v` or memory purge goes in its own command with a one-line reason, never inside a larger script.
 6. **Don't edit vendored code** (`services/cognition/engine/`). Wrap it.
 7. Bound everything: timeouts on external calls, capped loops (`MAX_CAUSAL_DEPTH`, `MAX_BRANCHES_PER_LEVEL`, `MAX_NEW_SOURCES_PER_RUN`).
