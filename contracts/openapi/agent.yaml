@@ -68,7 +68,7 @@ paths:
         action `phase_start` / `phase_done` (field `phase`: resolve_entity, scope_check,
         register_entity, loop_a, frame, loop_b, scout, onboard, reconcile; `phase_done` carries duration_ms), and
         action `heartbeat` (same `phase`, `elapsed_ms`) every PHASE_HEARTBEAT_SECONDS (default 5)
-        while a phase runs (AGENTS.md "Run phases (for UI)").
+        while a phase runs (docs/agents-reference.md "Run phases (for UI)").
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Event stream, content: {text/event-stream: {schema: {type: string}}}}

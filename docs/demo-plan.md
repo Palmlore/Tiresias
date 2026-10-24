@@ -13,7 +13,7 @@
 | 2:50–3:15 | Sponsor tech in the trace | Zetaris SQL lines, source registration, Nightshift lane and model, H-MEM recall IDs |
 | 3:15–3:30 | Output and impact | Report: labelled why-tree, residuals, action |
 
-Optional: case 3 (2018 impairment). The recalled spin-off lesson is **rejected** by the critic.
+Optional: case 3 (2018 impairment). The recalled spin-off lesson is **rejected** by the critic. To surface that lesson, recall with a broad query (for example "why did GE's reported figure change"); don't lower `RECALL_THRESHOLD` (0.25).
 
 ## Deck outline (the 8 required points)
 
