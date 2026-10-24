@@ -156,6 +156,14 @@ Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
 - Review at: the final README pass (state "stop the stack before pytest" or land the fixture).
 - Evidence: `docker compose up` then `cd services/agent && uv run --group dev pytest -q` gives 16 failed, 578 passed; after `docker compose stop`, 594 passed.
 
+## B-28: On an empty Zetaris the first entity read is served from the sample
+Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
+- Out of scope because: in the fresh-state live run (`logs/samples/trace-run-20261024T233153Z-c3227e.jsonl`) the first read, `SHOW LIGHTNING TABLES TIRESIAS_SEC`, answered HTTP 400 "Lightning Database 'TIRESIAS_SEC' doesn't exist"; the catch-all classes that as `unclassified`, so the registered-entity list for that read came from the sample (`degraded`). The run then registered the database and every source itself and answered from Zetaris. Reading "doesn't exist" as an empty list is a classifier change in `adapters/zetaris.py` plus a matrix test.
+- Safe to leave because: it happens once per Zetaris install (before the first registration), the line is traced, and entity resolution goes through the Zetaris ticker table, not that list.
+- Urgent if: a judge's first live run on a new bundle needs the entity list from Zetaris (`GET /entities` live on an empty bundle lists the sample's companies).
+- Review at: after submission.
+- Evidence: lines 6–7 of the trace above; `classify_reply` in `adapters/zetaris.py`.
+
 ## Closed
 
 - **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.

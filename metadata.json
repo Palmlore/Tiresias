@@ -24,8 +24,8 @@
   },
   "sponsors": {
     "zetaris": {
-      "status": "in-progress",
-      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Live mode is measured but not yet the judge's default path (sample mode runs the same logic on cached rows), hence in-progress.",
+      "status": "working",
+      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Each Zetaris call is a trace line (SQL, outcome, rows, duration, retries); a live run from a fresh Zetaris is committed in logs/samples/. The judge's default quickstart is sample mode, which runs the same logic on cached rows.",
       "interface": "rest",
       "deployment": "local-docker",
       "data_sources": [
@@ -42,7 +42,8 @@
         "catalog/sources.yaml"
       ],
       "evidence": [
-        "logs/samples/trace-run-20261024T230646Z-45973c.jsonl and output_examples/04_3m_2023_revenue_restated.live.json: a real live run of case 04 (3M) on 2026-10-24 23:06 UTC (25 Oct AEDT) through local Zetaris, every read and Loop B's registration of Solventum as Zetaris SQL (the table already existed from an earlier live run, so registration re-ran its 7 statements and reused it), no sample fallback; same root cause and residual as sample mode",
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl and output_examples/04_3m_2023_revenue_restated.live-fresh-deep.json: a live run of case 04 (3M) from a fresh Zetaris (every Tiresias object dropped, driver restarted) on 2026-10-24 23:31 UTC: the run registers the ticker list, 3M's facts and filings, a full-text search and Solventum's facts in Zetaris, and every call is traced with SQL, outcome, rows, duration and retries",
+        "logs/samples/trace-run-20261024T230646Z-45973c.jsonl: the same case live with the sources already registered, no fallback",
         "docs/measurements/live-any-company.md: live runs through local Zetaris on 2026-10-23 (three examples plus IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT), cold and warm, timed from each run's phase trace lines",
         "docs/measurements/zetaris-local.md: local bundle latencies (REST table registration 0.6–2.0 s, cached queries)",
         "services/agent/tests/test_any_company.py: no agent module outside the sponsor adapters makes HTTP calls; live discovery and registration run as Zetaris SQL (mocked endpoint)",
@@ -74,7 +75,8 @@
         "services/cognition: `npm test` (remember, recall threshold, namespaces, gate reject, purge survives restart, REST)",
         "services/agent/tests/test_model_lanes.py and tests/test_depth.py: lanes validated, the rules decide, sample mode makes no model call, Nightshift outages degrade to the rules",
         "2026-10-24 live run of case 01 at depth deep: 4 Nightshift calls, each traced with routed_model, provider and receipt id",
-        "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition"
+        "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition",
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: a live run at depth deep, 4 Nightshift calls, each traced with lane, routed_model, provider and receipt id"
       ],
       "decisions": [
         "docs/decisions/ADR-0002-split-services-rest.md",
@@ -104,6 +106,7 @@
         "services/agent/src/tiresias_agent/adapters/nightshift.py"
       ],
       "evidence": [
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: 4 calls served by nvidia/nemotron-3-ultra-550b-a55b (1) and nvidia/nemotron-3.5-super-vl-120b-a12b (3), routed_model and receipt id on each trace line",
         "2026-10-24 live run of case 01 at depth deep: critic second opinions and wording served by Nemotron, routed_model and receipt ids in the trace",
         "services/agent/tests/test_model_lanes.py::test_every_model_call_writes_one_line_with_routing_and_no_secret"
       ],

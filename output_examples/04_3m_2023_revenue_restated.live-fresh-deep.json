@@ -1,0 +1,597 @@
+{
+  "end_state": "actionable",
+  "action": "Re-base FY2023 Revenues in the model on continuing operations at $24.61B, -$8.07B vs $32.68B. The restatement removes Solventum Corp (CIK 0001964738) (8-K items 2.01,9.01, filed 2024-04-04), whose own filings report $8.20B for the period. Residual: over-explained by $126.0M (1.6% of the effect).",
+  "action_source": "model",
+  "action_template": "Re-base the FY2023 Revenues in the model on continuing operations ($24.61B as now reported, -$8.07B vs $32.68B): the restatement removes Solventum Corp (CIK 0001964738) (8-K items 2.01,9.01, filed 2024-04-04), whose own filings report $8.20B for the period; residual: over-explained by $126.0M (1.6% of the effect).",
+  "root_cause": "Solventum Corp (CIK 0001964738), the separate registrant behind the disposal MMM reported in its 8-K filed 2024-04-04, reports Revenues of $8.20B for FY2023; add-back: restated $24.61B + Solventum Corp $8.20B = $32.81B vs original $32.68B (gap $126.0M, tolerance 5% = $1.63B); explains 102% of the -$8.07B restatement; residual over-explained by $126.0M (1.6% of the effect); reconciled",
+  "residual": -0.0156,
+  "run_id": "run-20261024T233153Z-c3227e",
+  "parent_run_id": null,
+  "parent_node_id": null,
+  "status": "success",
+  "effect": {
+    "entity": "MMM",
+    "metric": "Revenues",
+    "kind": "restatement",
+    "period": {
+      "start": "2023-01-01",
+      "end": "2023-12-31"
+    },
+    "baseline": {
+      "value": 32681000000.0,
+      "concept": "Revenues",
+      "start": "2023-01-01",
+      "end": "2023-12-31",
+      "form": "10-K",
+      "filed": "2024-02-07",
+      "accn": "0000066740-24-000016"
+    },
+    "target": {
+      "value": 24610000000.0,
+      "concept": "Revenues",
+      "start": "2023-01-01",
+      "end": "2023-12-31",
+      "form": "10-K",
+      "filed": "2025-02-05",
+      "accn": "0000066740-25-000006"
+    },
+    "delta": -8071000000.0,
+    "relative_change": -0.2469630672256051,
+    "summary": "Revenues for FY2023 was restated from $32.68B (10-K filed 2024-02-07) to $24.61B (10-K filed 2025-02-05): -$8.07B (-25%)"
+  },
+  "information_need": null,
+  "why_tree": [
+    {
+      "node_id": "n0",
+      "parent_id": null,
+      "claim": "Revenues for FY2023 was restated from $32.68B (10-K filed 2024-02-07) to $24.61B (10-K filed 2025-02-05): -$8.07B (-25%)",
+      "label": "breakdown",
+      "evidence_status": "evidenced",
+      "share_explained": 1.0,
+      "residual": 0.0,
+      "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenues\nUNION ALL\nSELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenue_contract\nORDER BY period_end, period_start, filed, concept",
+      "rows_ref": null,
+      "depth": 0,
+      "verdict": "root",
+      "rule": null,
+      "reason": null,
+      "attempts": 1,
+      "evidence": [
+        {
+          "sql": "SELECT cik, name, ticker, exchange\nFROM tiresias.sec_tickers\nWHERE upper(ticker) IN ('MMM') OR cik IN (NULL)\nORDER BY cik DESC\nLIMIT 20",
+          "filter": "ticker/CIK = ticker MMM",
+          "source": "zetaris",
+          "row_count": 1,
+          "matched": 1,
+          "rows": [
+            {
+              "ticker": "MMM",
+              "cik": "0000066740",
+              "title": "3M CO"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "CREATE LIGHTNING REST TABLE mmm_facts_raw FROM TIRESIAS_SEC REQUEST(\n    endpoint \"https://data.sec.gov/api/xbrl/companyfacts/CIK0000066740.json\",\n    method \"get\", response_type \"json\", http_encoding \"URLENCODED\"\n) HEADER (user-agent \"***\") BODY ()",
+          "filter": "registered one statement at a time (21030 ms)",
+          "source": "zetaris",
+          "row_count": 15,
+          "matched": 15,
+          "rows": [
+            {
+              "step": "database",
+              "object": "TIRESIAS_SEC",
+              "status": "exists"
+            },
+            {
+              "step": "container",
+              "object": "tiresias",
+              "status": "exists"
+            },
+            {
+              "step": "facts_table",
+              "object": "TIRESIAS_SEC.mmm_facts_raw",
+              "status": "created"
+            },
+            {
+              "step": "cache",
+              "object": "TIRESIAS_SEC.mmm_facts_raw",
+              "status": "cached"
+            },
+            {
+              "step": "submissions_table",
+              "object": "TIRESIAS_SEC.mmm_submissions_raw",
+              "status": "created"
+            },
+            {
+              "step": "cache",
+              "object": "TIRESIAS_SEC.mmm_submissions_raw",
+              "status": "cached"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_revenues",
+              "status": "replaced"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_revenue_contract",
+              "status": "replaced"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_revenue_from_contract_with_customer_incl",
+              "status": "absent"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_net_income",
+              "status": "replaced"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_income_cont_ops",
+              "status": "replaced"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_income_disc_ops",
+              "status": "absent"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_disposal_revenue",
+              "status": "replaced"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.mmm_goodwill_impairment",
+              "status": "replaced"
+            },
+            {
+              "step": "filings_view",
+              "object": "tiresias.mmm_filings",
+              "status": "replaced"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenues\nUNION ALL\nSELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenue_contract\nORDER BY period_end, period_start, filed, concept",
+          "filter": "period_start = '2023-01-01' AND period_end = '2023-12-31'",
+          "source": "zetaris",
+          "row_count": 149,
+          "matched": 3,
+          "rows": [
+            {
+              "concept": "Revenues",
+              "val": 32681000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2024-02-07",
+              "accn": "0000066740-24-000016"
+            },
+            {
+              "concept": "Revenues",
+              "val": 24610000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2025-02-05",
+              "accn": "0000066740-25-000006"
+            },
+            {
+              "concept": "Revenues",
+              "val": 24610000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2026-02-03",
+              "accn": "0000066740-26-000014"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        }
+      ],
+      "proposed_by": "rules",
+      "model_opinion": null
+    },
+    {
+      "node_id": "n0.1",
+      "parent_id": "n0",
+      "claim": "A completion of an acquisition or disposition of assets (8-K item 2.01) between the two reports changed Revenues",
+      "label": "causal",
+      "evidence_status": "hypothesis",
+      "share_explained": null,
+      "residual": null,
+      "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_disposal_revenue\nORDER BY period_end, period_start, filed, concept",
+      "rows_ref": null,
+      "depth": 1,
+      "verdict": "frontier",
+      "rule": "filing_event",
+      "reason": "1 event(s) in the window, but no registered source shows Revenues of the disposed business for FY2023: the intervention test cannot be run",
+      "attempts": 2,
+      "evidence": [
+        {
+          "sql": "SELECT accession_number, filing_date, report_date, form, items, primary_document\nFROM tiresias.mmm_filings\nWHERE form IN ('8-K', '8-K/A')\nORDER BY filing_date DESC, accession_number DESC",
+          "filter": "(items LIKE '%2.01%')",
+          "source": "zetaris",
+          "row_count": 141,
+          "matched": 2,
+          "rows": [
+            {
+              "accession_number": "0000066740-24-000044",
+              "filing_date": "2024-04-04",
+              "report_date": "2024-04-01",
+              "form": "8-K",
+              "items": "2.01,9.01"
+            },
+            {
+              "accession_number": "0001410578-19-001637",
+              "filing_date": "2019-10-11",
+              "report_date": "2019-10-11",
+              "form": "8-K",
+              "items": "2.01,7.01,9.01"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "SELECT accession_number, filing_date, report_date, form, items, primary_document\nFROM tiresias.mmm_filings\nWHERE form IN ('8-K', '8-K/A')\nORDER BY filing_date DESC, accession_number DESC",
+          "filter": "(items LIKE '%2.01%') AND filing_date > '2023-12-31' AND filing_date <= '2025-02-05'",
+          "source": "zetaris",
+          "row_count": 141,
+          "matched": 1,
+          "rows": [
+            {
+              "accession_number": "0000066740-24-000044",
+              "filing_date": "2024-04-04",
+              "report_date": "2024-04-01",
+              "form": "8-K",
+              "items": "2.01,9.01"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_income_disc_ops\nORDER BY period_end, period_start, filed, concept",
+          "filter": "accn IN ('0000066740-24-000016', '0000066740-25-000006')",
+          "source": "zetaris",
+          "row_count": 0,
+          "matched": 0,
+          "rows": [],
+          "degraded": false,
+          "note": "no registered view for mmm IncomeLossFromDiscontinuedOperationsNetOfTax"
+        },
+        {
+          "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_disposal_revenue\nORDER BY period_end, period_start, filed, concept",
+          "filter": "period_start = '2023-01-01' AND period_end = '2023-12-31'",
+          "source": "zetaris",
+          "row_count": 2,
+          "matched": 0,
+          "rows": [],
+          "degraded": false,
+          "note": null
+        }
+      ],
+      "proposed_by": "rules",
+      "model_opinion": null
+    },
+    {
+      "node_id": "n0.2",
+      "parent_id": "n0",
+      "claim": "A non-reliance on previously issued financial statements (8-K item 4.02) or an amended annual report (10-K/A) between the two reports changed Revenues",
+      "label": "causal",
+      "evidence_status": "hypothesis",
+      "share_explained": null,
+      "residual": null,
+      "sql": "SELECT accession_number, filing_date, report_date, form, items, primary_document\nFROM tiresias.mmm_filings\nWHERE form IN ('8-K', '8-K/A', '10-K/A')\nORDER BY filing_date DESC, accession_number DESC",
+      "rows_ref": null,
+      "depth": 1,
+      "verdict": "pruned",
+      "rule": "filing_event",
+      "reason": "no evidence in the registered sources",
+      "attempts": 1,
+      "evidence": [
+        {
+          "sql": "SELECT accession_number, filing_date, report_date, form, items, primary_document\nFROM tiresias.mmm_filings\nWHERE form IN ('8-K', '8-K/A', '10-K/A')\nORDER BY filing_date DESC, accession_number DESC",
+          "filter": "(items LIKE '%4.02%') AND filing_date > '2023-12-31' AND filing_date <= '2025-02-05'",
+          "source": "zetaris",
+          "row_count": 141,
+          "matched": 0,
+          "rows": [],
+          "degraded": false,
+          "note": null
+        }
+      ],
+      "proposed_by": "rules",
+      "model_opinion": {
+        "lane": "deep",
+        "requested_model": "meterless/deep",
+        "routed_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        "provider": "nvidia",
+        "receipt_id": "rcpt_req_fkrzjwuy",
+        "decision": "prune",
+        "label": "causal",
+        "rationale": "The hypothesis claims an 8-K item 4.02 event changed MMM FY2023 revenues from $32.68B to $24.61B (effect -$8.07B), but the measured contribution is n/a (n/a of the effect), the counterfactual is n/a, and variable baseline and target are n/a; with 0 filing events in the window and 0 outside it, removal of the event cannot be shown to move the figure back, so the causal claim is unsupported by the measurement.",
+        "grounded": true,
+        "agrees": true,
+        "rule_decision": "prune",
+        "gate_choice": null
+      }
+    },
+    {
+      "node_id": "n0.3",
+      "parent_id": "n0",
+      "claim": "The two filings report the figure under different concepts (a definition change)",
+      "label": "breakdown",
+      "evidence_status": "hypothesis",
+      "share_explained": null,
+      "residual": null,
+      "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenues\nUNION ALL\nSELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenue_contract\nORDER BY period_end, period_start, filed, concept",
+      "rows_ref": null,
+      "depth": 1,
+      "verdict": "pruned",
+      "rule": "concept_switch",
+      "reason": "no evidence in the registered sources",
+      "attempts": 1,
+      "evidence": [
+        {
+          "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenues\nUNION ALL\nSELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.mmm_revenue_contract\nORDER BY period_end, period_start, filed, concept",
+          "filter": "accn IN ('0000066740-24-000016', '0000066740-25-000006')",
+          "source": "zetaris",
+          "row_count": 149,
+          "matched": 2,
+          "rows": [
+            {
+              "concept": "Revenues",
+              "val": 32681000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2024-02-07",
+              "accn": "0000066740-24-000016"
+            },
+            {
+              "concept": "Revenues",
+              "val": 24610000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2025-02-05",
+              "accn": "0000066740-25-000006"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        }
+      ],
+      "proposed_by": "rules",
+      "model_opinion": {
+        "lane": "deep",
+        "requested_model": "meterless/deep",
+        "routed_model": "nvidia/nemotron-3.5-super-vl-120b-a12b",
+        "provider": "nvidia",
+        "receipt_id": "rcpt_req_wgcw4gvu",
+        "decision": "prune",
+        "label": "causal",
+        "rationale": "The hypothesis proposes a concept switch for concept:Revenues as the cause of the restatement from $32.68B to $24.61B (effect -$8.07B), but the measured contribution is n/a (n/a of the effect), the counterfactual is n/a, and the variable baseline and target are both n/a; with 0 filing events in the window and 0 outside it, resetting the variable cannot be shown to move the figure back, so the causal claim is unsupported by the measurement.",
+        "grounded": true,
+        "agrees": true,
+        "rule_decision": "prune",
+        "gate_choice": null
+      }
+    },
+    {
+      "node_id": "n0.1.1",
+      "parent_id": "n0.1",
+      "claim": "Solventum Corp (CIK 0001964738), the separate registrant behind the disposal MMM reported in its 8-K filed 2024-04-04, reports Revenues of $8.20B for FY2023",
+      "label": "causal",
+      "evidence_status": "evidenced",
+      "share_explained": 1.0,
+      "residual": -0.0156,
+      "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.solv_revenues\nORDER BY period_end, period_start, filed, concept",
+      "rows_ref": null,
+      "depth": 2,
+      "verdict": "accepted",
+      "rule": "reconcile",
+      "reason": "add-back: restated $24.61B + Solventum Corp $8.20B = $32.81B vs original $32.68B (gap $126.0M, tolerance 5% = $1.63B); explains 102% of the -$8.07B restatement; residual over-explained by $126.0M (1.6% of the effect); reconciled",
+      "attempts": 1,
+      "evidence": [
+        {
+          "sql": "SELECT cik, name, ticker, exchange\nFROM tiresias.sec_tickers\nWHERE lower(split(name, ' ')[0]) IN ('3m', 'mmm')\nORDER BY cik DESC\nLIMIT 50",
+          "filter": "cik != '0000066740'; one row per CIK; first 10",
+          "source": "zetaris",
+          "row_count": 1,
+          "matched": 0,
+          "rows": [],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "SELECT cik, first(h._source.display_names[i]) AS name, count(*) AS hits,\n       min(h._source.file_date) AS first_date, max(h._source.file_date) AS last_date,\n       concat_ws(',', sort_array(collect_set(h._source.form))) AS forms,\n       concat_ws(',', sort_array(array_distinct(flatten(collect_list(h._source.items))))) AS items,\n       max(hits.total.value) AS total\nFROM tiresias_sec.fts_d014334df6b92aed_raw\nLATERAL VIEW explode(hits.hits) AS h\nLATERAL VIEW posexplode(h._source.ciks) AS i, cik\nGROUP BY cik\nORDER BY hits DESC, cik DESC\nLIMIT 20",
+          "filter": "documents containing \"3m\" in 10-12B/10-12G filed 2022-10-12..2024-04-04; cik not the source; hits >= 0.25 x the top filer's; first 3",
+          "source": "zetaris",
+          "row_count": 9,
+          "matched": 1,
+          "rows": [
+            {
+              "cik": "0001964738",
+              "name": "Solventum Corp  (SOLV)  (CIK 0001964738)",
+              "documents": 33,
+              "forms": "10-12B,10-12B/A",
+              "items": "",
+              "first_date": "2024-02-20"
+            }
+          ],
+          "degraded": false,
+          "note": "51 matching document(s); 9 filer(s) shown"
+        },
+        {
+          "sql": "SELECT cik, name, ticker, exchange\nFROM tiresias.sec_tickers\nWHERE upper(ticker) IN (NULL) OR cik IN (1964738)\nORDER BY cik DESC\nLIMIT 20",
+          "filter": "the named filers' tickers",
+          "source": "zetaris",
+          "row_count": 1,
+          "matched": 1,
+          "rows": [
+            {
+              "ticker": "SOLV",
+              "cik": "0001964738",
+              "title": "Solventum Corp"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "SELECT cik, name, to_json(tickers) AS tickers, to_json(formerNames) AS former_names,\n       accession_number, filings.recent.form[i] AS form,\n       filings.recent.filingDate[i] AS filing_date, filings.recent.items[i] AS items\nFROM tiresias_sec.solv_submissions_raw\nLATERAL VIEW OUTER posexplode(filings.recent.accessionNumber) AS i, accession_number",
+          "filter": "form IN (8-K, 8-K/A) AND abs(filing_date - '2024-04-04') <= 7 days; no 10-K/10-K/A before it",
+          "source": "zetaris",
+          "row_count": 1,
+          "matched": 2,
+          "rows": [
+            {
+              "registered_since": "2023-02-14"
+            },
+            {
+              "form": "8-K",
+              "filing_date": "2024-04-04",
+              "items": "1.01,3.03,5.02,5.03,5.05,8.01,9.01"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "CREATE LIGHTNING REST TABLE solv_facts_raw FROM TIRESIAS_SEC REQUEST(\n    endpoint \"https://data.sec.gov/api/xbrl/companyfacts/CIK0001964738.json\",\n    method \"get\", response_type \"json\", http_encoding \"URLENCODED\"\n) HEADER (user-agent \"***\") BODY ()",
+          "filter": "registered one statement at a time (6210 ms)",
+          "source": "zetaris",
+          "row_count": 7,
+          "matched": 7,
+          "rows": [
+            {
+              "step": "database",
+              "object": "TIRESIAS_SEC",
+              "status": "exists"
+            },
+            {
+              "step": "container",
+              "object": "tiresias",
+              "status": "exists"
+            },
+            {
+              "step": "facts_table",
+              "object": "TIRESIAS_SEC.solv_facts_raw",
+              "status": "created"
+            },
+            {
+              "step": "cache",
+              "object": "TIRESIAS_SEC.solv_facts_raw",
+              "status": "cached"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.solv_revenues",
+              "status": "replaced"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.solv_revenue_contract",
+              "status": "absent"
+            },
+            {
+              "step": "concept_view",
+              "object": "tiresias.solv_revenue_from_contract_with_customer_incl",
+              "status": "absent"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        },
+        {
+          "sql": "SELECT concept, unit, val, period_start, period_end, fy, fp, form, filed, accn, frame\nFROM tiresias.solv_revenues\nORDER BY period_end, period_start, filed, concept",
+          "filter": "period_start = '2023-01-01' AND period_end = '2023-12-31'",
+          "source": "zetaris",
+          "row_count": 32,
+          "matched": 2,
+          "rows": [
+            {
+              "concept": "Revenues",
+              "val": 8197000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2025-02-28",
+              "accn": "0001964738-25-000019"
+            },
+            {
+              "concept": "Revenues",
+              "val": 8197000000,
+              "start": "2023-01-01",
+              "end": "2023-12-31",
+              "form": "10-K",
+              "filed": "2026-02-27",
+              "accn": "0001964738-26-000007"
+            }
+          ],
+          "degraded": false,
+          "note": null
+        }
+      ],
+      "proposed_by": "rules",
+      "model_opinion": null
+    }
+  ],
+  "stats": {
+    "hops": 5,
+    "queries": 7,
+    "sources_onboarded": 2,
+    "model_calls": 4,
+    "tokens": 4849,
+    "seconds": 121.658,
+    "retries": 1,
+    "prunes": 2,
+    "gate_decisions": 3
+  },
+  "depth": {
+    "requested": "deep",
+    "requested_by": "options.depth",
+    "effective": "deep",
+    "lanes": [
+      "hypothesiser",
+      "critic",
+      "reporter"
+    ],
+    "degraded": false,
+    "note": "deep (options.depth): Nightshift lanes hypothesiser, critic, reporter, cap 12 calls",
+    "expected_wait": {
+      "min_seconds": 145.0,
+      "max_seconds": 166.0,
+      "basis": "rules: 3-11 s if Zetaris has the entity registered (warm), 15-21 s if the run registers it first (cold), measured 2026-10-23; deep: every model lane, 91-94 s for three deep critic calls + about 51 s for the fast wording call (input example 01, live, 2026-10-24; 169-173 s end to end with Zetaris down); each hypothesiser call adds up to MODEL_TIMEOUT_SECONDS"
+    }
+  },
+  "trace_file": "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl",
+  "sample_mode": false,
+  "error": null,
+  "scope": null,
+  "memory": {
+    "mode": "cold",
+    "available": null,
+    "namespace": null,
+    "query": null,
+    "recalled": [],
+    "rejected": [],
+    "skipped": [],
+    "fallback": false,
+    "feedback": [],
+    "stored": null,
+    "note": "cold (options.memory=cold): no recall, no write-back, no feedback"
+  }
+}

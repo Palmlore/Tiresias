@@ -30,7 +30,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [ ] One primary track selected on HackOS: *Reasoning Architecture* (OR §6; ADR-0009)
 
 ## B. Sponsor technology (required, and scored under Sponsor Tech, 10 pts)
-- [~] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10) (live mode: every read, discovery included, is Zetaris SQL (#9); sample mode, the judge default, runs the same logic on cached rows, so a judge sees Zetaris only by running `--live` against a local bundle; no live trace committed yet)
+- [x] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10) (live mode: every read, discovery included, is Zetaris SQL (#9); sample mode, the judge default, runs the same logic on cached rows, so a judge sees Zetaris run in the committed live traces, one from a fresh Zetaris with every call traced (`logs/samples/`, [output_examples/README.md](../output_examples/README.md)), or by running `--live` against a local bundle)
   - [x] Local Zetaris running and measured ([measurements/zetaris-local.md](measurements/zetaris-local.md); reproduce with `scripts/zetaris_probe.py`)
   - [x] GE vs GE HealthCare reconciliation runs inside Zetaris (residual $114M), via `scripts/zetaris_probe.py`
   - [x] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9) (#5: live and sample sources, falls back to `data/sample/` on outage and traces `degraded`; live smoke row counts match sample mode)
@@ -112,7 +112,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
 - [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris (data layer), Meterless (the H-MEM engine, its feature and test; Nightshift as the AI provider and how the app connects) and NVIDIA, plus "what was unique" (SR §3.4, final rules; Cursor optional) (written 25 Oct; final once a fresh-state live trace with model calls is committed)
-- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris, Meterless and NVIDIA `in-progress`; Cursor `planned`, the schema has no "optional")
+- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris `working` (a fresh-state live trace with every call); Meterless and NVIDIA `in-progress`; Cursor `planned`, the schema has no "optional")
 - [ ] Switch to the official metadata format if the organizers publish one (STATUS #1)
 
 ## J. Submission (HackOS)

@@ -1,6 +1,6 @@
 # Sponsor technology
 
-This is the required sponsor technology explanation, kept honest. Status follows [`metadata.json`](../metadata.json): `planned` → `in-progress` → `working`, and `working` only when a judge can see it run.
+This is the required sponsor technology explanation, kept honest. Status follows [`metadata.json`](../metadata.json): `planned` → `in-progress` → `working`, and `working` only when a judge can see it run, or verify it in a committed trace from a fresh state that records every call, request and response (whoever made the run).
 
 ## Zetaris: the data layer
 
@@ -18,7 +18,7 @@ This is the required sponsor technology explanation, kept honest. Status follows
 
 **Deployment.** Local Docker (vendor bundle `zetaris-platform`, image tag 2.4.3.1-hackathon), REST at `localhost:8888`.
 
-Status: **in-progress**. In live mode the agent drives Zetaris end to end, measured in [measurements/live-any-company.md](measurements/live-any-company.md), with one live trace committed; the judge's default quickstart is sample mode, which runs the same logic on cached rows without Zetaris ([STATUS.md](STATUS.md) #7).
+Status: **working**. A live run from a fresh Zetaris (every Tiresias object dropped and the driver restarted first) is committed with every call traced: the run registers what it needs and answers from Zetaris ([output_examples/README.md](../output_examples/README.md)); more runs are measured in [measurements/live-any-company.md](measurements/live-any-company.md). The judge's default quickstart is sample mode, which runs the same logic on cached rows without Zetaris.
 
 ## Meterless
 

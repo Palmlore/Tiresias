@@ -106,7 +106,7 @@ Zetaris (local Docker bundle, REST `:8888`) and Meterless Nightshift (macOS VM, 
 1. **No hardcoded or replayed outputs, no hand-written traces.** Judges test with their own inputs. Sample mode runs real logic on cached data.
 2. **Every agent action writes a JSONL trace line** (schema: `docs/architecture.md#tracing`), propagating `X-Run-Id`.
 3. **Secrets only in `.env`** (gitignored). Never print keys; mask them in logs and screenshots.
-4. **Honest status.** `metadata.json` and the checklist say `working` or `done` only when a judge can see it run. Update `docs/CHECKLIST.md`, `docs/STATUS.md` and `metadata.json` together with the work: in the same commit for a change that lands alone, or, for parallel PRs, by the coordinator right after the merge (How work lands).
+4. **Honest status.** `metadata.json` and the checklist say `working` or `done` only when a judge can see it run, or can verify it in a committed trace from a fresh state that records every call and response (whoever made the run; the human, 25 Oct). Update `docs/CHECKLIST.md`, `docs/STATUS.md` and `metadata.json` together with the work: in the same commit for a change that lands alone, or, for parallel PRs, by the coordinator right after the merge (How work lands).
 5. **Destructive operations run alone.** Any `rm`, overwrite, `git reset`, `docker compose down -v` or memory purge goes in its own command with a one-line reason, never inside a larger script.
 6. **Don't edit vendored code** (`services/cognition/engine/`). Wrap it.
 7. Bound everything: timeouts on external calls, capped loops (`MAX_CAUSAL_DEPTH`, `MAX_BRANCHES_PER_LEVEL`, `MAX_NEW_SOURCES_PER_RUN`).
