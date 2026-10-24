@@ -203,17 +203,12 @@ def dead_engine(text: str) -> bool:
     return any(all(part in body for part in sig) for sig in DEAD_ENGINE_SIGNATURES)
 
 
-def _dead_without_rows(response: httpx.Response) -> bool:
-    """True when a 2xx reply shows a dead engine and carries no data rows."""
-    text = response.text[:20_000]
-    if not dead_engine(text):
-        return False
-    try:
-        payload = response.json() if response.content else {}
-    except ValueError:
-        return True
-    data = payload.get("data") if isinstance(payload, dict) else None
-    return not (isinstance(data, list) and data)
+def _dead_reply(response: httpx.Response) -> bool:
+    """True when the first 20 kB of a reply body match a dead-engine signature, rows or not.
+
+    The signatures are Spark driver errors, not text an SEC filing or fact carries, so a reply
+    whose rows contain one is still treated as an outage."""
+    return dead_engine(response.text[:20_000])
 
 
 # --- SQL templates ----------------------------------------------------------------------------
@@ -479,10 +474,9 @@ class ZetarisClient:
                     f"Zetaris {label}: connection failed ({type(exc).__name__})", recoverable=True
                 )
             else:
-                if response.status_code < 400 and _dead_without_rows(response):
-                    # A 2xx can carry the dead-engine message too; it is an outage, not an
-                    # empty result. A reply with data rows is never classified (row text could
-                    # quote the signature).
+                if response.status_code < 400 and _dead_reply(response):
+                    # A 2xx can carry the dead-engine message too, with or without data rows;
+                    # it is an outage, not a result.
                     detail = self._scrub(response.text[:500], redact)
                     error = SourceError(
                         f"Zetaris {label}: HTTP {response.status_code}: "

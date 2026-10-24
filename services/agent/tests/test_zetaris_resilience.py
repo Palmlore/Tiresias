@@ -133,10 +133,12 @@ def test_dead_engine_2xx_is_recoverable_and_degrades_to_the_sample(status, paylo
     assert len(sent) == 2  # one per call, never retried
 
 
-def test_dead_engine_2xx_with_rows_is_a_result():
-    # Row text that quotes the signature is data, not an outage.
-    client = make_client(lambda r: ok(["note"], [[STOPPED]]))
-    assert client.run_sql("SELECT note", label="rows").rows == [{"note": STOPPED}]
+def test_dead_engine_2xx_with_rows_is_an_outage():
+    # C1: the signature anywhere in the body is an outage, data rows or not (PR #28 round 4).
+    client = make_client(lambda r: ok(["x"], [[STOPPED]]))
+    with pytest.raises(z.SourceError) as excinfo:
+        client.run_sql("SELECT x", label="rows")
+    assert excinfo.value.recoverable and excinfo.value.dead_engine
 
 
 def test_dead_engine_is_classified_in_one_place():
