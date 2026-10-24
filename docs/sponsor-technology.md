@@ -2,9 +2,11 @@
 
 This is the required sponsor technology explanation, kept honest. Status follows [`metadata.json`](../metadata.json): `planned` → `in-progress` → `working`, and `working` only when a judge can see it run.
 
-## Zetaris: the evidence layer
+## Zetaris: the data layer
 
-**Role.** Every claim in a Tiresias report is SQL run through Zetaris plus the rows it returned. The agent never calls SEC APIs directly in live mode.
+**Role.** Zetaris is the agent's data layer: every claim in a Tiresias report is SQL run through Zetaris plus the rows it returned. In live mode the agent never calls SEC APIs directly; nothing in `services/agent/src` outside the sponsor adapters opens HTTP (`tests/test_any_company.py`).
+
+**Traceable.** Every Zetaris call is one trace line: the SQL, the outcome (an "already exists" HTTP 400 is recorded as `outcome: exists`), the row count, the duration and the retry count; a fallback to the sample is its own `degraded` line. A live run is committed: [logs/samples/](../logs/samples/), described in [output_examples/README.md](../output_examples/README.md).
 
 **How.**
 - SEC endpoints (XBRL company facts, filing histories, the ticker map) are registered as Lightning REST tables ([zetaris/sql/](../zetaris/sql/)).
@@ -16,7 +18,7 @@ This is the required sponsor technology explanation, kept honest. Status follows
 
 **Deployment.** Local Docker (vendor bundle `zetaris-platform`, image tag 2.4.3.1-hackathon), REST at `localhost:8888`.
 
-Status: **in-progress**. In live mode the agent drives Zetaris end to end, measured in [measurements/live-any-company.md](measurements/live-any-company.md); the judge's default quickstart is sample mode, which runs the same logic on cached rows without Zetaris ([STATUS.md](STATUS.md) #7).
+Status: **in-progress**. In live mode the agent drives Zetaris end to end, measured in [measurements/live-any-company.md](measurements/live-any-company.md), with one live trace committed; the judge's default quickstart is sample mode, which runs the same logic on cached rows without Zetaris ([STATUS.md](STATUS.md) #7).
 
 ## Meterless
 
@@ -25,9 +27,9 @@ Status: **in-progress**. In live mode the agent drives Zetaris end to end, measu
 - It recalls them after the framer to seed the hypothesiser, which tests a lesson's steps first; the critic judges each recalled lesson and rejects one whose step it prunes, with negative feedback to H-MEM.
 - The memory gate is H-MEM's *programmable approval boundary*: the agent's `memory` gate decides, and the decision travels with the lesson (a discarded lesson is ledgered, not stored).
 - Purge is exposed (`POST /memory/purge` on the agent, proxied to cognition); the purge is itself recorded in the append-only trust ledger. `scripts/memory_demo.py` shows cold → warm (fewer hops) → rejected lesson → purge → cold, in sample mode.
-- Evidence: the official H-MEM conformance runner passes against our service module.
+- Test: the official H-MEM conformance runner passes 13/13 against our service module (`cd services/cognition && npm run conformance`), with the service's own tests (`npm test`); both run in CI. The feature shows in the committed traces: in [logs/samples/](../logs/samples/) run 02 recalls the lesson run 01 stored and follows it, run 03 recalls it and rejects it.
 
-**Nightshift (Power rule).** All model calls from the agent will go to the Meterless Runtime (OpenAI-compatible; `meterless-app` and `meterless-scope` headers). It will be the primary provider.
+**Nightshift (Power rule): the only AI provider.** Every model call from the agent goes to the Nightshift Runtime: `POST {METERLESS_BASE_URL}/chat/completions` in OpenAI format with the Runtime token as bearer and the `meterless-app: tiresias` and `meterless-scope: user` headers (`adapters/nightshift.py`). There is no other model client in the code. The agent asks for a lane (`meterless/fast` or `meterless/deep`); the trace line of each call records the model and provider from Nightshift's receipt.
 
 **Candidates for later:** the Markovian engine (each "why" as a bounded step with compressed carryover) and World Model (the why-tree as entities and edges with provenance).
 
@@ -47,7 +49,7 @@ Status: **planned** in metadata.json, the closest value the community schema all
 
 ## What was unique
 
-*(To be written from what actually ships.)* Candidate points:
-1. Zetaris used as an **auditable evidence layer that grows during the run** (Loop B).
-2. H-MEM storing **lessons rather than answers**, with a **purge** that lets judges see the effect.
-3. **Asker-relative** stopping, with human-in-the-loop gates that have three modes.
+1. **A data layer that grows during the run.** When the registered sources run out, Loop B finds the missing company from filing evidence (the Form 10 that names the parent, through EDGAR full-text search registered in Zetaris), asks the source gate, and registers that company's filings in Zetaris one statement at a time, then reconciles the two companies in SQL. Source discovery is part of the audited trace, not a step outside it.
+2. **H-MEM remembers how, never what.** A lesson is the generic path that found a cause, with no company, figure or date; the critic judges each recalled lesson and can reject it in the open, the memory gate decides what is stored, and a purge is ledgered.
+3. **Models that never decide, and say who they are.** Nemotron through Nightshift proposes candidates, a second opinion and wording; SQL and the rule critic decide, and every call records the model Nightshift actually routed it to.
+4. **Asker-relative stopping** with human-in-the-loop gates in three modes (auto, scripted, interactive over HTTP).

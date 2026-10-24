@@ -44,7 +44,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [~] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4) (#22: every model call goes through Nightshift, three lanes (hypothesiser, critic second opinion, reporter wording), the model proposes and the rules decide, ADR-0010; #24: the user picks the depth, `quick` (default, rules only) / `thorough` / `deep`, ADR-0011; measured live once on case 01 on 2026-10-24: 4 calls, ~170 s; sample mode, the judges' default, makes no model call by design, so a judge sees the lanes only live)
   - [x] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers (2026-10-24: Nightshift 1.2.1 in the Tart VM; host access needed macOS Local Network permission for the terminal and for Docker; `/v1/models` answers from the host and from a container)
   - [x] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling) (merged #2; 2026-10-24: `python -m tiresias_agent.adapters.nightshift probe` passes on both lanes, receipts name the served model)
-- [~] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page) (#22: Nemotron serves the lanes through Nightshift, every call traces `routed_model`, `provider` and the receipt id; live 2026-10-24: nemotron-3.5-lightning-30b-a3b and nemotron-3.5-super-vl-120b-a12b served the critic and wording lanes, one critic disagreement kept by the rules. Not pinned: Nightshift 1.2.1 routes on its own and does not honour explicit model ids)
+- [~] **NVIDIA (optional; DGX Spark award):** at least one Nemotron model through Nightshift in a working feature, showing which model handled each request (OR §15.2 as of the final rules; SG §4.3–4.7) (#22: Nemotron serves the lanes through Nightshift, every call traces `routed_model`, `provider` and the receipt id; live 2026-10-24: nemotron-3.5-lightning-30b-a3b and nemotron-3.5-super-vl-120b-a12b served the critic and wording lanes, one critic disagreement kept by the rules. Not pinned: Nightshift 1.2.1 routes on its own and does not honour explicit model ids)
 - [x] ~~**Developed in Cursor.**~~ Optional since the organizers' 23 Oct update ("Cursor is now optional … use any AI coding tool"). Claude Code is the main coding agent. Describe only the tools actually used ([ai-usage.md](ai-usage.md)) (OR §8.1 as amended; SP cursor).
 
 ## C. Agent system (Technical 20 · Innovation 15)
@@ -89,7 +89,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 
 ## F. Repository documentation
 - [x] Public GitHub repo (OR §10.1; SR)
-- [~] README: setup, usage, dependencies, agent roles, examples, limitations, track named (SR §3.3; SC §3) (written; quickstart runnable in sample mode since #7, live any-company notes since #9; final pass after the UI and memory demo)
+- [~] README: setup, usage, dependencies, agent roles, examples, limitations, track named (SR §3.3; SC §3) (written; quickstart runnable in sample mode since #7, live any-company notes since #9; 25 Oct pass to the final rules: dependencies, tests, sample outputs and traces, sponsor roles; last pass after the UI)
 - [~] AI and model usage disclosure ([ai-usage.md](ai-usage.md)) (AI §6); third-party code and licences ([NOTICE](../NOTICE))
 - [x] Pre-existing components declared: none (OR §8.2; SF §3.8)
 - [x] ≥3 sample inputs **and** matching real outputs (OR §10.2; TE §13) (four inputs; five outputs in `output_examples/`, four sample mode and one live, each naming its trace)
@@ -111,7 +111,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [ ] Consistent with the repo and demo; no claims the code doesn't support
 
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
-- [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris, Meterless, Cursor and NVIDIA, plus "what was unique" (SR §3.4) (drafted; finalize from what ships)
+- [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris (data layer), Meterless (the H-MEM engine, its feature and test; Nightshift as the AI provider and how the app connects) and NVIDIA, plus "what was unique" (SR §3.4, final rules; Cursor optional) (written 25 Oct; final once a fresh-state live trace with model calls is committed)
 - [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris, Meterless and NVIDIA `in-progress`; Cursor `planned`, the schema has no "optional")
 - [ ] Switch to the official metadata format if the organizers publish one (STATUS #1)
 

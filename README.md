@@ -11,7 +11,7 @@
 | **Event** | Open Agent Hackathon 2026 (GenAI Works), 22–27 October 2026 |
 | **Track** | Reasoning Architecture |
 | **Team** | Palmlore (solo) |
-| **Status** | 🚧 **In development during the build window.** Each section says what works today. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
+| **Status** | 🚧 **Build window open until 27 Oct 2026.** Each section says what works today; nothing is marked working that you can't run. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
 | **Licence** | Apache-2.0 |
 
 ---
@@ -91,6 +91,10 @@ uv run python -m tiresias_agent.orchestrator ../../input_examples/04_3m_2023_rev
 
 Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable. Every read, including the discovery of a missing entity, goes through Zetaris. See [deploy/README.md](deploy/README.md).
 
+### Sample inputs, outputs and traces
+
+[input_examples/](input_examples/) holds four questions; [output_examples/](output_examples/) holds the result of each from a real run, and [logs/samples/](logs/samples/) the trace of that run (one JSON line per agent action: the SQL sent to Zetaris and the rows it returned, each hypothesis, the critic's verdict, every gate decision, every memory call and, in a live run, every model call with the model that served it). The four sample-mode results come from the quickstart above; one result for case 04 comes from a live run through Zetaris and gives the same root cause and residual. How each was produced: [output_examples/README.md](output_examples/README.md). They are never read at runtime: the agent recomputes every answer.
+
 ### Memory: cold, warm, a rejected lesson, purge
 
 With the stack up, one command runs the H-MEM demo (sample mode, stdlib Python, under a second):
@@ -118,6 +122,27 @@ Each result carries `memory` (mode, recalled lessons with the critic's call, ski
 - **Pick a company / suggested questions.** `GET /entities?q=…` lists the companies ready now (registered; in sample mode the slice: GE, GEHC, GEV, MMM, SOLV, and it says why nothing else) and, live, type-ahead over every SEC registrant, each with its expected first-run wait (the measured 3–11 s or 15–21 s). `GET /entities/{cik}/suggestions` derives questions from that company's own filings (restatements, the largest year-on-year changes), each checked by the framer and returned as a request you can post to `/run` as-is. Some end at `evidence-frontier`: that shows where the rule set stops, with the reason, not a failure.
 - **Out-of-scope questions stop at once, with alternatives.** A forecast or what-if ("What would … if …?"), or a company that is not an SEC registrant, ends at `evidence-frontier` with a plain reason in `RunResult.scope` and up to three runnable alternatives checked against filed data (an SEC registrant the question names, the same company's latest filed change, a same-industry peer). In sample mode a company outside the slice gets the reason and how to run live, usually with no alternatives (the slice has no peers to offer).
 - Not every company gets a full answer: the rule set is small (disposals, impairments, restatements). Loop B finds a spun-off business by its filings, not its name: the new registrant whose Form 10 names the parent (IBM → Kyndryl, 3M → Solventum), found with EDGAR full-text search through Zetaris; a sale to an existing company is refused with the buyer named (DuPont → IFF), and two spin-offs on one day are followed one at a time (Hilton: the best-ranked, the rest stays in the residual). In the measurements GE, IBM, 3M, Crane NXT, J&J and Hilton end `actionable`; DuPont (a sale), Caterpillar and ExxonMobil end at `evidence-frontier`, each with the reason.
+
+### Check it yourself: tests
+
+```bash
+cd services/agent && uv run --group dev pytest -q           # agent: loops, critic, gates, adapters (Zetaris and Nightshift mocked), API
+cd services/cognition && npm test && npm run conformance     # H-MEM service tests; the official H-MEM conformance suite (13/13)
+./scripts/check_secrets.sh && ./scripts/validate_metadata.sh # no committed secrets; metadata.json valid
+```
+
+Stop the Docker stack before running the agent tests: with the cognition service up, some sample runs in the tests recall lessons it stored and fail (BACKLOG B-27). CI runs all of these, plus the Docker quickstart and the memory demo, on every change.
+
+## Dependencies
+
+| Needed for | What |
+|---|---|
+| Sample mode (the default) | Docker with Compose v2.24+, or Python 3.11+ with [uv](https://docs.astral.sh/uv/) (and Node ≥ 22.18 for the cognition service). No keys, no network after the build. |
+| Live mode: data | **Zetaris**, the local Docker bundle (`zetaris-platform` 2.4.3.1), REST on `localhost:8888`; `ZETARIS_REST_URL`, `ZETARIS_ORG_ID`, `ZETARIS_API_KEY` and `SEC_USER_AGENT` in `.env`. See [deploy/README.md](deploy/README.md). |
+| Live mode: models (depth `thorough` or `deep`) | **Meterless Nightshift** (1.2.1, macOS), its OpenAI-compatible Runtime; `METERLESS_BASE_URL` and `METERLESS_RUNTIME_TOKEN` in `.env`. The NVIDIA key is set in Nightshift's Providers tab, never in this project. |
+| Memory | The `cognition` service (Meterless H-MEM, vendored), started by `docker compose`; without it runs go on without memory. |
+
+Every external call has a timeout and a fallback: if Zetaris or Nightshift is unreachable, the run degrades to the sample data or to the rules and says so in its trace, instead of failing. Placeholders for every variable: [.env.example](.env.example).
 
 ## Where to look (judging criteria → repository)
 
@@ -147,7 +172,7 @@ logs/                 Run traces (logs/samples/ holds committed example traces)
 deploy/               Local (Docker Compose) and cloud notes (GCP, AWS)
 docs/                 Checklist, architecture, decisions (ADRs), criteria, sponsor tech, data sources, status
 AGENTS.md             Handover for coding agents (CLAUDE.md imports it)
-scripts/              Checks: secrets scan, metadata validation
+scripts/              Checks and tools: secrets scan, metadata validation, memory demo, live probes, verifier audit
 metadata.json         Sponsor and submission metadata (community schema 0.1)
 ```
 
@@ -169,12 +194,15 @@ Measured live on 2026-10-24 (model) and 2026-10-23 (rules). Every call is traced
 
 | Sponsor | Role in Tiresias | Status |
 |---|---|---|
-| **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | in progress: in live mode the agent drives Zetaris end to end (resolves the asked company, registers it and the spun-off business at runtime when Zetaris lacks them; discovery and evidence are SQL), measured in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md); the default quickstart is sample mode, which runs the same logic on cached rows without Zetaris |
-| **Meterless** | **Nightshift** is the model provider for every model call. **H-MEM** stores lessons from past investigations (purgeable). | in progress: H-MEM service working (conformance 13/13) and used by the agent in every warm run, sample mode included (recall, critic-judged lessons, feedback, memory gate, purge; `scripts/memory_demo.py`, run in CI); Nightshift model lanes (extra hypotheses, a second opinion for the critic, action wording) run in live mode when the user asks for depth `thorough` or `deep` (the default `quick` is rules only), measured once on case 01 (2026-10-24); the rules still decide, and sample mode stays rule-based |
-| **Cursor** | Optional since 23 Oct (organizer update); Claude Code is the main coding agent; the Cursor IDE was used for a few manual edits | planned (the metadata schema has no "optional" status; Cursor is not a dependency) |
-| **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser and reporter, deep critic) | in progress: the lanes are built (ADR-0010) and chosen per question by depth (ADR-0011); on 2026-10-24 Nightshift routed every live lane call to a Nemotron model, `routed_model` in the trace; Nightshift picks the model, not Tiresias |
+| **Zetaris** | **The data layer.** In live mode every read is SQL through Zetaris: resolving the asked company (the SEC ticker list as a Zetaris table), its facts and filings, the discovery of a spun-off business (EDGAR full-text search as a Zetaris table), and registering that business's filings as a new Lightning REST table while the run goes on. Every claim in a result carries its SQL and the rows returned; every call is a trace line (SQL, outcome, rows, duration, retries). | in progress: a live run is in [logs/samples/](logs/samples/) ([output_examples/README.md](output_examples/README.md)) and more are measured in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md); the default quickstart is sample mode, which runs the same logic on cached rows without Zetaris |
+| **Meterless: H-MEM engine** | **Memory of lessons, not answers.** After a run finds a cause, the generic path that worked (no company, figure or date) is stored behind a memory gate; the next similar question recalls it and tests that path first, the critic rejects a lesson that doesn't fit, and memory can be purged. Test: the official H-MEM conformance suite passes 13/13 against our service, plus `npm test`; the feature is shown by `scripts/memory_demo.py` (in CI) and in the committed traces (run 02 recalls run 01's lesson). | in progress: H-MEM works in every warm run, sample mode included |
+| **Meterless: Nightshift** | **The only AI provider.** Every model call goes to Nightshift's Runtime (`POST {METERLESS_BASE_URL}/chat/completions`, OpenAI format, bearer Runtime token, `meterless-app: tiresias`, `meterless-scope: user`) for three lanes: extra candidate causes, a second opinion for the critic, the action's wording. The model proposes; the rules and SQL decide ([ADR-0010](docs/decisions/ADR-0010-model-lanes.md)). | in progress: live in live mode at depth `thorough` or `deep` ([ADR-0011](docs/decisions/ADR-0011-investigation-depth.md)), measured on 2026-10-24; the default `quick` and sample mode make no model call |
+| **NVIDIA** | **Nemotron serves the lanes through Nightshift**: the fast lane (hypotheses, wording) and the deep lane (the critic's second opinion). Nightshift 1.2.1 routes by lane and does not pin a model id, so each call's trace line records the `routed_model` and receipt id: we claim only the model the receipt names. | in progress: on 2026-10-24 every live lane call was served by a Nemotron model (`nemotron-3.5-lightning-30b-a3b`, `nemotron-3.5-super-vl-120b-a12b`, `nemotron-3-ultra-550b-a55b`) |
+| **Cursor** | Optional under the rules. Tiresias is built mainly with Claude Code; the Cursor IDE was used for a few manual edits ([docs/ai-usage.md](docs/ai-usage.md#development-tools)). Not a dependency. | planned (the metadata schema has no "optional" value) |
 
-Details are in [docs/sponsor-technology.md](docs/sponsor-technology.md). Status is only `working` when a judge can see it run.
+**What is unique:** Zetaris is a data layer that **grows during the run**: when the evidence runs out, the agent finds the missing company from filing evidence and registers its filings as a new Zetaris source behind a human gate, then reconciles. H-MEM remembers **how** a cause was found, never **what** it was, and its critic can reject a recalled lesson in the open. Models are used where they help and **never decide**, and each call names the model that actually answered.
+
+Details: [docs/sponsor-technology.md](docs/sponsor-technology.md). Status is only `working` when a judge can see it run.
 
 ## Data
 
