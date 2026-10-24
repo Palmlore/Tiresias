@@ -1,5 +1,7 @@
 # Problem and users
 
+The day-to-day workflow, the screens a UI needs and the demo stories are in [use-cases.md](use-cases.md).
+
 ## Primary user: the financial analyst (equity or credit)
 
 **Job to be done.** Before relying on a company's numbers, understand *why* a reported figure changed between filings or periods, with evidence that can be cited, and decide what to do with the model, the estimate or the rating.
