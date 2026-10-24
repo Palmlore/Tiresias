@@ -5,15 +5,18 @@ Reads docs/measurements/verifier-audit-2026-10-24.criteria.json (one record per 
 the merged PRs), runs each command from the repo root with a timeout, and checks the recorded class:
 
   pass          the command exits 0; every pytest run in it selected and passed at least one test
-                and none failed
-  fail          the command exits 0, i.e. the contradiction is still there (a fail fixed later is
-                reported as "changed")
+                and none failed; otherwise "regressed"
+  fail          the command exits 0, i.e. the recorded contradiction is still there; otherwise
+                "changed" (the fail was fixed)
   superseded    the new-location command passes (same rules as pass); otherwise "broken"
   not-runnable  reported, not run
 
-A row whose tools are missing (node, npx) or that needs the cognition server without
---with-cognition is reported "skipped" and is not a mismatch. Exit 1 if any row's observed class
-differs from the recorded one.
+Observed "fail" therefore only ever means a recorded, still-present contradiction. A "regressed"
+row is a recorded pass that no longer holds: either a real failure or a claim a later merge changed
+on purpose; deciding which is a human call, recorded by re-classifying the row in the JSON
+(superseded + new_location_command). A row whose tools are missing (node, npx) or that needs the
+cognition server without --with-cognition is reported "skipped" and is not a mismatch. Exit 1 if
+any row's observed class differs from the recorded one.
 
 Python commands use `<python> -m pytest` / `<python> -m ruff` with PYTHONPATH=services/agent/src;
 <python> is --python (default: this interpreter). No uv, no network, no gh, except:
@@ -211,7 +214,7 @@ def main() -> int:
                 cmd = r["new_location_command"] if want == "superseded" else r["command"]
                 ok, detail = run(cmd.replace("{py}", py), env, args.timeout)
                 if want == "pass":
-                    got = "pass" if ok else "fail"
+                    got = "pass" if ok else "regressed"
                 elif want == "fail":
                     got = "fail" if ok else "changed"
                 else:
@@ -227,12 +230,18 @@ def main() -> int:
             cognition.wait(timeout=10)
 
     recorded = Counter(r["expected_class"] for r in rows)
-    fmt = lambda c: " ".join(f"{k}={c.get(k, 0)}" for k in (*CLASSES, "skipped", "changed", "broken") if c.get(k, 0) or k in CLASSES)
+    fmt = lambda c: " ".join(
+        f"{k}={c.get(k, 0)}" for k in (*CLASSES, "skipped", "regressed", "changed", "broken") if c.get(k, 0) or k in CLASSES
+    )
     print(f"\nrows: {len(rows)}  python: {args.python}")
     print(f"recorded: {fmt(recorded)}")
     print(f"observed: {fmt(observed)}")
     if mismatches:
         print(f"MISMATCH in {len(mismatches)} row(s): {', '.join(mismatches)}")
+        if observed.get("regressed"):
+            print(
+                "regressed rows: a recorded pass no longer holds; decide whether it is a real fail or a claim a later merge changed on purpose (superseded)"
+            )
         return 1
     print("all rows match the recorded classes" + (" (skipped rows not checked)" if observed.get("skipped") else ""))
     return 0

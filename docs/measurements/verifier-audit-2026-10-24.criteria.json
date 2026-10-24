@@ -1,6 +1,8 @@
 {
  "audit": "docs/measurements/verifier-audit-2026-10-24.md",
  "main_sha": "5790962c06418f565bced7b2a4c78313259f9eeb",
+ "baseline_sha": "7da47689712aad9e941cea20507c0bea8e544e58",
+ "baseline_note": "first run on main at 5790962 (#17); classes re-baselined on main at 7da4768 (#18), which superseded #9.11 (B-9 closed) and #17.2 (adapters/zetaris.py row). Later merges are expected to supersede more rows: re-classify them here with a new-location command.",
  "prs": [
   1,
   2,
@@ -1525,8 +1527,8 @@
    "command": null,
    "adapted": null,
    "expected_class": "superseded",
-   "superseded_by": "#17",
-   "new_location_command": "for n in 'entity_resolver' 'onboard_entity' 'ZetarisDiscovery' 'phase(tracer' 'perf_smoke' 'Run phases'; do cat AGENTS.md docs/agents-reference.md | grep -qF -- \"$n\" || { echo \"missing: $n\"; exit 1; }; done && grep -q 'cold 15–21 s' docs/agents-reference.md && grep -q 'Ask about your own company' README.md && grep -q phase_start contracts/openapi/agent.yaml && grep -q '^- \\*\\*B-3\\*\\* .*closed in #9' BACKLOG.md && grep -q '^- \\*\\*B-4\\*\\* .*closed in #9' BACKLOG.md && grep -q '^- \\*\\*B-7\\*\\* .*closed in #9' BACKLOG.md && for b in 8 9 10 11; do grep -q \"^## B-$b:\" BACKLOG.md || exit 1; done && test -z \"$(git show --name-only --format= 2766847c1a657d5b5a232a416439c7d9096c422c | grep 'CHECKLIST\\|STATUS\\|metadata.json')\"",
+   "superseded_by": "#17, #18",
+   "new_location_command": "for n in 'entity_resolver' 'onboard_entity' 'ZetarisDiscovery' 'phase(tracer' 'perf_smoke' 'Run phases'; do cat AGENTS.md docs/agents-reference.md | grep -qF -- \"$n\" || { echo \"missing: $n\"; exit 1; }; done && grep -q 'cold 15–21 s' docs/agents-reference.md && grep -q 'Ask about your own company' README.md && grep -q phase_start contracts/openapi/agent.yaml && grep -q '^- \\*\\*B-3\\*\\* .*closed in #9' BACKLOG.md && grep -q '^- \\*\\*B-4\\*\\* .*closed in #9' BACKLOG.md && grep -q '^- \\*\\*B-7\\*\\* .*closed in #9' BACKLOG.md && for b in 8 10 11; do grep -q \"^## B-$b:\" BACKLOG.md || exit 1; done && grep -q '^- \\*\\*B-9\\*\\* (found in #9, closed in #18)' BACKLOG.md && test -z \"$(git show --name-only --format= 2766847c1a657d5b5a232a416439c7d9096c422c | grep 'CHECKLIST\\|STATUS\\|metadata.json')\"",
    "requires": []
   },
   {
@@ -2172,11 +2174,11 @@
    "statement": "The moved reference is verbatim: the Building blocks rows, Run phases table and External services bullets in `docs/agents-reference.md` match the old `AGENTS.md` text on `origin/main` (9a4e6da), except one intended change: in the `trace.py` row, `See \"Run phases (for UI)\"` became a link, `See [Run phases](#run-phases-for-ui)`.",
    "falsified_by": "any other changed or missing row.",
    "original_verifier": "diff <(git show origin/main:AGENTS.md | sed -n '/^| `trace.py`/,/^| `adapters\\/cognition.py`/p') <(sed -n '/^| `trace.py`/,/^| `adapters\\/cognition.py`/p' docs/agents-reference.md)",
-   "command": "diff <(git show 9a4e6da:AGENTS.md | sed -n '/^| `trace.py`/,/^| `adapters\\/cognition.py`/p') <(sed -n '/^| `trace.py`/,/^| `adapters\\/cognition.py`/p' docs/agents-reference.md)",
-   "adapted": "`origin/main` has moved on; compared with 9a4e6da, the main #17 was cut from (as the statement says)",
-   "expected_class": "pass",
-   "superseded_by": null,
-   "new_location_command": null,
+   "command": null,
+   "adapted": null,
+   "expected_class": "superseded",
+   "superseded_by": "#18",
+   "new_location_command": "git show 9a4e6da:AGENTS.md | {py} -c '\nimport re, sys\nB = chr(96)\ndef rows(ls):\n    i = next(k for k, l in enumerate(ls) if l.startswith(\"| \" + B + \"trace.py\"))\n    j = next(k for k, l in enumerate(ls) if l.startswith(\"| \" + B + \"adapters/cognition.py\"))\n    return ls[i : j + 1]\no = rows(sys.stdin.read().splitlines())\nn = rows(open(\"docs/agents-reference.md\").read().splitlines())\nassert len(o) == len(n), (len(o), len(n))\nd = [(a, b) for a, b in zip(o, n) if a != b]\nassert len(d) == 1 and d[0][0].startswith(\"| \" + B + \"adapters/zetaris.py\"), [a[:40] for a, _ in d]\nassert re.sub(r\" An expected reply .*? are unchanged[.]\", \"\", d[0][1]) == d[0][0], \"zetaris.py row differs beyond the #18 sentence\"\nprint(\"24 rows verbatim; adapters/zetaris.py differs only by the #18 expected= sentence\")\n' && grep -q 'expected: Callable' services/agent/src/tiresias_agent/adapters/zetaris.py",
    "requires": []
   },
   {
