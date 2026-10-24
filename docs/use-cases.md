@@ -25,18 +25,19 @@ Who the users are and why they need this: [problem-and-users.md](problem-and-use
 
 ## Demo and deck stories
 
-Smaller, less famous companies make the point better than a household name: the analyst covering them has no press coverage to lean on.
+The lead story is one a judge can run with no keys: 3M → Solventum is in the offline slice, full-text search included, so sample mode runs the same Loop B as live. Smaller, less famous companies make the point even better (the analyst covering them has no press coverage to lean on), so Crane NXT stays as a measured live example.
 
 | Story | Company | What it shows | Measured |
 |---|---|---|---|
-| **Spin-off restatement** | **Crane NXT** (FY2022 revenue restated) | The original 10-K says $3.37B; a year later $1.34B. Loop A finds the separation; Loop B finds **Crane Co** from 13 Form 10 documents that name the parent, registers its filings in Zetaris behind the source gate, and reconciles: $1.34B + $2.04B = $3.37B, 100% explained. | live, 2026-10-23, `actionable` ([live-any-company.md](measurements/live-any-company.md), B-5 section) |
+| **Spin-off restatement (lead)** | **3M** (FY2023 revenue restated; [input_examples/04](../input_examples/04_3m_2023_revenue_restated.json)) | The 10-K filed 2024-02-07 says $32.68B; the one filed 2025-02-05 says $24.61B. Loop A traces the drop to 3M's disposal filing (8-K items 2.01, 9.01, filed 2024-04-04) and stops at the evidence frontier, because the missing revenue is in another registrant. Loop B finds **Solventum Corp** (CIK 0001964738) by filing evidence, not by name: it is the filer whose Form 10 (33 of the 51 matching documents) names 3M in EDGAR full-text search. It registers Solventum's filings behind the source gate and reconciles: $24.61B + $8.20B = $32.81B against the original $32.68B, over-explained by $126M (residual −0.0156, share capped at 100%). | live, 2026-10-24, `actionable`; sample mode (offline, no keys), same result |
+| **Spin-off restatement (smaller company)** | **Crane NXT** (FY2022 revenue restated) | The original 10-K says $3.37B; a year later $1.34B. Loop A finds the separation; Loop B finds **Crane Co** from 13 Form 10 documents that name the parent, registers its filings in Zetaris behind the source gate, and reconciles: $1.34B + $2.04B = $3.37B, 100% explained. | live, 2026-10-23, `actionable` ([live-any-company.md](measurements/live-any-company.md), B-5 section); not in the offline slice |
 | **Same question, two askers** | any restatement | The analyst stops at "re-base the model"; the auditor at "request the carve-out schedule". | asker levers work today |
 | **Honest refusal** | any | "What will revenue be next year?" is refused with a reason and up to three questions that can be answered from filings. | works today |
-| **The model is challenged** | Crane NXT or GE at depth *deep* | Nemotron, through Nightshift, gives the critic a second opinion; when it disagrees, the gate keeps the rule verdict and the trace shows both. | measured once on GE case 01 (2026-10-24): one disagreement, rule verdict kept |
+| **The model is challenged** | 3M, Crane NXT or GE at depth *deep* | Nemotron, through Nightshift, gives the critic a second opinion; when it disagrees, the gate keeps the rule verdict and the trace shows both. | measured once on GE case 01 (2026-10-24): one disagreement, rule verdict kept |
 | **Impairment** | GE FY2018 | A net loss traced to a $22.1B goodwill impairment. A smaller-company impairment is still to be chosen at rehearsal. | sample and live |
 | **Memory** | two similar spin-offs | Cold run, warm run with fewer steps, purge, cold again. | planned |
 
-**Decision needed for the no-key demo.** Sample mode, which judges run without keys, holds only the GE family ([data/sample/](../data/sample/)). To make Crane NXT the no-key demo too, add Crane NXT and Crane Co to the slice with `scripts/fetch_sample.py` (it reads only SEC's public endpoints and records provenance) and add an input example. Live mode already handles it.
+**The no-key demo is 3M → Solventum.** Sample mode, which judges run without keys, holds the GE family and 3M/Solventum ([data/sample/](../data/sample/)), with the one EDGAR full-text search the 3M scout runs cached under the name of its live Zetaris table, so the scout finds Solventum offline exactly as it does live. Crane NXT runs live only; adding it to the slice is the same `scripts/fetch_sample.py` change (two entities and one `FULLTEXT` entry) plus an input example.
 
 ## Screens a UI needs (for the UI work)
 

@@ -18,7 +18,7 @@
 
 ## The problem
 
-A company's reported figures change between filings. GE's 2022 revenue was **$76.6B** in its 2023 annual report, **$58.1B** in 2024 and **$29.1B** in 2025. An analyst has to find out *why* before trusting a model built on those numbers. Today that means reading filings by hand across the parent company and the companies it spun off.
+A company's reported figures change between filings. 3M's 2023 revenue was **$32.68B** in its 2024 annual report and **$24.61B** in its 2025 one; GE's 2022 revenue was **$76.6B** in its 2023 annual report, **$58.1B** in 2024 and **$29.1B** in 2025. An analyst has to find out *why* before trusting a model built on those numbers. Today that means reading filings by hand across the parent company and the companies it spun off.
 
 ## What Tiresias does
 
@@ -43,8 +43,11 @@ git clone https://github.com/Palmlore/Tiresias && cd Tiresias
 cp .env.example .env              # keep SAMPLE_MODE=true; no keys needed
 docker compose up --build         # agent :8000, cognition :8100 (add -d to run in the background)
 
-# in another terminal: wait until the agent answers, then run the three examples (each prints a RunResult JSON)
+# in another terminal: wait until the agent answers, then ask the lead example: why did 3M's 2023 revenue fall?
 until curl -sf localhost:8000/health >/dev/null; do sleep 1; done
+curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d @input_examples/04_3m_2023_revenue_restated.json; echo
+
+# then all four examples (each prints a RunResult JSON)
 for f in input_examples/*.json; do
   curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d @"$f"; echo
 done
@@ -53,13 +56,13 @@ ls logs/                          # one JSONL trace per run: logs/trace-<run_id>
 
 The `trace_file` in each reply is the path inside the container (`/app/logs/…`); on your machine the same file is under `logs/`.
 
-Each result leads with the decision: `end_state` (`actionable`, `evidence-frontier`, …) and the recommended `action`, then the `effect`, the `why_tree` (each link with its SQL, rows and the critic's verdict), the `residual` (share of the effect left unexplained; negative when over-explained) and `stats`. In sample mode all three examples end `actionable`: 01 and 02 after Loop B reconciles the restatement to a spun-off business, 03 at the goodwill impairment. Write your own question in the same shape as [input_examples/](input_examples/) (schema: `RunRequest` in [contracts/openapi/agent.yaml](contracts/openapi/agent.yaml)); a malformed body gets a structured 422.
+Each result leads with the decision: `end_state` (`actionable`, `evidence-frontier`, …) and the recommended `action`, then the `effect`, the `why_tree` (each link with its SQL, rows and the critic's verdict), the `residual` (share of the effect left unexplained; negative when over-explained) and `stats`. In sample mode all four examples end `actionable`. The lead one, **04 (3M)**: 3M's 2023 revenue was restated from $32.68B to $24.61B; Loop A traces the drop to 3M's 8-K disposal filing (items 2.01, 9.01, filed 2024-04-04) and stops at the evidence frontier, because the missing revenue lives in another registrant; Loop B finds that registrant from filing evidence, not its name (Solventum Corp, the filer whose Form 10 names 3M, from an EDGAR full-text search the sample caches), registers it behind the source gate and reconciles: Solventum reports $8.20B, so the add-back over-explains by $126M (`residual` −0.0156). 01 and 02 reconcile GE's restatements to GE HealthCare and GE Vernova the same way, and 03 stops at GE's goodwill impairment. Write your own question in the same shape as [input_examples/](input_examples/) (schema: `RunRequest` in [contracts/openapi/agent.yaml](contracts/openapi/agent.yaml)); a malformed body gets a structured 422.
 
 **Watch a run live.** Pass your own run id with `X-Run-Id` (it is echoed, stamped on every trace line and names the trace file), start the run in the background, and stream its trace as Server-Sent Events. A run id can be used once (reusing it returns 409 `RunConflict`), so pick a new one each time you repeat this:
 
 ```bash
 curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' \
-     -H 'X-Run-Id: my-run-1' -d @input_examples/03_ge_2018_net_loss.json   # 202 {"run_id": "my-run-1", ...}
+     -H 'X-Run-Id: my-run-1' -d @input_examples/04_3m_2023_revenue_restated.json   # 202 {"run_id": "my-run-1", ...}
 curl -sN localhost:8000/runs/my-run-1/events      # one trace line per event, then "event: end"
 curl -s  localhost:8000/runs/my-run-1             # {"status": "done", "result": {...RunResult...}}
 ```
@@ -69,17 +72,17 @@ curl -s  localhost:8000/runs/my-run-1             # {"status": "done", "result":
 ```bash
 cd services/agent && uv sync
 uv run python -m tiresias_agent.app                       # same API on :8000 (or: AGENT_PORT=8001 uv run python -m tiresias_agent.app)
-uv run python -m tiresias_agent.orchestrator ../../input_examples/01_ge_2022_revenue_restated.json   # CLI: RunResult on stdout
+uv run python -m tiresias_agent.orchestrator ../../input_examples/04_3m_2023_revenue_restated.json   # CLI: RunResult on stdout
 ```
 
 Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable. Every read, including the discovery of a missing entity, goes through Zetaris. See [deploy/README.md](deploy/README.md).
 
 ### Ask about your own company
 
-- **Sample mode (default, offline) covers the GE family only**: GE, GE HealthCare and GE Vernova, because [data/sample/](data/sample/) is a cached slice of their SEC filings (that is what lets it run with no keys). Any other company ends in well under a second at `evidence-frontier`, with a reason that says the slice covers only those three and how to run live.
+- **Sample mode (default, offline) covers the GE family and 3M/Solventum only**: GE, GE HealthCare, GE Vernova, 3M and Solventum, because [data/sample/](data/sample/) is a cached slice of their SEC filings plus the one EDGAR full-text search the 3M case needs (that is what lets it run with no keys). Any other company ends in well under a second at `evidence-frontier`, with a reason that lists the slice's companies and says how to run live.
 - **Live mode works for any SEC registrant.** Name it by ticker, CIK or name (`"entity": {"ticker": "IBM"}`, `{"cik": "0000051143"}` or `{"name": "Hilton Worldwide Holdings Inc."}`). Tiresias resolves it through the SEC ticker list registered in Zetaris, asks the source gate, and registers the company's filings in Zetaris while the run is going. Measured on 2026-10-23 ([docs/measurements/live-any-company.md](docs/measurements/live-any-company.md)): **the first question about a new company takes about 15–21 s** (12–16 s of it is Zetaris downloading the company's SEC facts once); **the next one takes 3–11 s**. Progress shows on the trace stream as `phase_start` / `heartbeat` / `phase_done` lines.
-- **Pick a company / suggested questions.** `GET /entities?q=…` lists the companies ready now (registered; in sample mode the GE slice, and it says why nothing else) and, live, type-ahead over every SEC registrant, each with its expected first-run wait (the measured 3–11 s or 15–21 s). `GET /entities/{cik}/suggestions` derives questions from that company's own filings (restatements, the largest year-on-year changes), each checked by the framer and returned as a request you can post to `/run` as-is. Some end at `evidence-frontier`: that shows where the rule set stops, with the reason, not a failure.
-- **Out-of-scope questions stop at once, with alternatives.** A forecast or what-if ("What would … if …?"), or a company that is not an SEC registrant, ends at `evidence-frontier` with a plain reason in `RunResult.scope` and up to three runnable alternatives checked against filed data (an SEC registrant the question names, the same company's latest filed change, a same-industry peer). In sample mode a company outside the GE slice gets the reason and how to run live, usually with no alternatives (the slice has no peers to offer).
+- **Pick a company / suggested questions.** `GET /entities?q=…` lists the companies ready now (registered; in sample mode the slice: GE, GEHC, GEV, MMM, SOLV, and it says why nothing else) and, live, type-ahead over every SEC registrant, each with its expected first-run wait (the measured 3–11 s or 15–21 s). `GET /entities/{cik}/suggestions` derives questions from that company's own filings (restatements, the largest year-on-year changes), each checked by the framer and returned as a request you can post to `/run` as-is. Some end at `evidence-frontier`: that shows where the rule set stops, with the reason, not a failure.
+- **Out-of-scope questions stop at once, with alternatives.** A forecast or what-if ("What would … if …?"), or a company that is not an SEC registrant, ends at `evidence-frontier` with a plain reason in `RunResult.scope` and up to three runnable alternatives checked against filed data (an SEC registrant the question names, the same company's latest filed change, a same-industry peer). In sample mode a company outside the slice gets the reason and how to run live, usually with no alternatives (the slice has no peers to offer).
 - Not every company gets a full answer: the rule set is small (disposals, impairments, restatements). Loop B finds a spun-off business by its filings, not its name: the new registrant whose Form 10 names the parent (IBM → Kyndryl, 3M → Solventum), found with EDGAR full-text search through Zetaris; a sale to an existing company is refused with the buyer named (DuPont → IFF), and two spin-offs on one day are followed one at a time (Hilton: the best-ranked, the rest stays in the residual). In the measurements GE, IBM, 3M, Crane NXT, J&J and Hilton end `actionable`; DuPont (a sale), Caterpillar and ExxonMobil end at `evidence-frontier`, each with the reason.
 
 ## Where to look (judging criteria → repository)
@@ -104,7 +107,7 @@ contracts/openapi/    REST contracts between the services (written before the co
 catalog/              Bounded source catalog: the only sources the agent may discover
 zetaris/sql/          Lightning SQL that registers the sources in Zetaris
 data/                 Offline sample slice (cached SEC data) and how it was fetched
-input_examples/       Sample questions (≥3)
+input_examples/       Sample questions (4: the 3M lead case 04 and three GE cases)
 output_examples/      Real outputs from real runs (never read at runtime)
 logs/                 Run traces (logs/samples/ holds committed example traces)
 deploy/               Local (Docker Compose) and cloud notes (GCP, AWS)

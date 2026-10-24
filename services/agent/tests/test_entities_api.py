@@ -20,6 +20,7 @@ from tiresias_agent.orchestrator import run_investigation
 from tiresias_agent.runs import RunRegistry
 
 GE_CIK = "0000040545"
+MMM_CIK = "0000066740"
 UA = "Tiresias test test@example.com"
 # Adjectives a suggested question must never carry (neutral wording).
 LOADED = re.compile(
@@ -48,7 +49,7 @@ def test_sample_entities_lists_the_slice_as_ready_and_says_why_nothing_else(clie
     assert r.status_code == 200 and r.headers["X-Run-Id"] == "api-test-1"
     body = EntityList.model_validate(r.json())
     assert body.mode == "sample" and body.searchable is False
-    assert [e.ticker for e in body.entities] == ["GE", "GEHC", "GEV"]
+    assert [e.ticker for e in body.entities] == ["GE", "GEHC", "GEV", "MMM", "SOLV"]
     lo, hi, basis = FIRST_RUN_SECONDS["sample"]
     for e in body.entities:
         assert e.tier == "ready" and set(e.metrics) == {"Revenues", "NetIncomeLoss"}
@@ -85,14 +86,19 @@ def _key(req: RunRequest):
     )
 
 
-def test_the_three_examples_are_among_ges_derived_suggestions(client, tmp_path):
-    r = client.get(f"/entities/{int(GE_CIK)}/suggestions?sample_mode=true")
+@pytest.mark.parametrize("cik", [GE_CIK, MMM_CIK])
+def test_every_example_is_among_its_entitys_derived_suggestions(client, tmp_path, cik):
+    r = client.get(f"/entities/{int(cik)}/suggestions?sample_mode=true")
     assert r.status_code == 200, r.text
     body = SuggestionList.model_validate(r.json())
-    assert body.entity.cik == GE_CIK and body.entity.tier == "ready"
+    assert body.entity.cik == cik and body.entity.tier == "ready"
     assert body.considered > len(body.suggestions) >= 3
     got = {_key(s.request) for s in body.suggestions}
-    for path in EXAMPLES:
+    mine = [
+        p for p in EXAMPLES if json.loads(p.read_text())["entity"]["ticker"] == body.entity.ticker
+    ]
+    assert mine  # GE: examples 01-03; MMM: example 04
+    for path in mine:
         example = RunRequest.model_validate(json.loads(path.read_text()))
         assert _key(example) in got, path.name
     kinds = {s.basis for s in body.suggestions}

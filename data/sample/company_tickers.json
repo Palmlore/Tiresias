@@ -1,4 +1,9 @@
 {
+ "196": {
+  "cik_str": 66740,
+  "ticker": "MMM",
+  "title": "3M CO"
+ },
  "38": {
   "cik_str": 40545,
   "ticker": "GE",
@@ -13,5 +18,10 @@
   "cik_str": 1996810,
   "ticker": "GEV",
   "title": "GE Vernova Inc."
+ },
+ "755": {
+  "cik_str": 1964738,
+  "ticker": "SOLV",
+  "title": "Solventum Corp"
  }
 }

@@ -24,10 +24,10 @@ Open the rest only when the task needs them:
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |
 | `catalog/sources.yaml` | Bounded source catalog: the only sources the agent may discover |
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
-| `input_examples/` | 3 GE cases (inputs) |
+| `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
 | `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes) |
-| `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV), with `PROVENANCE.json` |
+| `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |
 
@@ -82,7 +82,7 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 #   any SEC registrant live: {"entity": {"ticker": "IBM"}} or {"entity": {"name": "Hilton Worldwide Holdings Inc."}}
 # Live latency per phase (needs Zetaris + .env; cold = first run for an entity, then warm). Writes no repo files
 cd services/agent && uv run python ../../scripts/perf_smoke.py [request.json ...] [--runs 2] [--logs-dir DIR] [--out FILE.jsonl] [--env-file PATH]
-#   defaults: the three input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
+#   defaults: the four input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
 ```
 
 ## External services (live mode only; sample mode needs none)

@@ -22,14 +22,14 @@ EXAMPLES = sorted((ROOT / "input_examples").glob("*.json"))
 CONTRACT = ROOT / "contracts" / "openapi" / "agent.yaml"
 
 
-def test_there_are_three_input_examples():
-    assert len(EXAMPLES) == 3
+def test_there_are_four_input_examples():
+    assert len(EXAMPLES) == 4
 
 
 @pytest.mark.parametrize("path", EXAMPLES, ids=lambda p: p.name)
 def test_input_examples_validate_as_run_requests(path):
     request = RunRequest.model_validate(json.loads(path.read_text()))
-    assert request.entity.ticker == "GE"
+    assert request.entity.ticker in {"GE", "MMM"}
     assert isinstance(request.period.start, date)
     assert request.asker.role in {"analyst", "auditor", "board"}
     assert request.options.hitl_mode == "auto"
