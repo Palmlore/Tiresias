@@ -102,11 +102,11 @@ Found in: #13  ·  Status: open  ·  Severity: later
 
 ## B-18: A registration that fails with an empty HTTP 400 is not retried
 Found in: #13  ·  Status: open  ·  Severity: demo-risk
-- Out of scope because: in the 2026-10-23 live pass, DuPont's first registration (`bootstrap:submissions_table`) took 79 s and Zetaris answered HTTP 400 with an empty message; the client treats every 4xx as non-recoverable, so the run ended at `evidence-frontier` while the next run registered it fine. Telling a Zetaris-side fetch timeout from a bad statement needs a look at Zetaris's error shapes, unrelated to this PR's scout change.
+- Out of scope because: in the 2026-10-23 live pass, DuPont's first registration (`bootstrap:submissions_table`) took 79 s and Zetaris answered HTTP 400 with an empty message; the client then treated every 4xx as non-recoverable, so the run ended at `evidence-frontier` while the next run registered it fine. Since fix/zetaris-catch-all an empty 4xx body is `unclassified`: recoverable, traced `cause: "unclassified"` with its status, so Loop B's registration degrades to the sample instead of failing (the asked entity's registration, which has no sample, still ends at `evidence-frontier`, now marked an outage). It is still not retried: a retry of a statement that already took 79 s would spend most of the run budget, and whether this reply was a Zetaris-side fetch timeout is unmeasured.
 - Safe to leave because: the run ends at `evidence-frontier` with the error in the reason; nothing is served from the sample, and a second run succeeds (registration is idempotent).
 - Urgent if: cold registrations fail this way more than occasionally, or during a demo.
 - Review at: before recording (Tue 27 Oct): warm every demo company first
-- Evidence: `adapters/zetaris.py` (`ZetarisClient.run_sql`, `recoverable=response.status_code >= 500`); DuPont cold row in `docs/measurements/live-any-company.md`.
+- Evidence: `adapters/zetaris.py` (`classify_reply`; `run_sql` retries only `cause == "outage"`); `tests/test_zetaris_matrix.py::test_unclassified_is_an_outage_traced_with_status_and_excerpt[empty-body]`; DuPont cold row in `docs/measurements/live-any-company.md`.
 
 ## B-19: Loop A's critic also proposes `accept-capped` for any over-explaining component
 Found in: #15  ·  Status: open  ·  Severity: later
@@ -128,9 +128,17 @@ Found in: housekeeping (24 Oct)  ·  Status: open  ·  Severity: later
 Found in: fix/b20-cache-warmup (24 Oct)  ·  Status: open  ·  Severity: later (was demo-risk; bounded in fix/zetaris-resilience)
 - Out of scope because: fix/zetaris-resilience (this PR) bounds it: at most `ZETARIS_MAX_CACHED_FACTS` (5) companyfacts tables cached per agent process, the least recently used one `UNCACHE`d first (never the run's asked entity or Loop B counterparty), `warm` counted toward the same cap, discovery tables uncached after the scout, a dead-engine HTTP 400 treated as an outage (sample fallback, `degraded`) and a liveness probe before each live run. What remains needs Zetaris itself or a live experiment: the cap only knows the tables this process cached (not those cached before it started or by another process); the heap per table could be cut at the source by caching a narrow projection instead of the raw companyfacts row (triage fix A1, experiment E3); the probe and the dead-engine signatures are unverified against a real stopped driver (E5); the driver lacks `-XX:+ExitOnOutOfMemoryError` (vendor bundle).
 - Safe to leave because: with the cap a process holds about 5 x 150 MB of companyfacts heap, under the 7 to 10 tables that filled the 2 GB heap (being raised to 4 GB); a dead engine now degrades runs to the sample instead of erroring them; restarting the driver container (`docker restart zetaris-driver-1`) restores Zetaris, and registrations survive it.
-- Urgent if: the driver runs out of heap again with the cap in place, or a stopped SparkContext answers with a body the signatures miss (a live run then errors with a non-recoverable HTTP 400 instead of degrading).
+- Urgent if: the driver runs out of heap again with the cap in place, or a stopped SparkContext answers with a body the signatures miss (since fix/zetaris-catch-all such a reply is `unclassified` and still degrades to the sample, but each call waits for its reply because the liveness probe calls an unclassified reply `inconclusive`, not down).
 - Review at: before recording (Tue 27 Oct): restart the driver, run `warm`, watch `GET /health` `zetaris` during the rehearsal.
 - Evidence: `docker logs zetaris-driver-1`, 2026-10-24 05:02:15 UTC: `java.lang.OutOfMemoryError: Java heap space` ... `stopping SparkContext` (G1 at 2046M of 2048M), while `warm` cached `ibm_facts_raw` after ten other companyfacts tables; every later statement failed in about 0.1 s. The bound: `services/agent/tests/test_zetaris_resilience.py`.
+
+## B-25: A 2xx object without `headers` or `data` still reads as "no rows"
+Found in: fix/zetaris-catch-all (24 Oct)  ·  Status: open  ·  Severity: later
+- Out of scope because: fix/zetaris-catch-all makes every unexpected 2xx shape `unclassified` (a non-object, `headers`/`data` that are not lists, a row that does not match the headers, a non-JSON body), but an empty body and an object with neither key are kept as an empty result, because that is how a successful DDL statement (CREATE, CACHE TABLE) is read and the real bundle's DDL reply has never been captured. Tightening it without that measurement could turn every live registration into a sample fallback.
+- Safe to leave because: a query that should return rows and returns none ends its link as "not testable" or at the frontier with the reason, never with invented data; the error lines and the matrix tests cover every other shape.
+- Urgent if: a live trace shows a `success` line with `rows: 0` for a SELECT that should have rows, while Zetaris's own UI shows an error for the same statement.
+- Review at: after submission, or the next live pass with a packet capture of one DDL reply.
+- Evidence: `adapters/zetaris.py` (`ZetarisClient._parse`: `payload.get("headers") or []`); `tests/test_zetaris_matrix.py` (2xx rows).
 
 ## Closed
 

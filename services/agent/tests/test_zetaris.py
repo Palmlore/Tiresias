@@ -91,7 +91,9 @@ def test_run_sql_rejects_rows_not_keyed_by_response_headers(rows):
     client, _ = make_client(lambda request: ok(["value"], rows))
     with pytest.raises(z.SourceError) as caught:
         client.run_sql("SELECT 1 AS value", label="shape")
-    assert caught.value.recoverable is False
+    # An unexpected 2xx shape is unclassified: an outage served from the sample, traced distinctly.
+    assert caught.value.recoverable is True and caught.value.cause == "unclassified"
+    assert caught.value.status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -102,7 +104,8 @@ def test_run_sql_rejects_a_malformed_top_level_payload(payload):
     client, _ = make_client(lambda request: httpx.Response(200, json=payload))
     with pytest.raises(z.SourceError) as caught:
         client.run_sql("SELECT 1", label="shape")
-    assert caught.value.recoverable is False
+    # An unexpected 2xx shape is unclassified: an outage served from the sample, traced distinctly.
+    assert caught.value.recoverable is True and caught.value.cause == "unclassified"
 
 
 def test_run_sql_retries_503_then_succeeds_with_fresh_request_ids():
@@ -125,7 +128,7 @@ def test_run_sql_does_not_retry_400():
 
     def handler(request):
         calls.append(request)
-        return httpx.Response(400, json={"msg": "bad sql"})
+        return httpx.Response(400, json={"msg": "[PARSE_SYNTAX_ERROR] Syntax error at 'SELEC'"})
 
     client, sleeps = make_client(handler)
     with pytest.raises(z.SourceError) as info:
@@ -278,7 +281,8 @@ def test_live_outage_falls_back_to_sample_and_is_traced_degraded():
 def test_live_non_recoverable_error_is_raised_not_served_from_sample():
     tracer = RecordingTracer()
     client, _ = make_client(
-        lambda request: httpx.Response(400, json={"msg": "bad sql"}), tracer=tracer
+        lambda request: httpx.Response(400, json={"msg": "ParseException: bad sql"}),
+        tracer=tracer,
     )
     source = z.make_source(False, tracer, client=client)
     with pytest.raises(z.SourceError) as excinfo:

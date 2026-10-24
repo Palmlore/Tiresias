@@ -2,7 +2,9 @@
 
 Live mode runs SQL rendered from the templates in zetaris/sql/. Sample mode reads data/sample/
 and reports the SQL it would have run, so traces show the query either way. In live mode a
-SourceError after retries falls back to the sample for that call, traced as "degraded".
+recoverable SourceError (an outage, a dead engine, or any failure no rule identifies, see "Error
+classification") falls back to the sample for that call, traced as "degraded" with its
+``cause``; a known fatal error (bad SQL, auth) is raised.
 
 CLI: python -m tiresias_agent.adapters.zetaris {bootstrap,smoke} [--sample]
 """
@@ -157,10 +159,69 @@ class _NullTracer:
         return None
 
 
+# --- Error classification ---------------------------------------------------------------------
+#
+# The one place that decides what a failed Zetaris call means (zetaris/README.md, "Error
+# handling"). The bundle we run is a single-machine hackathon build whose failure modes cannot be
+# enumerated, so the default is the safe one: a failure we have not identified is an outage.
+#
+#   cause           recoverable  when
+#   outage          yes          timeout, connection error, HTTP 5xx
+#   dead_engine     yes          DEAD_ENGINE_SIGNATURES in the body, whatever the status or rows
+#   auth            no           HTTP 401/403, or AUTH_SIGNATURES in a 4xx body
+#   sql             no           SQL_SIGNATURES in a 4xx body (parse/analysis errors: our bug)
+#   refused         no           REFUSED_SIGNATURES in a 4xx body ("already exists"; callers
+#                                classify it as benign through ``run_sql(expected=)``), or an
+#                                unclassified reply the caller's ``expected`` recognises
+#   fatal           no           raised before sending (bad placeholder, missing SEC_USER_AGENT)
+#                                or a configuration fault a caller found (a table bound to
+#                                another CIK)
+#   unclassified    yes          anything else: an unseen 4xx body, a non-JSON / empty / HTML /
+#                                truncated reply, a 2xx of an unexpected shape, a row that does not
+#                                parse, an unexpected exception inside a live read. Served from
+#                                the sample like an outage, traced distinctly (``cause:
+#                                "unclassified"``, ``http_status``, ``excerpt``), not retried.
+#
+# Recoverable causes are served from the sample by FallbackSource / FallbackDiscovery (traced
+# ``degraded``); non-recoverable ones are raised and never served from the sample.
+CAUSES = ("outage", "dead_engine", "auth", "sql", "refused", "fatal", "unclassified")
+RECOVERABLE_CAUSES = frozenset({"outage", "dead_engine", "unclassified"})
+AUTH_STATUSES = frozenset({401, 403})
+# Lower-case fragments; any one in a 4xx reply body selects the cause (checked in this order:
+# dead engine, auth, sql, refused).
+AUTH_SIGNATURES: tuple[str, ...] = (
+    "unauthorized",
+    "unauthorised",
+    "forbidden",
+    "invalid token",
+    "access denied",
+    "permission denied",
+)
+SQL_SIGNATURES: tuple[str, ...] = (
+    "parseexception",
+    "analysisexception",
+    "parse_syntax_error",
+    "syntax error",
+    "field_not_found",
+    "table_or_view_not_found",
+    "schema_not_found",
+    "unresolved_column",
+    "unresolved_routine",
+    "invalid_extract_base_field_type",
+    "datatype_mismatch",
+)
+REFUSED_SIGNATURES: tuple[str, ...] = ("already exist",)
+EXCERPT_CHARS = 160
+# Raised before any SQL is sent (an invalid identifier, a missing template parameter, a missing
+# template file): our input or configuration, fatal, re-raised as is by the fallbacks. Any other
+# exception inside a live read is wrapped as ``unclassified`` (rule 8).
+BEFORE_SENDING_ERRORS: tuple[type[Exception], ...] = (ValueError, KeyError, OSError)
+
+
 class SourceError(Exception):
-    """A Zetaris call failed. recoverable=True for an outage: a timeout, a connection error, a
-    5xx, or a reply of any status that shows a dead engine (``dead_engine``, see
-    ``DEAD_ENGINE_SIGNATURES``)."""
+    """A Zetaris call failed. ``cause`` is one of ``CAUSES`` (see the classification table
+    above); ``recoverable`` is True for an outage, a dead engine or an unclassified failure, and
+    then the fallbacks serve the sample. ``excerpt`` is a short scrubbed piece of the reply."""
 
     def __init__(
         self,
@@ -171,6 +232,8 @@ class SourceError(Exception):
         retry_count: int = 0,
         detail: str = "",
         dead_engine: bool = False,
+        cause: str | None = None,
+        excerpt: str = "",
     ) -> None:
         super().__init__(message)
         self.recoverable = recoverable
@@ -178,15 +241,42 @@ class SourceError(Exception):
         self.retry_count = retry_count
         self.detail = detail
         self.dead_engine = dead_engine
+        if cause is None:
+            cause = "dead_engine" if dead_engine else ("outage" if recoverable else "fatal")
+        if cause not in CAUSES:
+            raise ValueError(f"unknown SourceError cause {cause!r}")
+        self.cause = cause
+        self.excerpt = (excerpt or detail)[:EXCERPT_CHARS]
+
+    def trace_fields(self) -> dict[str, Any]:
+        """The fields a trace line about this failure carries: ``cause``, plus ``http_status``
+        and ``excerpt`` when there was a reply."""
+        out: dict[str, Any] = {"cause": self.cause}
+        if self.status_code is not None:
+            out["http_status"] = self.status_code
+        if self.excerpt:
+            out["excerpt"] = self.excerpt
+        return out
+
+
+def unclassified(message: str, *, status_code: int | None = None, excerpt: str = "") -> SourceError:
+    """A failure no rule identifies: recoverable (served from the sample), traced distinctly."""
+    return SourceError(
+        message,
+        recoverable=True,
+        status_code=status_code,
+        detail=excerpt,
+        cause="unclassified",
+    )
 
 
 # A Zetaris reply that shows its Spark engine is dead, whatever the HTTP status (BACKLOG B-24).
 # Measured 2026-10-24: after an OutOfMemoryError in Spark's appStatus listener thread the driver
 # stopped its SparkContext but the server kept running, and every statement then failed in about
-# 0.1 s with HTTP 400 and one of these in the body, until the driver container was restarted. A
-# 400 normally means bad SQL or a refused object (non-recoverable); these mean an outage, so the
-# call is recoverable and the fallbacks serve the sample, traced ``degraded``. Each signature is
-# a tuple of lower-case fragments that must all appear in the reply body. This is the only list.
+# 0.1 s with HTTP 400 and one of these in the body, until the driver container was restarted.
+# They mean an outage, so the call is recoverable and the fallbacks serve the sample, traced
+# ``degraded``. Each signature is a tuple of lower-case fragments that must all appear in the
+# reply body. This is the only list.
 DEAD_ENGINE_SIGNATURES: tuple[tuple[str, ...], ...] = (
     ("cannot call methods on a stopped sparkcontext",),
     ("nullpointerexception", "fetchiterator.fetchnext"),
@@ -209,6 +299,25 @@ def _dead_reply(response: httpx.Response) -> bool:
     The signatures are Spark driver errors, not text an SEC filing or fact carries, so a reply
     whose rows contain one is still treated as an outage."""
     return dead_engine(response.text[:20_000])
+
+
+def classify_reply(status: int, body: str) -> str:
+    """The cause (one of ``CAUSES``) of a failed reply (HTTP status >= 400) from its status and
+    the first 20 kB of its body: a dead engine (any status), 5xx (outage), 401/403 or an auth
+    body (auth), a parse/analysis body (sql), "already exists" (refused); anything else is
+    ``unclassified``."""
+    text = (body or "")[:20_000].lower()
+    if dead_engine(text):
+        return "dead_engine"
+    if status >= 500:
+        return "outage"
+    if status in AUTH_STATUSES or any(sig in text for sig in AUTH_SIGNATURES):
+        return "auth"
+    if any(sig in text for sig in SQL_SIGNATURES):
+        return "sql"
+    if any(sig in text for sig in REFUSED_SIGNATURES):
+        return "refused"
+    return "unclassified"
 
 
 # --- SQL templates ----------------------------------------------------------------------------
@@ -413,14 +522,17 @@ class ZetarisClient:
 
         ``expected`` classifies a failure the caller treats as a benign outcome (e.g.
         "already exists" -> "exists"): its line is traced ``success`` with that ``outcome``
-        instead of ``error``. It is consulted only for a non-recoverable failure: a timeout,
-        connection error or 5xx always traces ``error``. The error is raised either way, so
+        instead of ``error``. It is consulted only for a non-recoverable failure, and for an
+        unclassified 4xx (which it then turns into a non-recoverable ``refused``): a timeout,
+        connection error, 5xx or dead engine always traces ``error``. The error is raised either way, so
         callers decide as before. ``max_retries`` overrides the configured retries for this
         call (``warm`` passes 0: a timed-out refetch is reported, not repeated).
         ``trace_fields`` are added to the statement's trace line (e.g. an UNCACHE's reason).
 
-        A reply showing a dead engine (``dead_engine``) is recoverable whatever its status and
-        is not retried (it does not heal in a second). After ``mark_down`` every statement
+        Failures are classified by ``classify_reply`` and ``_parse`` (``cause``, see "Error
+        classification"); only an outage is retried. A reply showing a dead engine
+        (``dead_engine``) is recoverable whatever its status and is not retried (it does not
+        heal in a second). The error line carries ``cause`` (and ``http_status``, ``excerpt``). After ``mark_down`` every statement
         fails at once as recoverable, without a request (the liveness probe found Zetaris down)."""
         retries = self.config.max_retries if max_retries is None else max(0, max_retries)
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
@@ -473,6 +585,9 @@ class ZetarisClient:
                 error = SourceError(
                     f"Zetaris {label}: connection failed ({type(exc).__name__})", recoverable=True
                 )
+            except (httpx.HTTPError, httpx.InvalidURL, httpx.StreamError) as exc:
+                # Any other httpx failure (e.g. a body that cannot be decoded): unclassified.
+                error = unclassified(f"Zetaris {label}: request failed ({type(exc).__name__})")
             else:
                 if response.status_code < 400 and _dead_reply(response):
                     # A 2xx can carry the dead-engine message too, with or without data rows;
@@ -487,28 +602,41 @@ class ZetarisClient:
                         dead_engine=True,
                     )
                 elif response.status_code < 400:
-                    result = self._parse(response, label, shown_sql, start, attempt, extra)
+                    result = self._parse(response, label, shown_sql, start, attempt, extra, redact)
                     if isinstance(result, QueryResult):
                         return result
                     error = result
                 else:
                     detail = self._scrub(response.text[:500], redact)
                     # The whole body is checked: a stack trace can put the signature past 500.
-                    dead = dead_engine(response.text[:20_000])
-                    shown = f"{DEAD_ENGINE_HINT}: {detail[:160]}" if dead else detail[:200]
+                    cause = classify_reply(response.status_code, response.text)
+                    if cause == "dead_engine":
+                        shown = f"{DEAD_ENGINE_HINT}: {detail[:160]}"
+                    elif cause == "unclassified":
+                        shown = f"unclassified reply, served as an outage: {detail[:160]}"
+                    else:
+                        shown = detail[:200]
                     error = SourceError(
                         f"Zetaris {label}: HTTP {response.status_code}: {shown}",
-                        recoverable=dead or response.status_code >= 500,
+                        recoverable=cause in RECOVERABLE_CAUSES,
                         status_code=response.status_code,
                         detail=detail,
-                        dead_engine=dead,
+                        dead_engine=cause == "dead_engine",
+                        cause=cause,
                     )
+                    if cause == "unclassified" and expected and expected(error):
+                        # The caller recognises this reply as a benign outcome: not an outage.
+                        error.recoverable = False
+                        error.cause = "refused"
             error.retry_count = attempt
-            if not error.recoverable or error.dead_engine or attempt >= retries:
+            # Only an outage is retried: not a fatal error, not a dead engine (it does not heal
+            # in a second) and not an unclassified reply (a retry would only spend the budget).
+            if error.cause != "outage" or attempt >= retries:
                 break
             self._sleep(self.BACKOFF_SECONDS * 2**attempt)
         assert error is not None
-        # A recoverable failure (timeout, connection, 5xx) is never benign, whatever its text says.
+        # A recoverable failure (outage, dead engine, unclassified) is never benign, whatever
+        # its text says.
         outcome = expected(error) if expected and not error.recoverable else None
         if outcome:
             self.tracer.emit(
@@ -536,6 +664,7 @@ class ZetarisClient:
             source="zetaris",
             output_summary=str(error),
             **({"outcome": "engine_down"} if error.dead_engine else {}),
+            **error.trace_fields(),
             **extra,
         )
         raise error
@@ -554,19 +683,28 @@ class ZetarisClient:
         start: float,
         attempt: int,
         extra: Mapping[str, Any] | None = None,
+        redact: Sequence[str] = (),
     ) -> QueryResult | SourceError:
+        excerpt = self._scrub(response.text[:EXCERPT_CHARS], redact)
+        status = response.status_code
         try:
             payload = response.json() if response.content else {}
         except ValueError:
-            return SourceError(f"Zetaris {label}: response is not JSON", recoverable=False)
+            return unclassified(
+                f"Zetaris {label}: HTTP {status}: response is not JSON, served as an outage",
+                status_code=status,
+                excerpt=excerpt,
+            )
         # An empty body (DDL) parses to {} and means no rows; anything that is not an
         # object with list-valued headers and data is malformed, not an empty result.
         headers = payload.get("headers") or [] if isinstance(payload, dict) else None
         data = payload.get("data") or [] if isinstance(payload, dict) else None
         if not isinstance(headers, list) or not isinstance(data, list):
-            return SourceError(
-                f"Zetaris {label}: response is not an object with headers and data lists",
-                recoverable=False,
+            return unclassified(
+                f"Zetaris {label}: HTTP {status}: response is not an object with headers and "
+                "data lists, served as an outage",
+                status_code=status,
+                excerpt=excerpt,
             )
         columns: list[str] = [str(c) for c in headers]
         rows: list[dict[str, Any]] = []
@@ -578,9 +716,11 @@ class ZetarisClient:
             elif isinstance(row, list) and len(row) == len(columns):
                 rows.append(dict(zip(columns, row)))
             else:
-                return SourceError(
-                    f"Zetaris {label}: row does not match response headers {columns}",
-                    recoverable=False,
+                return unclassified(
+                    f"Zetaris {label}: HTTP {status}: row does not match response headers "
+                    f"{columns}, served as an outage",
+                    status_code=status,
+                    excerpt=excerpt,
                 )
         result = QueryResult(
             rows=rows,
@@ -608,6 +748,55 @@ def _ms(start: float) -> int:
 
 
 # --- Evidence sources -------------------------------------------------------------------------
+
+
+def _fact_of(r: Mapping[str, Any]) -> Fact | None:
+    if r.get("val") is None:
+        return None
+    return Fact(
+        concept=str(r["concept"]),
+        unit=str(r.get("unit") or "USD"),
+        val=_num(r["val"]),
+        start=_opt_str(r.get("period_start")),
+        end=str(r["period_end"]),
+        fy=_opt_int(r.get("fy")),
+        fp=_opt_str(r.get("fp")),
+        form=_opt_str(r.get("form")),
+        filed=_opt_str(r.get("filed")),
+        accn=_opt_str(r.get("accn")),
+        frame=_opt_str(r.get("frame")),
+    )
+
+
+def _filing_of(r: Mapping[str, Any]) -> Filing:
+    return Filing(
+        accession_number=str(r["accession_number"]),
+        filing_date=str(r["filing_date"]),
+        report_date=_opt_str(r.get("report_date")),
+        form=str(r["form"]),
+        items=str(r.get("items") or ""),
+        primary_document=_opt_str(r.get("primary_document")),
+    )
+
+
+def _typed_rows(
+    label: str, result: QueryResult, make: Callable[[Mapping[str, Any]], T | None]
+) -> list[T]:
+    """Type a reply's rows; a row that does not parse (a missing column, a value that is not a
+    number) is an unexpected reply shape: ``unclassified``, so the fallback serves the sample."""
+    out: list[T] = []
+    for row in result.rows:
+        try:
+            item = make(row)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise unclassified(
+                f"Zetaris {label}: row does not parse ({type(exc).__name__}: {exc}), "
+                "served as an outage",
+                excerpt=str(row)[:EXCERPT_CHARS],
+            ) from exc
+        if item is not None:
+            out.append(item)
+    return out
 
 
 class LiveZetarisSource:
@@ -667,23 +856,7 @@ class LiveZetarisSource:
         sql = concept_series_sql(ticker, present, self.directory)
         FACTS_CACHE.touch(facts_table(ticker))  # most recently used (ZETARIS_MAX_CACHED_FACTS)
         result = self.client.run_sql(sql, label="concept_series")
-        facts = [
-            Fact(
-                concept=str(r["concept"]),
-                unit=str(r.get("unit") or "USD"),
-                val=_num(r["val"]),
-                start=_opt_str(r.get("period_start")),
-                end=str(r["period_end"]),
-                fy=_opt_int(r.get("fy")),
-                fp=_opt_str(r.get("fp")),
-                form=_opt_str(r.get("form")),
-                filed=_opt_str(r.get("filed")),
-                accn=_opt_str(r.get("accn")),
-                frame=_opt_str(r.get("frame")),
-            )
-            for r in result.rows
-            if r.get("val") is not None
-        ]
+        facts = _typed_rows("concept_series", result, _fact_of)
         return Evidence(
             _dedupe(facts, aliases), sql=sql, source=self.name, duration_ms=result.duration_ms
         )
@@ -694,17 +867,7 @@ class LiveZetarisSource:
         if f"{ticker}_filings" not in self.registered_views():
             return Evidence(sql=sql, source=self.name, note=f"no registered view {ticker}_filings")
         result = self.client.run_sql(sql, label="filings")
-        rows = [
-            Filing(
-                accession_number=str(r["accession_number"]),
-                filing_date=str(r["filing_date"]),
-                report_date=_opt_str(r.get("report_date")),
-                form=str(r["form"]),
-                items=str(r.get("items") or ""),
-                primary_document=_opt_str(r.get("primary_document")),
-            )
-            for r in result.rows
-        ]
+        rows = _typed_rows("filings", result, _filing_of)
         return Evidence(rows, sql=sql, source=self.name, duration_ms=result.duration_ms)
 
 
@@ -816,9 +979,12 @@ class SampleSource:
 
 
 class FallbackSource:
-    """Live first; on a recoverable SourceError (outage, timeout, 5xx, after the client's retries)
-    serve the sample, traced degraded. A non-recoverable error (bad SQL, auth, malformed response)
-    is a bug or misconfiguration, not an outage: it is raised, never papered over with sample rows."""
+    """Live first; on a recoverable SourceError (outage, dead engine, unclassified; see "Error
+    classification") serve the sample, traced degraded with the error's ``cause`` (and
+    ``http_status``, ``excerpt``). Any other exception inside the live read is wrapped as
+    ``unclassified`` first, except ``BEFORE_SENDING_ERRORS``. A non-recoverable error (bad SQL,
+    auth) is a bug or misconfiguration, not an outage: it is raised, never papered over with
+    sample rows."""
 
     def __init__(
         self, primary: EvidenceSource, fallback: EvidenceSource, tracer: Tracer | None = None
@@ -830,7 +996,14 @@ class FallbackSource:
 
     def _call(self, method: str, *args: Any) -> Evidence[Any]:
         try:
-            return getattr(self.primary, method)(*args)
+            try:
+                return getattr(self.primary, method)(*args)
+            except (SourceError, *BEFORE_SENDING_ERRORS):
+                raise  # classified, or raised before any SQL was sent
+            except Exception as exc:  # rule 8: an unknown failure in a live read is an outage
+                raise unclassified(
+                    f"Zetaris {method}: unexpected {type(exc).__name__} in the live read"
+                ) from exc
         except SourceError as err:
             if not err.recoverable:
                 raise
@@ -848,6 +1021,7 @@ class FallbackSource:
                 retry_count=err.retry_count,
                 source=result.source,
                 output_summary=f"live query failed, served from sample: {err}",
+                **err.trace_fields(),
             )
             return result
 
@@ -1047,6 +1221,7 @@ def bootstrap(
                 entry["status"] = "failed"
                 entry["error"] = str(err)[:200]
                 entry["recoverable"] = err.recoverable
+                entry["cause"] = err.cause
                 if step.endswith("_table"):
                     failed_tables.add(obj.split(".")[-1])
         entry["duration_ms"] = _ms(start)
@@ -1395,7 +1570,9 @@ class LivenessProbe:
             )
         except SourceError as err:
             dead = err.dead_engine
-            if err.recoverable:
+            # An unclassified reply is no proof that Zetaris is down: the run goes ahead live
+            # and each read degrades on its own.
+            if err.recoverable and err.cause != "unclassified":
                 state = "down"
                 reason = (
                     DEAD_ENGINE_HINT
@@ -1741,10 +1918,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
+    "AUTH_SIGNATURES",
+    "BEFORE_SENDING_ERRORS",
+    "CAUSES",
     "CONCEPT_ALIASES",
     "DEAD_ENGINE_SIGNATURES",
     "FACTS_CACHE",
     "LIVENESS",
+    "RECOVERABLE_CAUSES",
+    "REFUSED_SIGNATURES",
+    "SQL_SIGNATURES",
     "Entity",
     "Evidence",
     "EvidenceSource",
@@ -1763,12 +1946,14 @@ __all__ = [
     "ZetarisConfig",
     "bootstrap",
     "check_liveness",
+    "classify_reply",
     "dead_engine",
     "endpoint_cik",
     "lightning_tables",
     "make_source",
     "object_ticker",
     "uncache",
+    "unclassified",
     "warm",
     "warm_on_start",
 ]
