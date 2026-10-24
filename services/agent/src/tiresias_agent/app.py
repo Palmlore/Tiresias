@@ -19,9 +19,15 @@ from fastapi.responses import JSONResponse, StreamingResponse
 
 from . import __version__, entities
 from .adapters.catalog import make_discovery
+from .adapters.cognition import (
+    CognitionClient,
+    CognitionConfig,
+    CognitionError,
+    CognitionUnavailable,
+)
 from .adapters.zetaris import FACTS_CACHE, LIVENESS, WarmStatus, make_source, warm_on_start
 from .config import settings
-from .models import ErrorDetail, ErrorResponse, Role, RunRequest
+from .models import ErrorDetail, ErrorResponse, PurgeRequest, PurgeResult, Role, RunRequest
 from .orchestrator import _find, depth_plan
 from .runs import RegistryBusy, RunConflict, RunRecord, RunRegistry, valid_run_id
 from .runs import logs_dir as _logs_dir
@@ -316,9 +322,60 @@ def branch(run_id: str) -> JSONResponse:
     return _not_implemented("Branching")
 
 
+def memory_client(run_id: str, tracer: Tracer) -> CognitionClient:
+    """The cognition client behind POST /memory/purge (COGNITION_URL; tests replace it)."""
+    return CognitionClient(CognitionConfig.from_env(), run_id=run_id, tracer=tracer)
+
+
 @app.post("/memory/purge")
-def purge_memory() -> JSONResponse:
-    return _not_implemented("Memory purge")
+def purge_memory(
+    request: Request,
+    body: PurgeRequest | None = None,
+    namespace: str | None = Query(default=None, max_length=100),
+) -> JSONResponse:
+    """Purge H-MEM lessons through cognition. Reports only the count cognition confirmed: an
+    unreachable cognition is 503, a refused or malformed reply 502 (adapters.cognition)."""
+    run_id = _header_run_id(request) or f"api-{datetime.now(UTC):%Y%m%d}"
+    tracer = Tracer(
+        run_id,
+        logs_dir=_logs_dir(),
+        defaults={
+            "mode": "sample" if settings.sample_mode else "live",
+            "request_id": secrets.token_hex(4),
+        },
+    )
+    target = namespace if namespace is not None else (body.namespace if body else None)
+    requested_by = (body.requested_by if body else None) or "api"
+    try:
+        with memory_client(run_id, tracer) as client:
+            purged = client.purge(namespace=target, requested_by=requested_by)
+    except CognitionError as err:
+        unreachable = isinstance(err, CognitionUnavailable)
+        tracer.emit(
+            agent="api",
+            action="memory_purge",
+            status="error",
+            input_summary=f"namespace {target or '*'}",
+            output_summary=f"purge NOT done: {type(err).__name__}: {err}"[:300],
+        )
+        return error_response(
+            503 if unreachable else 502,
+            "MemoryUnavailable" if unreachable else "MemoryError",
+            f"Memory purge not done: {err}",
+            recoverable=unreachable,
+            run_id=_header_run_id(request),
+        )
+    tracer.emit(
+        agent="api",
+        action="memory_purge",
+        input_summary=f"namespace {target or '*'} (requested by {requested_by})",
+        output_summary=f"purged {purged.purged} lesson(s); cognition's trust ledger keeps the "
+        "purge event",
+        purged=purged.purged,
+        namespace=target,
+    )
+    result = PurgeResult(purged=purged.purged, namespace=target, requested_by=requested_by)
+    return JSONResponse(content=result.model_dump(mode="json"), headers=_echo(request))
 
 
 def main() -> None:

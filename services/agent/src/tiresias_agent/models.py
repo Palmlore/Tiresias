@@ -42,7 +42,11 @@ class Period(BaseModel):
 
 class RunOptions(BaseModel):
     hitl_mode: HitlMode | None = None
-    memory: MemoryMode | None = None
+    memory: MemoryMode | None = Field(
+        default=None,
+        description="warm: recall lessons, judge them, store a new one (H-MEM, ADR-0005); cold: "
+        "no memory call. Default MEMORY_MODE (warm)",
+    )
     sample_mode: bool | None = None
     decisions: dict[str, Any] | None = Field(default=None, description="Scripted gate decisions")
     depth: Depth | None = Field(
@@ -346,6 +350,75 @@ class SuggestionList(BaseModel):
     note: str | None = None
 
 
+class RecalledLesson(BaseModel):
+    """A lesson H-MEM returned for this run, and what the critic made of it."""
+
+    memory_id: str
+    content: str
+    relevance: float | None = Field(default=None, description="H-MEM recall score")
+    confidence: float
+    status: Literal["supported", "rejected", "not-tested", "ignored"] = Field(
+        description="supported: its step held when tested; rejected: the critic pruned its step "
+        "(negative feedback sent); not-tested: none of its steps came up; ignored: no path tags"
+    )
+    node_ids: list[str] = Field(default_factory=list, description="Nodes that tested its steps")
+    reason: str | None = None
+
+
+class SkippedCandidate(BaseModel):
+    """A candidate not tested because a recalled lesson's step held first (warm runs only)."""
+
+    node_id: str
+    rule: str
+    variable: str
+    claim: str
+    memory_id: str | None = None
+
+
+class MemoryFeedback(BaseModel):
+    memory_id: str
+    kind: Literal["helpful", "not_helpful", "wrong"]
+    applied: bool = Field(description="Cognition confirmed the confidence update")
+    reason: str
+
+
+class StoredLesson(BaseModel):
+    """The write-back: the lesson this run distilled and what the memory gate decided."""
+
+    stored: bool
+    memory_id: str | None = Field(
+        default=None, description="The new lesson, or the existing one with the same path"
+    )
+    content: str = ""
+    tags: list[str] = Field(default_factory=list)
+    gate_choice: Literal["store", "discard"] | None = None
+    decided_by: str | None = None
+    reason: str
+
+
+class RunMemory(BaseModel):
+    """H-MEM use of one run (ADR-0005): lessons recalled, judged, fed back and stored."""
+
+    mode: MemoryMode
+    available: bool | None = Field(
+        default=None, description="Cognition answered the recall (None: cold, or not reached)"
+    )
+    namespace: str | None = None
+    query: str | None = Field(default=None, description="The recall query (generic, no entity)")
+    recalled: list[RecalledLesson] = Field(default_factory=list)
+    rejected: list[str] = Field(
+        default_factory=list, description="Memory ids the critic rejected for this run"
+    )
+    skipped: list[SkippedCandidate] = Field(default_factory=list)
+    fallback: bool = Field(
+        default=False,
+        description="A lesson's shortcut did not reach a cause, so Loop A ran again in full",
+    )
+    feedback: list[MemoryFeedback] = Field(default_factory=list)
+    stored: StoredLesson | None = None
+    note: str | None = None
+
+
 class RunResult(BaseModel):
     """Leads with the decision (ADR-0009): end state and recommended action, then the evidence."""
 
@@ -384,9 +457,26 @@ class RunResult(BaseModel):
         description="Set when the scope check stopped the run before Loop A (end state "
         "evidence-frontier): the reasons and runnable alternatives",
     )
+    memory: RunMemory | None = Field(
+        default=None,
+        description="H-MEM use (ADR-0005): mode, lessons recalled and the critic's call on each, "
+        "candidates skipped, feedback sent and the lesson stored (None for Loop A only runs)",
+    )
 
 
 class ErrorResponse(BaseModel):
     run_id: str | None = None
     status: Literal["error"] = "error"
     error: ErrorDetail
+
+
+class PurgeRequest(BaseModel):
+    namespace: str | None = Field(default=None, description="Omit to purge every namespace")
+    requested_by: str | None = Field(default=None, max_length=100)
+
+
+class PurgeResult(BaseModel):
+    status: Literal["purged"] = "purged"
+    purged: int = Field(description="Lessons the memory service confirmed deleted")
+    namespace: str | None = Field(default=None, description="None: every namespace")
+    requested_by: str

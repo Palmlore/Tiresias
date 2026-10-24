@@ -28,13 +28,13 @@ You ask *"why did this figure change?"* and say **who is asking** (analyst, audi
 2. **Goes looking for missing evidence** when the known sources run out. It finds the entity it needs (for example the spun-off company), registers that company's filings as a new Zetaris source while it runs, and reconciles the numbers.
 3. **Challenges every link** with a critic. Is it causal, or just a breakdown of the total? Would the effect disappear without it? How much does it explain, and what's left over?
 4. **Stops at the first cause the asker can act on**, which can be before or after level 5. It always reports the end state: `actionable`, `branched`, `cyclic`, `evidence-frontier`, `external-driver` or `budget` (`cyclic` is not produced yet, [BACKLOG](BACKLOG.md) B-2).
-5. **Remembers lessons, not answers** (Meterless **H-MEM**), *planned*: the H-MEM service runs, but the agent does not use it yet. The goal is that the next similar investigation takes fewer steps and the memory can be **purged**, so you can watch the difference.
+5. **Remembers lessons, not answers** (Meterless **H-MEM**): a run that finds a cause stores the generic path that worked (no company, figure or date) behind a memory gate; the next similar question recalls it and tests that path first, so it takes fewer steps. The critic still tests every step and **rejects** a recalled lesson that doesn't fit. Memory can be **purged** (`POST /memory/purge`), so you can watch the difference (see Memory below).
 
-Every step (query, hypothesis, critique, human-in-the-loop gate, source registration) is written to a JSONL trace; memory recall will be too once memory is wired in.
+Every step (query, hypothesis, critique, human-in-the-loop gate, source registration) is written to a JSONL trace, memory recall (ids and scores), the critic's call on each lesson, feedback and the write-back included.
 
 ## Quickstart (judges)
 
-**Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. In live mode the agent also calls Nightshift models (see Models below); memory, branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
+**Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. H-MEM memory works in sample mode too (the cognition service runs in the same `docker compose`; see Memory below). In live mode the agent also calls Nightshift models (see Models below); branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
 
 Needs Docker Desktop (or Docker Engine) with **Compose v2.24 or later** (`docker compose version`), ports 8000 and 8100 free, and about 750 MB of disk for the two images. The first build also pulls the Python and Node base images, which can take a few minutes; later builds take seconds.
 
@@ -76,6 +76,26 @@ uv run python -m tiresias_agent.orchestrator ../../input_examples/04_3m_2023_rev
 ```
 
 Live mode (`SAMPLE_MODE=false` or `"options": {"sample_mode": false}`) queries a local Zetaris and falls back to the sample per call if it is unreachable. Every read, including the discovery of a missing entity, goes through Zetaris. See [deploy/README.md](deploy/README.md).
+
+### Memory: cold, warm, a rejected lesson, purge
+
+With the stack up, one command runs the H-MEM demo (sample mode, stdlib Python, under a second):
+
+```bash
+python3 scripts/memory_demo.py            # --agent http://localhost:8000 by default
+```
+
+It purges memory, then runs 04 (3M, empty memory: stores the spin-off lesson), 01 (GE HealthCare, warm: recalls it, tests the 8-K disposal first and leaves the two other candidates untested), 03 (GE's impairment: the same lesson is recalled, its step is pruned, and the critic rejects the lesson with `not_helpful` feedback), purges again and re-runs 01. Output on 2026-10-24 (docker compose, sample mode):
+
+```
+A  04 3M spin-off, empty memory       end_state=actionable hops=5 queries=7 recalled=- skipped=- feedback=- stored=mem-1
+B  01 GE spin-off, warm               end_state=actionable hops=3 queries=6 recalled=['mem-1:supported(0.3127)'] skipped=['n0.2', 'n0.3'] feedback=['mem-1:helpful'] stored=-
+C  03 GE impairment, warm             end_state=actionable hops=4 queries=5 recalled=['mem-1:rejected(0.2967)'] skipped=- feedback=['mem-1:not_helpful'] stored=mem-2
+4  purge                              purged=2 (cognition confirmed)
+B' 01 GE spin-off, after purge        end_state=actionable hops=5 queries=7 recalled=- skipped=- feedback=- stored=mem-3
+```
+
+Each result carries `memory` (mode, recalled lessons with the critic's call, skipped candidates, feedback, the lesson stored) next to `stats`. The end state, root cause and action are the same warm or cold; a warm why-tree leaves out the candidates the lesson made unnecessary (listed in `memory.skipped`), and if a lesson's shortcut ever finds no cause, Loop A runs again in full (`memory.fallback`). Per request: `"options": {"memory": "cold"}` makes no memory call; `MEMORY_MODE=off` turns memory off for every run. If cognition is down, runs go on without memory (one `degraded` trace line). `curl -s -X POST localhost:8000/memory/purge` reports only the count cognition confirmed (503 if it is unreachable); cognition's trust ledger keeps the purge event. Design: [ADR-0005](docs/decisions/ADR-0005-memory-lessons-purgeable.md).
 
 ### Ask about your own company
 
@@ -136,7 +156,7 @@ Measured live on 2026-10-24 (model) and 2026-10-23 (rules). Every call is traced
 | Sponsor | Role in Tiresias | Status |
 |---|---|---|
 | **Zetaris** | The evidence layer. Every claim is SQL plus the rows returned. New sources are registered while the agent runs. | in progress: in live mode the agent drives Zetaris end to end (resolves the asked company, registers it and the spun-off business at runtime when Zetaris lacks them; discovery and evidence are SQL), measured in [docs/measurements/live-any-company.md](docs/measurements/live-any-company.md); the default quickstart is sample mode, which runs the same logic on cached rows without Zetaris |
-| **Meterless** | **Nightshift** is the model provider for every model call. **H-MEM** will store lessons from past investigations (purgeable). | in progress: H-MEM service working (conformance 13/13), not yet used by the agent (memory demo planned); Nightshift model lanes (extra hypotheses, a second opinion for the critic, action wording) run in live mode when the user asks for depth `thorough` or `deep` (the default `quick` is rules only), measured once on case 01 (2026-10-24); the rules still decide, and sample mode stays rule-based |
+| **Meterless** | **Nightshift** is the model provider for every model call. **H-MEM** stores lessons from past investigations (purgeable). | in progress: H-MEM service working (conformance 13/13) and used by the agent in every warm run, sample mode included (recall, critic-judged lessons, feedback, memory gate, purge; `scripts/memory_demo.py`, run in CI); Nightshift model lanes (extra hypotheses, a second opinion for the critic, action wording) run in live mode when the user asks for depth `thorough` or `deep` (the default `quick` is rules only), measured once on case 01 (2026-10-24); the rules still decide, and sample mode stays rule-based |
 | **Cursor** | Optional since 23 Oct (organizer update); Claude Code is the main coding agent; the Cursor IDE was used for a few manual edits | planned (the metadata schema has no "optional" status; Cursor is not a dependency) |
 | **NVIDIA** | Nemotron models served through Nightshift lanes (fast hypothesiser and reporter, deep critic) | in progress: the lanes are built (ADR-0010) and chosen per question by depth (ADR-0011); on 2026-10-24 Nightshift routed every live lane call to a Nemotron model, `routed_model` in the trace; Nightshift picks the model, not Tiresias |
 

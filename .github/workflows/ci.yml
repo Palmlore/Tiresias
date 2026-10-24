@@ -91,6 +91,8 @@ jobs:
           EOF
           done
           ls logs/trace-ci-*.jsonl
+      - name: Memory demo (H-MEM cold -> warm -> rejected lesson -> purge, sample mode)
+        run: python3 scripts/memory_demo.py --agent http://localhost:8000
       - name: Stack logs on failure
         if: failure()
         run: docker compose logs

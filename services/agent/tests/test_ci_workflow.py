@@ -45,6 +45,13 @@ def test_quickstart_follows_readme():
     assert "input_examples/*.json" in job
 
 
+def test_quickstart_runs_the_memory_demo_in_sample_mode():
+    job = _quickstart()
+    assert "python3 scripts/memory_demo.py --agent http://localhost:8000" in job
+    demo = (ROOT / "scripts/memory_demo.py").read_text()
+    assert '"sample_mode"] = True' in demo and "--live" in demo  # sample unless asked
+
+
 def _assertion_script() -> str:
     body = _quickstart().split("<<'EOF'\n", 1)[1].split("\n          EOF", 1)[0]
     return "\n".join(line.removeprefix("          ") for line in body.splitlines())

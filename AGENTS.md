@@ -26,7 +26,7 @@ Open the rest only when the task needs them:
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
 | `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
-| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes) |
+| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack) |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |
@@ -58,6 +58,7 @@ curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -H 'X-Run
 curl -s -X POST localhost:8000/runs -H 'Content-Type: application/json' -d @input_examples/03_ge_2018_net_loss.json   # 202 {run_id}
 curl -s localhost:8000/runs/<run_id>                                 # {status: running|done, result, ...}
 curl -sN localhost:8000/runs/<run_id>/events                         # SSE: one trace line per event, then event: end
+python3 scripts/memory_demo.py [--agent URL]                         # H-MEM demo (stack up, sample mode): purge, 04, 01 warm (fewer hops), 03 (lesson rejected), purge, 01
 # Entity directory (sample: the slice only; live adds sec_tickers type-ahead)
 curl -s 'localhost:8000/entities?q=ge'                              # EntityList: ready/searchable, expected_first_run
 curl -s 'localhost:8000/entities/40545/suggestions?role=auditor&limit=6'   # SuggestionList; each .request posts to /run as-is

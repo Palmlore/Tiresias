@@ -121,6 +121,7 @@ class Candidate:
     category: str
     params: dict[str, Any] = field(default_factory=dict)
     proposed_by: str = "rules"  # or "model": validated against the vocabulary, then tested alike
+    lesson: str | None = None  # memory id of the recalled lesson that moved it first (memory.py)
 
 
 Scope = Literal["broad", "window", "relaxed"]
