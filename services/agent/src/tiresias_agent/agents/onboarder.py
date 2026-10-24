@@ -199,7 +199,13 @@ def onboard(
             proposal="register",
             node_id=need.node_id,
             requested_by=AGENT,
-            context={"template": template.id, "cik": entity.cik, "used": used, "cap": cap},
+            context={
+                "template": template.id,
+                "entity": entity.name,
+                "cik": entity.cik,
+                "used": used,
+                "cap": cap,
+            },
         )
     )
     base["gate_decided"] = True
@@ -427,7 +433,13 @@ def onboard_entity(
             proposal="register",
             node_id=node,
             requested_by=AGENT,
-            context={"cik": entity.cik, "used": used, "cap": cap, "scope": "asked_entity"},
+            context={
+                "entity": entity.name,
+                "cik": entity.cik,
+                "used": used,
+                "cap": cap,
+                "scope": "asked_entity",
+            },
         )
     )
     base["gate_decided"] = True

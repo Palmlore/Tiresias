@@ -180,6 +180,18 @@ def max_over_explained(env: Mapping[str, str] | None = None) -> float:
     return _bounded_float(env, "MAX_OVER_EXPLAINED", MAX_OVER_EXPLAINED_DEFAULT, 1.05, 10.0)
 
 
+# How long an interactive gate (hitl_mode "interactive" over the HTTP API, gates.GateChannel)
+# waits for an answer before it applies the policy's proposal (decided_by "timeout"). The wait is
+# also capped at the run budget left, so a run never hangs on an unanswered gate.
+GATE_TIMEOUT_DEFAULT = 120.0
+
+
+def gate_timeout_seconds(env: Mapping[str, str] | None = None) -> float:
+    """GATE_TIMEOUT_SECONDS, read at call time and clamped to 0.1..1800 (default 120)."""
+    env = os.environ if env is None else env
+    return _bounded_float(env, "GATE_TIMEOUT_SECONDS", GATE_TIMEOUT_DEFAULT, 0.1, 1800.0)
+
+
 # Expected wall time of a first full investigation, in seconds (GET /entities, the scope check's
 # alternatives). Measured live on 2026-10-23, docs/measurements/live-any-company.md ("What a UI
 # should expect"): a company Zetaris has never registered (cold) takes 15-21 s end to end, a

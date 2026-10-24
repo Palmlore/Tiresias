@@ -65,6 +65,8 @@ The services talk over REST/JSON. Contracts are in [`contracts/openapi/`](../con
 | Critic escalation | Accept or reject a link when the margin is too small | same |
 | Memory gate | Store a lesson in H-MEM (options `store` / `discard`; auto: store) | same |
 
+Modes (`options.hitl_mode`, else `HITL_MODE`, default `auto`): `auto` follows the requesting agent's proposal; `scripted` takes `options.decisions` (`"<gate>:<node_id>"` or `"<gate>"`); `interactive` asks a person. Over HTTP, an interactive run waits at each gate on its own thread (other runs and the API stay responsive): the trace and the SSE stream carry a `gate`/`waiting` line (`gate_id`, question, options, proposal, node_id, requested_by, a scrubbed `context` with the evidence the decision rests on, `deadline` in UTC); `GET /runs/{id}` shows it as `waiting_gate`, `GET /runs/{id}/gates` lists every gate, and `POST /runs/{id}/gates/{gate_id}` `{"choice", "note"}` answers it (`gate`/`answered`, `decided_by: "human"`) and the run resumes with that choice. With no answer by `GATE_TIMEOUT_SECONDS` (default 120, never past the run budget left) the gate expires (`gate`/`expired`, status `degraded`) and the proposal applies with `decided_by: "timeout"`, so a run never hangs. The CLI's `--interactive` asks on stdin.
+
 ### Memory in a run (agents/memory.py)
 
 Warm (`options.memory`, default `MEMORY_MODE=warm`): after the framer, one recall whose query names only the kind of effect and the metric family. A recalled lesson is a path of generic steps (`rule=key>outcome`); the hypothesiser tests candidates with those steps first (node ids keep the rules' order). When the critic prunes a lesson's step, the lesson is rejected for the run and H-MEM gets `wrong` (same kind of question) or `not_helpful` (misapplied). When the step holds as recorded on the same kind of question, the level's other candidates are not tested (fewer hops; listed in `RunResult.memory.skipped`); if the run then reaches no cause, Loop A runs again testing everything. A run ending `actionable` or `branched` stores its path behind the memory gate, unless the same path is already stored. Cold: no memory call. Cognition down: one `degraded` line, the run goes on without memory.
@@ -85,6 +87,8 @@ These are the planned defaults, tunable through environment variables:
 Every action is one JSONL line in `logs/trace-<run_id>.jsonl` and is also printed to stdout. Both services write to the shared `logs/` volume and propagate `X-Run-Id`. Planned fields:
 
 `timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, requested_model, routed_model, provider, receipt_id, latency_ms, proposed_by, retry_count, status, outcome, duration_ms`
+
+Gates: every decision is one `gate`/`decide` line (`gate`, `gate_mode`, `decided_by`: `policy:<gate>`, `script`, `human` or `timeout`; interactive lines add `choice`, `note`, `gate_id`). An interactive gate is first a `gate`/`waiting` line (`gate_id`, `options`, `proposal`, `context`, `deadline`, `timeout_seconds`), then `gate`/`answered` or `gate`/`expired`.
 
 `outcome` names a benign result under `status: success`: for example a registration step whose object already `exists`, or a concept view that is `absent`; such steps are never traced `error`.
 

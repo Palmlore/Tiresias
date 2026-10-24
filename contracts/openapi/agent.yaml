@@ -75,10 +75,42 @@ paths:
         register_entity, loop_a, frame, recall, loop_b, scout, onboard, reconcile, remember; `phase_done` carries duration_ms), and
         action `heartbeat` (same `phase`, `elapsed_ms`) every PHASE_HEARTBEAT_SECONDS (default 5)
         while a phase runs (docs/agents-reference.md "Run phases (for UI)").
+        Human-in-the-loop gates (hitl_mode interactive) appear as agent `gate` lines: action
+        `waiting` (a GateWaiting's fields: gate_id, gate, question, options, proposal, node_id,
+        requested_by, context, deadline, timeout_seconds; gate_mode interactive), then `answered`
+        (decided_by human, choice, note) or `expired` (status degraded, decided_by timeout), then
+        the `decide` line every gate writes (gate_mode, decided_by, choice, note, gate_id).
       parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
       responses:
         "200": {description: Event stream, content: {text/event-stream: {schema: {type: string}}}}
         "404": {description: Unknown or evicted (type RunNotFound), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs/{run_id}/gates:
+    get:
+      summary: The run's interactive gates, oldest first, and the one waiting (implemented)
+      description: >
+        A run whose hitl_mode is interactive (RunOptions.hitl_mode, else HITL_MODE) waits at each
+        gate (critic_escalation, source, memory) on its own thread until it is answered with
+        POST /runs/{run_id}/gates/{gate_id}, or for GATE_TIMEOUT_SECONDS (default 120, clamped
+        0.1..1800, never past the run budget left); then the policy's proposal applies
+        (decided_by timeout). Empty for auto and scripted runs, whose gates decide at once.
+      parameters: [{name: run_id, in: path, required: true, schema: {type: string}}]
+      responses:
+        "200": {description: The run's gates, content: {application/json: {schema: {$ref: "#/components/schemas/GateList"}}}}
+        "404": {description: Unknown or evicted (type RunNotFound), content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs/{run_id}/gates/{gate_id}:
+    post:
+      summary: Answer a waiting gate; the run resumes with this choice (implemented)
+      parameters:
+        - {name: run_id, in: path, required: true, schema: {type: string}}
+        - {name: gate_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: "#/components/schemas/GateAnswer"}}}
+      responses:
+        "200": {description: "The answered gate (status answered, decided_by human)", content: {application/json: {schema: {$ref: "#/components/schemas/GateWaiting"}}}}
+        "404": {description: "Unknown run (RunNotFound) or gate, or a run without interactive gates (GateNotFound)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "409": {description: "Already answered (GateAlreadyAnswered) or expired (GateExpired)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: "A choice that is not one of the gate's options, or an invalid body (ValidationError)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /entities:
     get:
       summary: Companies to ask about, for a picker with type-ahead (implemented)
@@ -222,11 +254,54 @@ components:
         events: {type: integer, description: Trace lines kept in memory}
         dropped_events: {type: integer, description: Lines beyond MAX_TRACE_LINES_PER_RUN (still in the trace file)}
         trace_file: {type: [string, "null"]}
+        hitl_mode: {type: string, description: "The run's gate mode (auto, interactive, scripted)"}
+        waiting_gate:
+          oneOf: [{$ref: "#/components/schemas/GateWaiting"}, {type: "null"}]
+          description: The interactive gate the run is waiting at (answer it with POST /runs/{run_id}/gates/{gate_id}), else null
         result: {oneOf: [{$ref: "#/components/schemas/RunResult"}, {type: "null"}]}
         error:
           type: [object, "null"]
           description: Set when the pipeline raised (the run is done without a RunResult)
           properties: {type: {type: string}, message: {type: string}, recoverable: {type: boolean}}
+    GateAnswer:
+      type: object
+      required: [choice]
+      additionalProperties: false
+      properties:
+        choice: {type: string, minLength: 1, maxLength: 64, description: "One of the gate's options"}
+        note: {type: [string, "null"], maxLength: 500, description: "Kept in the trace, scrubbed of secrets"}
+    GateWaiting:
+      type: object
+      description: >
+        Every string field is scrubbed (gates.scrub): secret keys, bearer tokens and the values of
+        secret-looking environment variables are masked as ***. Answer with one of `options` as
+        shown; the agent receives the option it stands for.
+      required: [gate_id, gate, status, question, options, proposal, created_at, deadline, timeout_seconds]
+      properties:
+        gate_id: {type: string, description: "g1, g2, ... in the order the run reached them"}
+        gate: {type: string, enum: [framing, source, critic_escalation, memory]}
+        status: {type: string, enum: [waiting, answered, expired]}
+        question: {type: string}
+        options: {type: array, items: {type: string}}
+        proposal: {type: string, description: "The requesting agent's proposal: what auto would choose, and what a timeout applies"}
+        node_id: {type: [string, "null"]}
+        requested_by: {type: string}
+        context: {type: object, description: "The evidence the decision rests on (share, claim, entity, cik, tags...), scrubbed: secret keys and bearer tokens masked, strings cut to 300 characters"}
+        created_at: {type: string, format: date-time}
+        deadline: {type: string, format: date-time, description: "UTC; past it the proposal applies (decided_by timeout)"}
+        timeout_seconds: {type: number, description: "GATE_TIMEOUT_SECONDS capped at the run budget left"}
+        choice: {type: [string, "null"]}
+        note: {type: [string, "null"]}
+        decided_by: {type: [string, "null"], enum: [human, timeout, null]}
+        answered_at: {type: [string, "null"], format: date-time}
+    GateList:
+      type: object
+      required: [run_id, hitl_mode, gates]
+      properties:
+        run_id: {type: string}
+        hitl_mode: {type: string}
+        waiting_gate: {oneOf: [{$ref: "#/components/schemas/GateWaiting"}, {type: "null"}]}
+        gates: {type: array, items: {$ref: "#/components/schemas/GateWaiting"}}
     Asker:
       type: object
       required: [role]

@@ -51,6 +51,24 @@ def redact(value: Any) -> Any:
     return value
 
 
+_SECRET_ENV = re.compile(r"token|key|password|secret|authorization", re.IGNORECASE)
+
+
+def secret_env_values(env: dict[str, str] | None = None) -> list[str]:
+    """Values (8+ characters) of environment variables whose name looks secret (token, key,
+    password, secret, authorization), longest first. Read at call time."""
+    env = os.environ if env is None else env
+    values = {v for k, v in env.items() if _SECRET_ENV.search(k) and v and len(v) >= 8}
+    return sorted(values, key=len, reverse=True)
+
+
+def mask_secret_values(text: str, secrets: list[str] | None = None) -> str:
+    """``text`` with every secret environment value replaced by ***."""
+    for secret in secret_env_values() if secrets is None else secrets:
+        text = text.replace(secret, REDACTED)
+    return text
+
+
 def _is_secret(key: Any, value: Any) -> bool:
     if not isinstance(key, str) or key in _NOT_SECRET or not _SECRET_KEY.search(key):
         return False
@@ -101,7 +119,8 @@ class Tracer:
         for key, value in redact({**self.defaults, **fields}).items():
             if key not in _RESERVED:
                 event[key] = value
-        line = json.dumps(event, default=str)
+        # A secret env value echoed anywhere (e.g. pasted into a question) never reaches a line.
+        line = mask_secret_values(json.dumps(event, default=str))
         with _WRITE_LOCK:
             self._write(line)
 

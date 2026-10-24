@@ -2,7 +2,9 @@
 
 POST /run runs one investigation synchronously (the judge path). POST /runs starts one in the
 background; GET /runs/{run_id} polls it and GET /runs/{run_id}/events streams its trace lines
-as Server-Sent Events. Errors always use the contract's Error shape, never a stack trace.
+as Server-Sent Events. A run with hitl_mode "interactive" waits at each gate: GET
+/runs/{run_id}/gates lists them and POST /runs/{run_id}/gates/{gate_id} answers one. Errors
+always use the contract's Error shape, never a stack trace.
 """
 
 import json
@@ -27,7 +29,18 @@ from .adapters.cognition import (
 )
 from .adapters.zetaris import FACTS_CACHE, LIVENESS, WarmStatus, make_source, warm_on_start
 from .config import settings
-from .models import ErrorDetail, ErrorResponse, PurgeRequest, PurgeResult, Role, RunRequest
+from .gates import GateClosed, GateNotFound, InvalidChoice
+from .models import (
+    ErrorDetail,
+    ErrorResponse,
+    GateAnswer,
+    GateList,
+    GateWaiting,
+    PurgeRequest,
+    PurgeResult,
+    Role,
+    RunRequest,
+)
 from .orchestrator import _find, depth_plan
 from .runs import RegistryBusy, RunConflict, RunRecord, RunRegistry, valid_run_id
 from .runs import logs_dir as _logs_dir
@@ -242,6 +255,46 @@ def run_events(run_id: str):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Run-Id": run_id},
     )
+
+
+# --- interactive gates (hitl_mode "interactive"; gates.GateChannel) --------------------------
+
+
+@app.get("/runs/{run_id}/gates")
+def list_gates(run_id: str) -> JSONResponse:
+    """The run's interactive gates, oldest first: waiting, answered or expired. Empty for a run
+    whose hitl_mode is auto or scripted (those gates are decided at once and traced)."""
+    record = registry.get(run_id)
+    if record is None:
+        return _unknown(run_id)
+    gates = record.gates.list() if record.gates else []
+    waiting = next((g for g in gates if g["status"] == "waiting"), None)
+    body = GateList(run_id=run_id, hitl_mode=record.hitl_mode, waiting_gate=waiting, gates=gates)
+    return JSONResponse(content=body.model_dump(mode="json"), headers={"X-Run-Id": run_id})
+
+
+@app.post("/runs/{run_id}/gates/{gate_id}")
+def answer_gate(run_id: str, gate_id: str, body: GateAnswer) -> JSONResponse:
+    """Answer a waiting gate: the run resumes with this choice (decided_by human). 404 unknown
+    run or gate, 409 already answered or expired, 422 a choice that is not an option."""
+    record = registry.get(run_id)
+    if record is None:
+        return _unknown(run_id)
+    if record.gates is None:
+        return error_response(
+            404, "GateNotFound", "This run has no interactive gates.", run_id=run_id
+        )
+    try:
+        gate = record.gates.answer(gate_id, body.choice, body.note)
+    except GateNotFound:
+        return error_response(404, "GateNotFound", f"No gate {gate_id} in this run.", run_id=run_id)
+    except GateClosed as err:
+        kind = "GateExpired" if err.status == "expired" else "GateAlreadyAnswered"
+        return error_response(409, kind, f"Gate {gate_id} is already {err.status}.", run_id=run_id)
+    except InvalidChoice as err:
+        return error_response(422, "ValidationError", str(err), run_id=run_id)
+    content = GateWaiting.model_validate(gate).model_dump(mode="json")
+    return JSONResponse(content=content, headers={"X-Run-Id": run_id})
 
 
 # --- entity directory (pick a company, suggested questions) ----------------------------------
