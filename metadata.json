@@ -42,6 +42,7 @@
         "catalog/sources.yaml"
       ],
       "evidence": [
+        "logs/samples/trace-run-20261024T230646Z-45973c.jsonl and output_examples/04_3m_2023_revenue_restated.live.json: a real live run of case 04 (3M) on 2026-10-24 23:06 UTC (25 Oct AEDT) through local Zetaris, every read and Loop B's registration of Solventum as Zetaris SQL (the table already existed from an earlier live run, so registration re-ran its 7 statements and reused it), no sample fallback; same root cause and residual as sample mode",
         "docs/measurements/live-any-company.md: live runs through local Zetaris on 2026-10-23 (three examples plus IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT), cold and warm, timed from each run's phase trace lines",
         "docs/measurements/zetaris-local.md: local bundle latencies (REST table registration 0.6–2.0 s, cached queries)",
         "services/agent/tests/test_any_company.py: no agent module outside the sponsor adapters makes HTTP calls; live discovery and registration run as Zetaris SQL (mocked endpoint)",
