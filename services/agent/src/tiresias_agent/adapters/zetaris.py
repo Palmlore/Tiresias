@@ -213,9 +213,14 @@ SQL_SIGNATURES: tuple[str, ...] = (
 REFUSED_SIGNATURES: tuple[str, ...] = ("already exist",)
 EXCERPT_CHARS = 160
 # Raised before any SQL is sent (an invalid identifier, a missing template parameter, a missing
-# template file): our input or configuration, fatal, re-raised as is by the fallbacks. Any other
-# exception inside a live read is wrapped as ``unclassified`` (rule 8).
-BEFORE_SENDING_ERRORS: tuple[type[Exception], ...] = (ValueError, KeyError, OSError)
+# template file, raised as TemplateError, a ValueError): our input or configuration, fatal,
+# re-raised as is by the fallbacks. Any other exception inside a live read is wrapped as
+# ``unclassified`` (rule 8), an OSError from the transport included.
+BEFORE_SENDING_ERRORS: tuple[type[Exception], ...] = (ValueError, KeyError)
+
+
+class TemplateError(ValueError):
+    """A SQL template file could not be read: configuration, raised before any SQL is sent."""
 
 
 class SourceError(Exception):
@@ -333,7 +338,11 @@ def sample_dir() -> Path:
 
 def load_template(name: str, directory: Path | None = None) -> str:
     """Template text without comment lines or a trailing semicolon."""
-    text = ((directory or sql_dir()) / name).read_text(encoding="utf-8")
+    path = (directory or sql_dir()) / name
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise TemplateError(f"SQL template {path}: {exc}") from exc
     lines = [line for line in text.splitlines() if not line.lstrip().startswith("--")]
     return "\n".join(lines).strip().rstrip(";").strip()
 
@@ -1941,6 +1950,7 @@ __all__ = [
     "QueryResult",
     "SampleSource",
     "SourceError",
+    "TemplateError",
     "WarmStatus",
     "ZetarisClient",
     "ZetarisConfig",

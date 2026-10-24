@@ -321,6 +321,20 @@ def test_unclassified_row_shape_and_unexpected_exception_are_wrapped_as_outages(
     assert "RuntimeError" in facts.error
 
 
+def test_unclassified_transport_oserror_is_an_outage_not_a_before_sending_error():
+    # An OSError from the transport is not our input: it degrades, in evidence and discovery reads.
+    facts, tracer = degraded_read(counting(OSError("socket exploded after send"))[0])
+    assert facts.degraded and facts.source == "sample" and "OSError" in facts.error
+    assert tracer.with_status("degraded")[0]["cause"] == "unclassified"
+    tracer = RecordingTracer()
+    client = make_client(counting(OSError("socket exploded"))[0], tracer)
+    rows = cat.make_discovery(False, tracer, client=client).lookup(tickers=["GE"])
+    assert rows and rows.degraded and tracer.with_status("degraded")[0]["cause"] == "unclassified"
+    # A missing template file is still ours, raised before sending (a ValueError, never degraded).
+    with pytest.raises(z.TemplateError):
+        z.load_template("no_such_template.sql")
+
+
 def test_unclassified_reply_a_caller_expects_stays_benign():
     reply = httpx.Response(409, json={"msg": "Conflict: duplicate object"})
     tracer = RecordingTracer()
