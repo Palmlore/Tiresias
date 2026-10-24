@@ -251,8 +251,13 @@ def test_sample_filings_filter_forms_newest_first():
 
 
 def test_sample_entities_list_showcase_ciks():
+    # The GE family (the entities bootstrap registers live) plus the 3M -> Solventum pair.
     entities = {e.ticker: e.cik for e in z.SampleSource().entities()}
-    assert entities == {e.ticker: e.cik for e in z.SHOWCASE_ENTITIES}
+    assert entities == {
+        **{e.ticker: e.cik for e in z.SHOWCASE_ENTITIES},
+        "mmm": "0000066740",
+        "solv": "0001964738",
+    }
 
 
 # --- fallback -----------------------------------------------------------------------------------

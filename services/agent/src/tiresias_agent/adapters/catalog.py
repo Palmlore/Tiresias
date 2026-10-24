@@ -13,11 +13,13 @@ a catalog template and, in live mode, **only through Zetaris** (ADR-0003; BACKLO
 - ``filers_naming(phrase, forms, start, end)``: the filers whose filings of those forms in that
   date range contain the phrase (catalog ``sec_fulltext``, EDGAR full-text search), one
   ``TIRESIAS_SEC.fts_<hash>_raw`` table per search registered on demand (14_fulltext_table.sql,
-  40_fulltext_total.sql, 41_fulltext_hits.sql). Sample mode has no full-text data: it returns no
-  rows and says so.
+  40_fulltext_total.sql, 41_fulltext_hits.sql). Sample mode serves the searches cached in
+  ``data/sample/fts_<hash>.json`` (the same hash as the live table, so the same search finds
+  the same file) and aggregates their hits as 41_fulltext_hits.sql does
+  (``fulltext_hit_rows``); any other search returns no rows and says so.
 
-Sample mode reads ``data/sample/`` (company_tickers.json, <ticker>_submissions.json) and reports
-the SQL live mode would have run. Live mode falls back to the sample per call on an outage
+Sample mode reads ``data/sample/`` (company_tickers.json, <ticker>_submissions.json,
+fts_<hash>.json) and reports the SQL live mode would have run. Live mode falls back to the sample per call on an outage
 (recoverable SourceError), traced ``degraded``; a non-recoverable error (bad SQL, auth, a table
 bound to another CIK) is raised, never served from the sample.
 
@@ -395,6 +397,70 @@ def fulltext_table(endpoint: str) -> str:
     return f"fts_{hashlib.sha256(endpoint.encode()).hexdigest()[:16]}_raw"
 
 
+def fulltext_sample_file(table: str) -> str:
+    """The data/sample/ file that caches one search: the live table's name without ``_raw``."""
+    return f"{table.removesuffix('_raw')}.json"
+
+
+def fulltext_total(data: Any) -> int:
+    """40_fulltext_total.sql over a search response (hits.total.value)."""
+    try:
+        return int(((data.get("hits") or {}).get("total") or {}).get("value") or 0)
+    except (AttributeError, TypeError, ValueError) as err:
+        raise SourceError(
+            f"{FULLTEXT}: malformed total ({type(err).__name__})", recoverable=False
+        ) from err
+
+
+def fulltext_hit_rows(data: Any, limit: int = FULLTEXT_LIMIT) -> list[dict[str, Any]]:
+    """41_fulltext_hits.sql over a search response, in Python (sample mode): one row per filer
+    CIK of each hit, grouped by CIK, most hits first (then CIK descending), at most ``limit``.
+    The columns are the SQL's: cik, name (first display name), hits, first/last date, forms and
+    items (sorted, distinct, comma-joined), total."""
+    try:
+        total = fulltext_total(data)
+        groups: dict[str, dict[str, Any]] = {}
+        for h in (data.get("hits") or {}).get("hits") or []:
+            s = h["_source"]
+            names = s.get("display_names") or []
+            for i, cik in enumerate(s.get("ciks") or []):
+                g = groups.setdefault(
+                    str(cik),
+                    {
+                        "cik": str(cik),
+                        "name": names[i] if i < len(names) else None,
+                        "hits": 0,
+                        "dates": [],
+                        "forms": set(),
+                        "items": set(),
+                    },
+                )
+                g["hits"] += 1
+                if s.get("file_date"):
+                    g["dates"].append(str(s["file_date"]))
+                if s.get("form"):
+                    g["forms"].add(str(s["form"]))
+                g["items"].update(str(x) for x in s.get("items") or [])
+    except (AttributeError, KeyError, TypeError) as err:
+        raise SourceError(
+            f"{FULLTEXT}: malformed hits ({type(err).__name__})", recoverable=False
+        ) from err
+    ordered = sorted(groups.values(), key=lambda g: (g["hits"], g["cik"]), reverse=True)
+    return [
+        {
+            "cik": g["cik"],
+            "name": g["name"],
+            "hits": g["hits"],
+            "first_date": min(g["dates"], default=None),
+            "last_date": max(g["dates"], default=None),
+            "forms": ",".join(sorted(g["forms"])),
+            "items": ",".join(sorted(g["items"])),
+            "total": total,
+        }
+        for g in ordered[:limit]
+    ]
+
+
 def fulltext_total_sql(table: str, directory: Path | None = None) -> str:
     return render_file("40_fulltext_total.sql", directory, table=table)
 
@@ -403,10 +469,10 @@ def fulltext_hits_sql(table: str, directory: Path | None = None) -> str:
     return render_file("41_fulltext_hits.sql", directory, table=table, limit=str(FULLTEXT_LIMIT))
 
 
-def _naming_rows(result: QueryResult) -> list[NamingRow]:
-    """41_fulltext_hits.sql rows -> NamingRow, most hits first."""
+def _naming_rows(rows: Sequence[Mapping[str, Any]]) -> list[NamingRow]:
+    """41_fulltext_hits.sql rows (Zetaris, or ``fulltext_hit_rows``) -> NamingRow, in order."""
     out = []
-    for r in result.rows:
+    for r in rows:
         try:
             out.append(
                 NamingRow(
@@ -637,13 +703,29 @@ class SampleDiscovery:
     def filers_naming(
         self, phrase: str, forms: Sequence[str], start: str, end: str
     ) -> Evidence[NamingRow]:
-        """The slice holds no full-text search results: no rows, and the note says so. The SQL
+        """The same search as live mode, served from its cached response in data/sample/
+        (``fts_<hash>.json``, named after the live table) with the 40/41_fulltext_*.sql logic in
+        Python. A search the slice does not cache returns no rows and the note says so. The SQL
         is what live mode would run."""
         t0 = time.perf_counter()
         endpoint = fulltext_endpoint(self.catalog, phrase, forms, start, end)
-        sql = fulltext_hits_sql(fulltext_table(endpoint))
-        note = "not in sample: full-text search (live mode only)"
-        return self._emit("fulltext", Evidence([], sql=sql, source=self.name, note=note), t0)
+        table = fulltext_table(endpoint)
+        sql = fulltext_hits_sql(table)
+        name = fulltext_sample_file(table)
+        data = self._read(name)
+        if data is None:
+            note = (
+                "not in sample: this full-text search (data/sample/ caches only the searches "
+                "scripts/fetch_sample.py lists; live mode runs any)"
+            )
+            return self._emit("fulltext", Evidence([], sql=sql, source=self.name, note=note), t0)
+        total = fulltext_total(data)
+        rows = _naming_rows(fulltext_hit_rows(data)) if total else []
+        note = (
+            f"{total} matching document(s); {len(rows)} filer(s) shown; "
+            f"served from data/sample/{name}"
+        )
+        return self._emit("fulltext", Evidence(rows, sql=sql, source=self.name, note=note), t0)
 
 
 # --- live: Zetaris only --------------------------------------------------------------------------
@@ -899,7 +981,7 @@ class ZetarisDiscovery:
         sql = fulltext_hits_sql(table, self.directory)
         rows: list[NamingRow] = []
         if total:
-            rows = _naming_rows(self.client.run_sql(sql, label="discovery_fulltext"))
+            rows = _naming_rows(self.client.run_sql(sql, label="discovery_fulltext").rows)
         note = f"{total} matching document(s); {len(rows)} filer(s) shown"
         out = Evidence(rows, sql=sql, source=self.name, note=note)
         self._emit("fulltext", out, t0)
@@ -994,7 +1076,10 @@ __all__ = [
     "TickerRow",
     "ZetarisDiscovery",
     "fulltext_endpoint",
+    "fulltext_hit_rows",
+    "fulltext_sample_file",
     "fulltext_table",
+    "fulltext_total",
     "load_catalog",
     "make_discovery",
     "name_pattern",

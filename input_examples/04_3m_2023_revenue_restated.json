@@ -1,0 +1,9 @@
+{
+  "question": "Why did 3M's reported 2023 revenue fall between its 2024 and 2025 annual reports?",
+  "entity": {"ticker": "MMM"},
+  "metric": "Revenues",
+  "period": {"start": "2023-01-01", "end": "2023-12-31"},
+  "compare": {"filing_a": "10-K filed 2024-02-07", "filing_b": "10-K filed 2025-02-05"},
+  "asker": {"role": "analyst", "levers": ["model adjustments", "estimates", "rating"], "horizon": "next quarter"},
+  "options": {"hitl_mode": "auto", "memory": "warm"}
+}

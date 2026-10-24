@@ -480,7 +480,7 @@ def runs(tmp_path_factory):
     }
 
 
-@pytest.mark.parametrize("prefix", ["01", "02", "03"])
+@pytest.mark.parametrize("prefix", ["01", "02", "03", "04"])
 def test_investigation_reaches_a_valid_end_state(runs, prefix):
     result, lines = runs[prefix]
     assert result.end_state in END_STATES and result.status in {"success", "partial"}
@@ -488,7 +488,7 @@ def test_investigation_reaches_a_valid_end_state(runs, prefix):
     assert all(line["mode"] == "sample" for line in lines)
 
 
-@pytest.mark.parametrize("prefix", ["01", "02"])
+@pytest.mark.parametrize("prefix", ["01", "02", "04"])
 def test_restatements_continue_into_loop_b_and_reconcile(runs, prefix):
     result, lines = runs[prefix]
     agents = {line["agent"] for line in lines}
@@ -516,9 +516,60 @@ def test_net_loss_case_does_not_enter_loop_b(runs):
 
 
 def test_investigation_outputs_differ_across_cases(runs):
-    results = [runs[p][0] for p in ("01", "02", "03")]
-    assert len({r.action for r in results}) == 3 and len({r.root_cause for r in results}) == 3
-    assert len({r.residual for r in results}) == 3
+    results = [runs[p][0] for p in ("01", "02", "03", "04")]
+    assert len({r.action for r in results}) == 4 and len({r.root_cause for r in results}) == 4
+    assert len({r.residual for r in results}) == 4
+    assert len({r.effect.delta for r in results}) == 4
+
+
+SOLVENTUM_CIK = "0001964738"
+
+
+def test_case_04_reconciles_3m_with_solventum_found_by_full_text_search(runs):
+    result, lines = runs["04"]
+    assert result.end_state == "actionable" and result.status == "success"
+    assert result.effect.baseline.value == 32_681_000_000.0
+    assert result.effect.target.value == 24_610_000_000.0
+    link = next(n for n in result.why_tree if n.rule == "reconcile")
+    assert link.verdict == "accepted" and SOLVENTUM_CIK in link.claim
+    # Solventum's own $8.20B over-explains the restatement: signed residual, share capped.
+    assert link.residual == result.residual and result.residual < 0
+    assert link.share_explained == 1.0
+    critic = next(x for x in lines if x["agent"] == "critic" and x.get("loop") == "B")
+    assert critic["raw_share"] > 1.0 and critic["share_explained"] == 1.0
+    assert critic["residual_amount"] == 126_000_000.0
+    scout = next(x for x in lines if x["agent"] == "source_scout")
+    assert scout["entity"]["cik"] == SOLVENTUM_CIK
+    [found] = [c for c in scout["candidates"] if c["qualifies"]]
+    assert found["found_by"] == "registration" and found["brand"] is False
+    fts = next(x for x in lines if x["agent"] == "catalog" and x["action"] == "fulltext")
+    assert fts["source"] == "sample" and "served from data/sample/fts_" in fts["output_summary"]
+    assert fts["rows"] >= 1 and "FROM tiresias_sec.fts_" in fts["sql"]
+    assert any(x["agent"] == "onboarder" and x.get("registration") == "sample" for x in lines)
+
+
+def test_sample_scout_finds_solventum_from_the_cached_full_text_rows():
+    need = _need("04")
+    tracer = RecordingTracer()
+    scout = source_scout.resolve(
+        need, discovery=SampleDiscovery(CATALOG, tracer=tracer), tracer=tracer
+    )
+    assert scout.resolved and scout.entity.cik == SOLVENTUM_CIK
+    best = next(c for c in scout.candidates if c.qualifies)
+    assert best.named_in == "registration" and best.named > 0 and not best.brand
+    assert "registration filings" in scout.reason
+
+
+def test_without_the_cached_search_the_brand_alone_cannot_find_solventum(tmp_path, monkeypatch):
+    need = _need("04")
+    name = next(
+        f.name for f in SAMPLE.glob("fts_*.json")
+    )  # the one cached search (PROVENANCE.json names its URL)
+    data = _copy_sample(tmp_path, name)
+    scout = source_scout.resolve(
+        need, discovery=SampleDiscovery(CATALOG, data), tracer=RecordingTracer()
+    )
+    assert not scout.resolved and "no candidate became a separate registrant" in scout.reason
 
 
 @pytest.mark.parametrize("leave_out", ["gehc_companyfacts.json", "gehc_submissions.json"])

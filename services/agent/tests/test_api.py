@@ -33,7 +33,7 @@ def _error_shape(body: dict) -> None:
     assert "Traceback" not in json.dumps(body)
 
 
-def test_run_on_all_three_examples_returns_distinct_valid_results(client):
+def test_run_on_all_four_examples_returns_distinct_valid_results(client):
     results = []
     for path in EXAMPLES:
         response = client.post("/run", json=_body(path))
@@ -43,9 +43,9 @@ def test_run_on_all_three_examples_returns_distinct_valid_results(client):
         assert response.headers["X-Run-Id"] == result.run_id
         assert Path(result.trace_file).exists()
         results.append(result)
-    assert len(EXAMPLES) == 3
-    assert len({r.run_id for r in results}) == 3
-    assert len({(r.effect.delta, r.root_cause, r.end_state) for r in results}) == 3
+    assert len(EXAMPLES) == 4
+    assert len({r.run_id for r in results}) == 4
+    assert len({(r.effect.delta, r.root_cause, r.end_state) for r in results}) == 4
 
 
 def test_run_goes_through_loop_b_for_a_restatement(client):

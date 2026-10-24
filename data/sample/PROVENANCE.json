@@ -1,6 +1,6 @@
 {
   "generated_by": "scripts/fetch_sample.py",
-  "generated_at": "2026-10-23T07:33:52Z",
+  "generated_at": "2026-10-24T05:05:37Z",
   "files": [
     {
       "file": "ge_companyfacts.json",
@@ -51,12 +51,52 @@
       "trim": "recent filings, forms ['10-K', '10-K/A', '8-K', '8-K/A']"
     },
     {
+      "file": "mmm_companyfacts.json",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0000066740.json",
+      "fetched_at": "2026-10-24T05:05:35Z",
+      "raw_sha256": "f386e2155c94359b4e3f3a688c4b1d008d8082be0f87279cea40c15d6a04d209",
+      "sha256": "55d88e0b6891ed0c1b9507c41cca7ef11e414b84caece6188562ab2b785f258d",
+      "trim": "us-gaap USD concepts: Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, NetIncomeLoss, IncomeLossFromContinuingOperations, IncomeLossFromDiscontinuedOperationsNetOfTax, DisposalGroupIncludingDiscontinuedOperationRevenue, GoodwillImpairmentLoss"
+    },
+    {
+      "file": "mmm_submissions.json",
+      "source_url": "https://data.sec.gov/submissions/CIK0000066740.json",
+      "fetched_at": "2026-10-24T05:05:35Z",
+      "raw_sha256": "66c1be57d46eb2f7ed165332da4c611bf444579ed9778f36e29a3fc4a207613a",
+      "sha256": "47f6a2120763b202bbb1a2d151c5998ba4253183cde1b670dc2a55fe1adffb0e",
+      "trim": "recent filings, forms ['10-K', '10-K/A', '8-K', '8-K/A']"
+    },
+    {
+      "file": "solv_companyfacts.json",
+      "source_url": "https://data.sec.gov/api/xbrl/companyfacts/CIK0001964738.json",
+      "fetched_at": "2026-10-24T05:05:36Z",
+      "raw_sha256": "02100e853f2616317101c764e99185bc5abae3f71b4d25258d43e1982f99c303",
+      "sha256": "c25e9473740a14a9ea74770ff745d3ab5fa184d99716bba99777bd80f9e3aaf3",
+      "trim": "us-gaap USD concepts: Revenues, RevenueFromContractWithCustomerExcludingAssessedTax, NetIncomeLoss, IncomeLossFromContinuingOperations, IncomeLossFromDiscontinuedOperationsNetOfTax, DisposalGroupIncludingDiscontinuedOperationRevenue, GoodwillImpairmentLoss"
+    },
+    {
+      "file": "solv_submissions.json",
+      "source_url": "https://data.sec.gov/submissions/CIK0001964738.json",
+      "fetched_at": "2026-10-24T05:05:36Z",
+      "raw_sha256": "8aa6b3700fdf38d8b278487109a44bf05c40818797f222eae0e1670c43b90d69",
+      "sha256": "7f753ef7960e1a81656714bc677f9aca185ffd5e7340184bf97e8da771808a36",
+      "trim": "recent filings, forms ['10-K', '10-K/A', '8-K', '8-K/A']"
+    },
+    {
       "file": "company_tickers.json",
       "source_url": "https://www.sec.gov/files/company_tickers.json",
-      "fetched_at": "2026-10-23T07:18:35Z",
+      "fetched_at": "2026-10-24T05:05:37Z",
       "raw_sha256": "93050f93c3540af9af80a05885d562fcf4e7de4e8e5acce0944a2891bcfbec48",
-      "sha256": "9a6e17ec0bfd46c2e4e54b598a118995e064a13e1b21ff1750202c9b1cf32444",
-      "trim": "titles matching ^(GE\\b|General Electric)"
+      "sha256": "697bc44d83566845d7ac7b85a91fc868732c0ed8b154c3b6b5c68a70ffa10418",
+      "trim": "titles matching ^(GE\\b|General Electric), or CIKs of the sample entities"
+    },
+    {
+      "file": "fts_d014334df6b92aed.json",
+      "source_url": "https://efts.sec.gov/LATEST/search-index?q=%223m%22&forms=10-12B,10-12G&dateRange=custom&startdt=2022-10-12&enddt=2024-04-04",
+      "fetched_at": "2026-10-24T05:05:37Z",
+      "raw_sha256": "995a66bd9ccd0878a80b6c53b80dfffd91dc0676e927cc6f42b83a9a8917b973",
+      "sha256": "bf0a6d286d428b755b76bb6f14ca395f8c97581ba61dbbf27324602465a4b8ef",
+      "trim": "source scout registration search for the mmm disposal filed 2024-04-04; hits.total, and _id + _source.{ciks, display_names, file_date, form, items} per hit"
     }
   ]
 }
