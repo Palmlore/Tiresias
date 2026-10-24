@@ -1,0 +1,96 @@
+# Every check a judge's quickstart and a reviewer rely on, run on every pull request and on main.
+# Sample mode only: no secrets, no Zetaris, no Nightshift (AGENTS.md rules 1, 3).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent:
+    name: agent (pytest, ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+      - run: uv sync --group dev --locked
+      - run: uv run --group dev pytest -q
+      - run: uv run --group dev ruff check src tests
+      - run: uv run --group dev ruff format --check src tests
+
+  cognition:
+    name: cognition (tests, H-MEM conformance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/cognition
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+      - run: npm test
+      - run: npm run conformance
+
+  repo:
+    name: repo (secrets, metadata)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.18"
+      - run: ./scripts/check_secrets.sh
+      - run: ./scripts/validate_metadata.sh
+
+  quickstart:
+    name: quickstart (docker compose, sample mode, three examples)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack with an empty .env, as the README tells a judge
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
+      - name: Wait for the agent
+        run: |
+          for i in $(seq 60); do
+            curl -sf localhost:8000/health >/dev/null && exit 0
+            sleep 2
+          done
+          docker compose logs agent
+          exit 1
+      - name: Run the three input examples
+        run: |
+          for f in input_examples/*.json; do
+            curl -sf -X POST localhost:8000/run -H 'Content-Type: application/json' \
+                 -H "X-Run-Id: ci-$(basename "$f" .json)" -d @"$f" > "result-$(basename "$f")"
+            python3 - "result-$(basename "$f")" <<'EOF'
+          import json, sys
+          r = json.load(open(sys.argv[1]))
+          assert r.get("end_state"), f"{sys.argv[1]}: no end_state"
+          assert r.get("status") != "error", f"{sys.argv[1]}: {r.get('error')}"
+          print(sys.argv[1], r["end_state"], r.get("status"))
+          EOF
+          done
+          ls logs/trace-ci-*.jsonl
+      - name: Stack logs on failure
+        if: failure()
+        run: docker compose logs
