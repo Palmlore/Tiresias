@@ -15,8 +15,6 @@ gates (Loop B, H-MEM) reuse this class with their own policies.
 
 from __future__ import annotations
 
-import os
-import re
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -25,7 +23,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from .config import gate_timeout_seconds
-from .trace import REDACTED, redact
+from .trace import mask_secret_values, redact, secret_env_values
 
 AGENT = "gate"
 GATES = ("framing", "source", "critic_escalation", "memory")
@@ -136,20 +134,28 @@ class Gate:
         extra: dict[str, Any] = {}
         if self.mode == "interactive":  # auto and scripted lines stay exactly as before
             extra = {"choice": choice, "note": note, "gate_id": gate_id}
+        # Every string the line carries goes through scrub (identity when nothing is secret, so
+        # auto and scripted lines are unchanged).
+        line = scrub(
+            {
+                "node_id": request.node_id,
+                "gate": request.gate,
+                "gate_mode": self.mode,
+                "decided_by": decided_by,
+                "target_agent": request.requested_by or None,
+                "input_summary": request.question,
+                "output_summary": f"{choice} ({reason})",
+                "options": list(request.options),
+                "proposal": request.proposal,
+                **extra,
+            },
+            limit=MAX_LINE_TEXT,
+        )
         self.tracer.emit(
             agent=AGENT,
             action="decide",
             status="rejected" if choice == "prune" else "success",
-            node_id=request.node_id,
-            gate=request.gate,
-            gate_mode=self.mode,
-            decided_by=decided_by,
-            target_agent=request.requested_by or None,
-            input_summary=request.question,
-            output_summary=f"{choice} ({reason})",
-            options=list(request.options),
-            proposal=request.proposal,
-            **extra,
+            **line,
         )
         return decision
 
@@ -159,7 +165,7 @@ class Gate:
 MAX_TEXT = 300  # characters per context string
 MAX_ITEMS = 20  # keys per mapping, items per list, in a gate's context
 MAX_NOTE = 500
-_SECRET_ENV = re.compile(r"token|key|password|secret|authorization", re.IGNORECASE)
+MAX_LINE_TEXT = 4000  # question and summaries: masked, effectively never cut
 
 
 class GateNotFound(Exception):
@@ -178,23 +184,16 @@ class InvalidChoice(Exception):
     """The answer is not one of the gate's options."""
 
 
-def _secret_values() -> list[str]:
-    """Values of secret-looking environment variables (8+ characters): masked in any text a
-    gate shows or records."""
-    return [v for k, v in os.environ.items() if _SECRET_ENV.search(k) and v and len(v) >= 8]
-
-
 def scrub(value: Any, *, limit: int = MAX_TEXT, _depth: int = 0, _secrets=None) -> Any:
-    """A short, JSON-safe, secret-free copy of a gate's context or note: trace.redact (secret
-    keys, bearer tokens), then any secret environment value masked, strings cut to ``limit``,
+    """A short, JSON-safe, secret-free copy of anything a gate shows or traces (question,
+    options, proposal, context, note, ...): trace.redact (secret keys, bearer tokens), then any
+    secret environment value masked (trace.secret_env_values), strings cut to ``limit``,
     mappings and lists to MAX_ITEMS entries, nesting to 3 levels."""
-    secrets = _secret_values() if _secrets is None else _secrets
+    secrets = secret_env_values() if _secrets is None else _secrets
     if _depth == 0:
         value = redact(value)
     if isinstance(value, str):
-        for secret in secrets:
-            value = value.replace(secret, REDACTED)
-        return value[:limit]
+        return mask_secret_values(value, secrets)[:limit]
     if value is None or isinstance(value, bool | int | float):
         return value
     nested = {"limit": limit, "_depth": _depth + 1, "_secrets": secrets}
@@ -216,29 +215,53 @@ class PendingGate:
     """One interactive gate of a run: waiting, then answered (by a human) or expired."""
 
     gate_id: str
-    request: GateRequest
+    request: GateRequest  # the agent's own request: never shown as is
+    shown: dict[str, Any]  # scrubbed gate, question, options, proposal, node_id, requested_by
+    options: dict[str, str]  # shown option -> the request's option it stands for
     context: dict[str, Any]
     created_at: str
     deadline: str
     timeout_seconds: float
     status: str = "waiting"  # waiting | answered | expired
-    choice: str | None = None
+    choice: str | None = None  # as shown (one of shown["options"])
     note: str | None = None
     decided_by: str | None = None
     answered_at: str | None = None
 
+    @classmethod
+    def make(cls, gate_id: str, request: GateRequest, **fields: Any) -> PendingGate:
+        """Scrub every field the gate exposes; options keep a map back to the real ones."""
+        secrets = secret_env_values()
+        shown = scrub(
+            {
+                "gate": request.gate,
+                "question": request.question,
+                "node_id": request.node_id,
+                "requested_by": request.requested_by,
+            },
+            limit=MAX_LINE_TEXT,
+            _secrets=secrets,
+        )
+        options: dict[str, str] = {}
+        for option in request.options:  # a collision after masking keeps the first
+            options.setdefault(scrub(option, limit=MAX_LINE_TEXT, _secrets=secrets), option)
+        shown["options"] = list(options)
+        shown["proposal"] = scrub(request.proposal, limit=MAX_LINE_TEXT, _secrets=secrets)
+        context = scrub(dict(request.context), _secrets=secrets)
+        return cls(gate_id, request, shown, options, context, **fields)
+
     def public(self) -> dict[str, Any]:
         """The GateWaiting body (contracts/openapi/agent.yaml)."""
-        r = self.request
+        s = self.shown
         return {
             "gate_id": self.gate_id,
-            "gate": r.gate,
+            "gate": s["gate"],
             "status": self.status,
-            "question": r.question,
-            "options": list(r.options),
-            "proposal": r.proposal,
-            "node_id": r.node_id,
-            "requested_by": r.requested_by,
+            "question": s["question"],
+            "options": list(s["options"]),
+            "proposal": s["proposal"],
+            "node_id": s["node_id"],
+            "requested_by": s["requested_by"],
             "context": self.context,
             "created_at": self.created_at,
             "deadline": self.deadline,
@@ -287,50 +310,51 @@ class GateChannel:
         now = datetime.now(UTC)
         with self._cond:
             gate_id = f"g{len(self._gates) + 1}"
-            pending = PendingGate(
-                gate_id=gate_id,
-                request=request,
-                context=scrub(dict(request.context)),
+            pending = PendingGate.make(
+                gate_id,
+                request,
                 created_at=_iso(now),
                 deadline=_iso(now + timedelta(seconds=wait)),
                 timeout_seconds=wait,
             )
             self._gates[gate_id] = pending
+            shown = pending.shown  # scrubbed: the trace never sees the raw request
             # Traced under the lock, so an answer is never traced before its waiting line.
             self.tracer.emit(
                 agent=AGENT,
                 action="waiting",
-                node_id=request.node_id,
-                gate=request.gate,
+                node_id=shown["node_id"],
+                gate=shown["gate"],
                 gate_mode="interactive",
                 gate_id=gate_id,
-                question=request.question,
-                options=list(request.options),
-                proposal=request.proposal,
-                requested_by=request.requested_by or None,
+                question=shown["question"],
+                options=list(shown["options"]),
+                proposal=shown["proposal"],
+                requested_by=shown["requested_by"] or None,
                 target_agent="human",
                 context=pending.context,
                 deadline=pending.deadline,
                 timeout_seconds=wait,
-                input_summary=request.question,
+                input_summary=shown["question"],
                 output_summary=f"waiting for an answer until {pending.deadline} "
                 f"(POST /runs/<run_id>/gates/{gate_id})",
             )
             self._cond.wait_for(lambda: pending.status != "waiting", timeout=wait)
             if pending.status != "waiting":
-                return Answer(choice=pending.choice, note=pending.note, gate_id=gate_id)
+                choice = pending.options[pending.choice] if pending.choice else None
+                return Answer(choice=choice, note=pending.note, gate_id=gate_id)
             pending.status, pending.decided_by = "expired", "timeout"
             pending.answered_at = _iso(datetime.now(UTC))
             self.tracer.emit(
                 agent=AGENT,
                 action="expired",
                 status="degraded",
-                node_id=request.node_id,
-                gate=request.gate,
+                node_id=shown["node_id"],
+                gate=shown["gate"],
                 gate_mode="interactive",
                 gate_id=gate_id,
                 decided_by="timeout",
-                proposal=request.proposal,
+                proposal=shown["proposal"],
                 output_summary=f"no answer within {wait:g} s; the policy decides",
             )
             return Answer(choice=None, gate_id=gate_id, decided_by="timeout")
@@ -344,9 +368,10 @@ class GateChannel:
                 raise GateNotFound(gate_id)
             if pending.status != "waiting":
                 raise GateClosed(gate_id, pending.status)
-            if choice not in pending.request.options:
+            shown = pending.shown
+            if choice not in pending.options:  # the options as shown (scrubbed)
                 raise InvalidChoice(
-                    f"choice must be one of {list(pending.request.options)}, got {choice!r}"
+                    f"choice must be one of {list(shown['options'])}, got {scrub(choice)!r}"
                 )
             note = scrub(note, limit=MAX_NOTE) if note else None
             pending.status, pending.choice, pending.note = "answered", choice, note
@@ -354,14 +379,14 @@ class GateChannel:
             self.tracer.emit(
                 agent=AGENT,
                 action="answered",
-                node_id=pending.request.node_id,
-                gate=pending.request.gate,
+                node_id=shown["node_id"],
+                gate=shown["gate"],
                 gate_mode="interactive",
                 gate_id=gate_id,
                 decided_by="human",
                 choice=choice,
                 note=note,
-                proposal=pending.request.proposal,
+                proposal=shown["proposal"],
                 output_summary=f"{choice} (answered over the API)",
             )
             self._cond.notify_all()

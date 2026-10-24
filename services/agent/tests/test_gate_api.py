@@ -473,6 +473,100 @@ def test_end_to_end_trace_of_an_interactive_run_has_no_env_secret(client, tmp_pa
     assert secret not in json.dumps(client.get(f"/runs/{rid}/gates").json())
 
 
+PROBE = "tok-0123456789-abcdef"  # DuelLoop round 5: SECRET_PROBE in the environment
+
+
+def _probe_runner(req, *, tracer, run_id, logs_dir, ask=None):
+    """A gate whose question, options and proposal echo the request question (as a pasted
+    secret would reach a gate), then the normal investigation."""
+    gate = Gate("interactive", tracer=tracer, ask=ask)
+    secret_option = f"use {PROBE}"
+    decision = gate.decide(
+        GateRequest(
+            gate="framing",
+            question=f"Confirm the question: {req.question}",
+            options=(secret_option, "Bearer abcdef-ghijkl", "plain"),
+            proposal=secret_option,
+            node_id="n0",
+            requested_by=f"framer {PROBE}",
+            context={"question": req.question},
+        )
+    )
+    assert decision.choice in (secret_option, "Bearer abcdef-ghijkl", "plain")
+    return orchestrator.run_investigation(
+        req, tracer=tracer, run_id=run_id, logs_dir=logs_dir, ask=ask
+    )
+
+
+def test_probe_env_secret_in_the_question_never_reaches_gates_sse_or_trace(monkeypatch, tmp_path):
+    monkeypatch.setenv("SECRET_PROBE", PROBE)
+    client = _client(monkeypatch, tmp_path, runner=_probe_runner)
+    body = _body("01", hitl_mode="interactive")
+    body["question"] = f"Why did revenue fall? my key is {PROBE} and Bearer zzz-yyy-xxx"
+    assert client.post("/runs", json=body, headers={"X-Run-Id": "probe-1"}).status_code == 202
+    gate = _waiting(client, "probe-1", "framing")
+    assert PROBE not in json.dumps(gate) and "zzz-yyy-xxx" not in json.dumps(gate)
+    assert "***" in gate["question"] and gate["options"][0] == "use ***"
+    assert gate["proposal"] == "use ***" and gate["options"][1] == "***"
+    assert gate["requested_by"] == "framer ***"
+    bad = _answer(client, "probe-1", gate["gate_id"], f"use {PROBE}")  # the raw one is no option
+    _error(bad, 422, "ValidationError")
+    assert PROBE not in bad.text
+    ok = _answer(client, "probe-1", gate["gate_id"], "use ***", note=f"see {PROBE}")
+    assert ok.status_code == 200 and ok.json()["note"] == "see ***"
+    _answer(
+        client, "probe-1", _waiting(client, "probe-1", "critic_escalation")["gate_id"], "frontier"
+    )
+    _answer(client, "probe-1", _waiting(client, "probe-1", "source")["gate_id"], "register")
+    assert _finish("probe-1").end_state == "actionable"
+    gates = client.get("/runs/probe-1/gates").json()
+    assert PROBE not in json.dumps(gates) and gates["gates"][0]["choice"] == "use ***"
+    text = (tmp_path / "trace-probe-1.jsonl").read_text()
+    assert PROBE not in text and "zzz-yyy-xxx" not in text
+    lines = _lines(tmp_path, "probe-1")
+    framing = [e for e in lines if e["agent"] == "gate" and e.get("gate") == "framing"]
+    assert [e["action"] for e in framing] == ["waiting", "answered", "decide"]
+    assert framing[-1]["decided_by"] == "human" and framing[-1]["choice"] == "use ***"
+    with client.stream("GET", "/runs/probe-1/events") as stream:
+        sse = "".join(stream.iter_text())
+    assert PROBE not in sse and "zzz-yyy-xxx" not in sse and '"action": "waiting"' in sse
+    # Outside the gates too: run_accepted, the orchestrator start and the framer echo the
+    # question; the tracer masks env secrets and bearer tokens on every line.
+    echoed = [e for e in lines if e["action"] in ("run_accepted", "start", "frame")]
+    assert echoed and all("***" in e.get("input_summary", "***") for e in echoed)
+
+
+def test_secret_option_maps_back_to_the_agents_option():
+    secret = "opt-secret-0123456789"
+    channel = GateChannel(tracer=RecordingTracer(), timeout=5)
+    got = []
+    req = _req(options=(f"keep {secret}", "prune"), proposal=f"keep {secret}", question=secret)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("OPTION_TOKEN", secret)
+        thread = threading.Thread(target=lambda: got.append(channel.ask(req)), daemon=True)
+        thread.start()
+        deadline = time.monotonic() + WAIT
+        while channel.waiting() is None and time.monotonic() < deadline:
+            time.sleep(0.01)
+        shown = channel.waiting()
+        assert shown["options"] == ["keep ***", "prune"] and shown["question"] == "***"
+        channel.answer(shown["gate_id"], "keep ***", note=f"{secret} Bearer abc-def-ghi")
+        thread.join(WAIT)
+        assert got[0].choice == f"keep {secret}"  # the run gets the real option
+        assert channel.list()[0]["note"] == "*** Bearer ***"
+
+
+def test_the_tracer_masks_env_secret_values_on_every_line(tmp_path, monkeypatch, capsys):
+    from tiresias_agent.trace import Tracer
+
+    monkeypatch.setenv("ANY_API_KEY", "value-0123456789")
+    tracer = Tracer("mask-1", logs_dir=tmp_path)
+    tracer.emit(agent="orchestrator", action="start", input_summary="q value-0123456789 x")
+    line = (tmp_path / "trace-mask-1.jsonl").read_text()
+    assert "value-0123456789" not in line and "q *** x" in line
+    assert "value-0123456789" not in capsys.readouterr().out
+
+
 # --- contract ---------------------------------------------------------------------------------
 
 
