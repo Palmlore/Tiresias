@@ -4,7 +4,7 @@ The single list to work from. Every event requirement is merged and de-duplicate
 
 `[x]` done (evidence linked) · `[~]` in progress · `[ ]` not started
 
-Updated **2026-10-24 AEDT** (build day 3, after #17–#24). Work now lands through DuelLoop-reviewed PRs (AGENTS.md → How work lands). Deadline **27 Oct 23:45 UTC = 28 Oct 10:45 AEDT**.
+Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands through DuelLoop-reviewed PRs (AGENTS.md → How work lands). Deadline **27 Oct 23:45 UTC = 28 Oct 10:45 AEDT**.
 
 **Source keys**
 
@@ -38,9 +38,9 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#24). Work now lands throu
   - [x] Live discovery and any asked SEC registrant go through Zetaris only (#9: `ZetarisDiscovery` over the `sec_tickers` and per-candidate submissions REST tables, `onboarder.onboard_entity` registers an unknown asked company behind the `source` gate; `tests/test_any_company.py::test_only_the_sponsor_adapters_import_an_http_client_and_no_code_names_sec`; measured cold 15–21 s, warm 3–11 s; BACKLOG B-4 done)
   - [x] Spin-off discovery searches EDGAR full text through Zetaris too: one `fts_<hash>_raw` REST table per search, at most two per run (#13: `zetaris/sql/14_fulltext_table.sql`, `40_fulltext_total.sql`, `41_fulltext_hits.sql`)
   - [x] `zetaris/sql/` holds the registration SQL for the showcase entities (#5: 12 templates; `bootstrap` registered GE, GEHC, GEV and is idempotent)
-- [~] **Meterless Build rule: at least one engine in a working, user-facing feature, with test evidence** (SG §3.2)
+- [x] **Meterless Build rule: at least one engine in a working, user-facing feature, with test evidence** (SG §3.2) (#30: H-MEM is investigation memory in every warm run, sample mode included)
   - [x] H-MEM in `services/cognition`; official conformance 13/13 (`npm run conformance`); 6 tests
-  - [ ] User-facing feature: cold → warm → purge → cold memory demo through `/run`
+  - [x] User-facing feature: cold → warm → purge → cold memory demo through `/run` (#30: `scripts/memory_demo.py` in sample mode, run in CI's quickstart job: 3M cold stores a lesson; GE spin-off warm 5 → 3 hops; the lesson is rejected by the critic on the impairment case; purge confirmed by cognition; cold again 5 hops; `tests/test_memory.py`, 32 tests)
 - [~] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4) (#22: every model call goes through Nightshift, three lanes (hypothesiser, critic second opinion, reporter wording), the model proposes and the rules decide, ADR-0010; #24: the user picks the depth, `quick` (default, rules only) / `thorough` / `deep`, ADR-0011; measured live once on case 01 on 2026-10-24: 4 calls, ~170 s; sample mode, the judges' default, makes no model call by design, so a judge sees the lanes only live)
   - [x] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers (2026-10-24: Nightshift 1.2.1 in the Tart VM; host access needed macOS Local Network permission for the terminal and for Docker; `/v1/models` answers from the host and from a container)
   - [x] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling) (merged #2; 2026-10-24: `python -m tiresias_agent.adapters.nightshift probe` passes on both lanes, receipts name the served model)
@@ -56,7 +56,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#24). Work now lands throu
 - [~] Six end states implemented, with the asker-relative stopping rule (#6, #8: the stopping rule in `orchestrator.py` produces `actionable`, `branched`, `external-driver`, `evidence-frontier` and `budget`; `cyclic` is in the model but no path emits it, because the hypothesiser drops candidates already on the path (BACKLOG B-2); the examples reach `actionable` only, plus `budget` and `evidence-frontier` in tests)
 - [~] Human-in-the-loop gates with `auto` / `interactive` / `scripted` modes, each decision traced (ADR-0006) (#6: `gates.py`, `tests/test_gates.py`; `critic_escalation` and (#8) `source` gates run in `auto`, and `scripted` through `RunOptions.decisions` on `/run`, e.g. `tests/test_loop_b.py::test_scripted_source_deny_keeps_the_frontier`; `interactive` has no channel yet (no CLI prompt or UI), so it falls back to policy; no memory gate)
 - [ ] Branching from a node of a finished run (`/runs/{id}/branch`)
-- [ ] Memory gate and lesson write-back from the agent to cognition; recalled lessons seed the hypothesiser; the critic gives feedback on them
+- [x] Memory gate and lesson write-back from the agent to cognition; recalled lessons seed the hypothesiser; the critic gives feedback on them (#30: entity-free lessons behind the `memory` gate; recall reorders the hypothesiser and, when a lesson's step holds, skips siblings listed in `memory.skipped` (ADR-0005 addendum); critic `helpful` / `not_helpful` / `wrong` feedback; `POST /memory/purge` reports only confirmed purges)
   - [x] Agent-side cognition client: every endpoint, `X-Run-Id`, degrades to no-memory when cognition is down; purge never reports a purge that didn't happen (#3; live round trip in the PR). Not called by the orchestrator yet; `/memory/purge` returns 501
 - [ ] Disclosure guardrail: a sensitive finding (non-reliance, auditor change, late filing, large impairment) is stated only with a direct filing marker and the measured effect, behind a disclosure gate; otherwise it stays a frontier lead
 - [x] Entity list and question suggestions for the UI (`GET /entities`, `GET /entities/{cik}/suggestions`) (#12: ready/searchable tiers with expected first-run waits from the live measurement; suggestions derived from the entity's own filings and each one checked by the framer before it is returned, `tests/test_entities_api.py::test_the_three_examples_are_among_ges_derived_suggestions`, `::test_every_suggestion_is_neutral_validated_and_runnable`)
@@ -82,7 +82,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#24). Work now lands throu
 ## E. Data, secrets, integrity
 - [x] `.env.example` with placeholders only; `.env` gitignored; secrets scan passes (`scripts/check_secrets.sh`) (OR §11; SC §11)
 - [x] Data sources, licences and redistribution notes documented ([data-sources.md](data-sources.md)) (OR §11; TE §7)
-- [x] `data/sample/` slice with provenance (URL, fetch time, SHA-256) and `scripts/fetch_sample.py`; repo stays small (TE §7) (460 KB; `data/sample/PROVENANCE.json`)
+- [x] `data/sample/` slice with provenance (URL, fetch time, SHA-256) and `scripts/fetch_sample.py`; repo stays small (TE §7) (676 KB after #26 added 3M and Solventum with a cached full-text search; `data/sample/PROVENANCE.json`)
 - [x] No hardcoded outputs: outputs differ meaningfully across the 3 inputs; `output_examples/` is never read at runtime (SC §8; AI §4.1) (#6, #8: `tests/test_orchestrator.py::test_outputs_differ_across_cases`, `tests/test_loop_b.py::test_investigation_outputs_differ_across_cases`, the case-literal guard `test_agent_logic_has_no_case_specific_literals`; `grep -rn output_examples services/agent/src` finds nothing)
 - [~] Traces generated by the run, never hand-written, matching the input processed (SC §9; AI §4.2) (#6, #7: every run writes `logs/trace-<run_id>.jsonl` with its `run_id` and `mode`, `tests/test_orchestrator.py::test_every_trace_line_has_run_id_status_and_sample_label`, `tests/test_api.py::test_x_run_id_is_echoed_and_names_the_trace_file`; none committed to `logs/samples/` yet)
 - [ ] No keys in the video, deck, screenshots or logs (SC §11; DV §10)
@@ -100,7 +100,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#24). Work now lands throu
 ## G. Demo video (Demo, 15 pts): 1–4 min, target 2:30–3:30
 - [ ] Storyboard final ([demo-plan.md](demo-plan.md)): problem, solution, agents, live run, sponsor tech in the trace, output and impact (DV §2–3)
 - [ ] Shows a real run, at least one collaboration moment (critic rejects or sends back), and Zetaris + Meterless doing real work (DV §4)
-- [ ] Memory demo: cold vs warm step counts, plus the purge event (ADR-0005)
+- [~] Memory demo: cold vs warm step counts, plus the purge event (ADR-0005) (the script exists and runs in CI (#30); recording it is part of the video)
 - [ ] Clear audio, readable text, 1080p, no secrets on screen (DV §5, §10)
 - [ ] Uploaded; link opens in a private window; backup copy; link in README and `metadata.json` (DV §7–8)
 
