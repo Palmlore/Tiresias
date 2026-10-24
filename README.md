@@ -92,7 +92,7 @@ The full cross-reference is in **[docs/RUBRIC.md](docs/RUBRIC.md)**.
 | Technical (20) | [docs/architecture.md](docs/architecture.md), [docs/decisions/](docs/decisions/), `services/` |
 | Innovation (15) | [docs/causal-criteria.md](docs/causal-criteria.md) |
 | Demo (15) | [docs/demo-plan.md](docs/demo-plan.md), `input_examples/`, `output_examples/`, `logs/samples/` |
-| Product & UX (10) | [docs/problem-and-users.md](docs/problem-and-users.md) (asker profiles, branching) |
+| Product & UX (10) | [docs/problem-and-users.md](docs/problem-and-users.md) (asker profiles, branching), [docs/use-cases.md](docs/use-cases.md) (the analyst's working loop, screens, demo stories) |
 | Sponsor Tech (10) | [docs/sponsor-technology.md](docs/sponsor-technology.md), [metadata.json](metadata.json) |
 
 ## Repository layout
