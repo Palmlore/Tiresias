@@ -1017,8 +1017,10 @@ class ZetarisDiscovery:
         RELEASED.discard(table)
 
     def _recache(self, table: str, entry_id: str) -> None:
-        """An existing table this process released earlier: CACHE it again before reading it."""
+        """An existing table this process released earlier: CACHE it again before reading it.
+        Either way the read below caches it, so this instance tracks it for ``release_cache``."""
         if not RELEASED.has(table):
+            self._cached(table)  # registered by an earlier run; this read caches it
             return
         self._pace(entry_id)
         cache = render_file("12_cache_table.sql", self.directory, table=table)

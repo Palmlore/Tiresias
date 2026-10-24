@@ -423,6 +423,26 @@ def test_scout_release_uncaches_unchosen_candidates_and_fulltext_tables(no_real_
     assert again.cached == ["acmv_submissions_raw"]
 
 
+def test_scout_release_uncaches_discovery_tables_that_already_existed(no_real_http):
+    """A table registered by an earlier run (not released by this process) is read, so it is
+    cached: the scout tracks it and releases it like one it created."""
+    fake = FakeZetaris(ACME_TICKERS, ACME_ALIASES, views={"sec_tickers"})
+    first = cat.ZetarisDiscovery(
+        cat.load_catalog(), fake.client(), user_agent=UA, sleep=lambda s: 0
+    )
+    first.submissions("0001996810", "ACMV")
+    first.filers_naming("acme healthcare", ["10-12B"], "2022-01-01", "2023-01-31")
+    fts = next(t for t in first.cached if t.startswith("fts_"))
+    d = cat.ZetarisDiscovery(cat.load_catalog(), fake.client(), user_agent=UA, sleep=lambda s: 0)
+    d.submissions("0001996810", "ACMV")
+    d.filers_naming("acme healthcare", ["10-12B"], "2022-01-01", "2023-01-31")
+    assert sorted(d.cached) == sorted(["acmv_submissions_raw", fts])
+    before = len(fake.sql)
+    report = d.release_cache(keep=["ACME"])
+    assert sorted(uncached(fake.sql[before:])) == sorted(["acmv_submissions_raw", fts])
+    assert all(r["released"] for r in report)
+
+
 def test_live_run_releases_discovery_tables_after_the_scout(tmp_path, monkeypatch, no_real_http):
     monkeypatch.setenv("SEC_USER_AGENT", UA)
     fake = FakeZetaris(ACME_TICKERS, ACME_ALIASES)
