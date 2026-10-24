@@ -18,6 +18,9 @@ Claude Code (Anthropic's CLI coding agent) is the main development tool, used fo
 
 From 23 Oct 2026 every pull request is also reviewed by **DuelLoop**, the author's own two-model review loop: the OpenAI **Codex CLI** acts as an adversarial reviewer that must demonstrate each blocking finding by running it, and Claude Code acts as the worker that fixes, rebuts or defers each finding (deferrals go to [BACKLOG.md](../BACKLOG.md)). Using two different model providers is deliberate: a model reviewing its own work mostly measures agreement with itself. The review history is visible on the repository's pull requests. Neither tool is part of the product.
 
+## Assets
+The Tiresias mark and the three character icons in [`assets/`](../assets/) were drawn as original geometry on 2026-10-23 in a Cursor coding-agent session (`scripts/render_brand.py`); PNGs are rasterised from those shapes with Pillow. No third-party artwork, likenesses or logos. Each file is listed in [`assets/README.md`](../assets/README.md) (inventory). Cover, social, diagrams, screenshots and the deck are not in the repository yet.
+
 ## Data
 Public SEC EDGAR and company_dns data. See [data-sources.md](data-sources.md). No synthetic data so far; any synthetic data will be labelled.
 

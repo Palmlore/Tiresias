@@ -26,7 +26,8 @@ Open the rest only when the task needs them:
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
 | `input_examples/` | 3 GE cases (inputs) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
-| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes) |
+| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `render_brand.py`, `verify_brand_assets.py` |
+| `assets/` | Submission brand, characters, diagrams and deck ([assets/README.md](assets/README.md)). Not in the agent image. |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |
@@ -67,6 +68,9 @@ curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d '{"que
 # checks before every push
 ./scripts/check_secrets.sh && ./scripts/validate_metadata.sh
 python3 scripts/verify_audit.py [--python services/agent/.venv/bin/python] [--with-cognition]   # re-run docs/measurements/verifier-audit-2026-10-24 (no uv, no network)
+python3 scripts/verify_brand_assets.py   # palette + logo + character icons (stdlib)
+# rebuild committed brand PNGs from the SVG geometry (optional; needs Pillow)
+cd services/agent && uv run --with pillow python ../../scripts/render_brand.py
 # Zetaris (local, outside this repo)
 cd ~/Repos/hackathon2026/zetaris/zetaris-platform && ./verify.sh   # UI localhost:3000, REST :8888
 python3 scripts/zetaris_probe.py     # latency and registration probe (reads .env)
