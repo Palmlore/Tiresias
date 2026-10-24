@@ -53,7 +53,7 @@
     },
     "meterless": {
       "status": "in-progress",
-      "how": "Nightshift is the model provider for every model call: three lanes (extra hypotheses, a second opinion for the critic, action wording), where the model proposes and the rules and data decide (ADR-0010), chosen per question by investigation depth, quick by default (ADR-0011). Measured live once on 2026-10-24. Sample mode, the judges' default, makes no model call. H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) will store lessons from past investigations, never answers, with a memory gate and an audited purge; the agent does not use it yet.",
+      "how": "Nightshift is the model provider for every model call: three lanes (extra hypotheses, a second opinion for the critic, action wording), where the model proposes and the rules and data decide (ADR-0010), chosen per question by investigation depth, quick by default (ADR-0011). Measured live once on 2026-10-24. Sample mode, the judges' default, makes no model call. H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) is the agent's investigation memory in every warm run, sample mode included: entity-free lessons stored behind a memory gate, recalled to reorder the hypothesiser, judged by the critic (helpful / not helpful / wrong feedback), and purgeable through POST /memory/purge (ADR-0005). scripts/memory_demo.py shows cold → warm → misapplied lesson rejected → purge → cold, and runs in CI.",
       "engines": [
         "H-MEM"
       ],
@@ -64,13 +64,16 @@
         "services/cognition/engine/hmem/",
         "contracts/openapi/cognition.yaml",
         "services/agent/src/tiresias_agent/agents/model_lanes.py",
-        "services/agent/src/tiresias_agent/adapters/nightshift.py"
+        "services/agent/src/tiresias_agent/adapters/nightshift.py",
+        "services/agent/src/tiresias_agent/agents/memory.py",
+        "scripts/memory_demo.py"
       ],
       "evidence": [
         "services/cognition: `npm run conformance` passes the official H-MEM conformance suite 13/13 against the module the service loads",
         "services/cognition: `npm test` (remember, recall threshold, namespaces, gate reject, purge survives restart, REST)",
         "services/agent/tests/test_model_lanes.py and tests/test_depth.py: lanes validated, the rules decide, sample mode makes no model call, Nightshift outages degrade to the rules",
-        "2026-10-24 live run of case 01 at depth deep: 4 Nightshift calls, each traced with routed_model, provider and receipt id"
+        "2026-10-24 live run of case 01 at depth deep: 4 Nightshift calls, each traced with routed_model, provider and receipt id",
+        "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition"
       ],
       "decisions": [
         "docs/decisions/ADR-0002-split-services-rest.md",
