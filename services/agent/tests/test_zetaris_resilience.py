@@ -114,6 +114,31 @@ def test_dead_engine_400_is_recoverable_and_degrades_to_the_sample(body):
     assert len(sent) == 1  # a dead engine is not retried
 
 
+@pytest.mark.parametrize("status", [200, 204])
+@pytest.mark.parametrize("payload", [{"msg": STOPPED}, {"headers": [], "data": [], "msg": NPE}])
+def test_dead_engine_2xx_is_recoverable_and_degrades_to_the_sample(status, payload):
+    tracer, sent = RecordingTracer(), []
+
+    def handler(request):
+        sent.append(sql_of(request))
+        return httpx.Response(status, json=payload)
+
+    client = make_client(handler, tracer=tracer)
+    with pytest.raises(z.SourceError) as excinfo:
+        client.run_sql("SELECT 1", label="probe")
+    assert excinfo.value.recoverable and excinfo.value.dead_engine
+    source = z.make_source(False, tracer, client=client)
+    facts = source.concept_series("ge", "Revenues")
+    assert facts and facts.source == "sample" and facts.degraded
+    assert len(sent) == 2  # one per call, never retried
+
+
+def test_dead_engine_2xx_with_rows_is_a_result():
+    # Row text that quotes the signature is data, not an outage.
+    client = make_client(lambda r: ok(["note"], [[STOPPED]]))
+    assert client.run_sql("SELECT note", label="rows").rows == [{"note": STOPPED}]
+
+
 def test_dead_engine_is_classified_in_one_place():
     assert z.dead_engine(STOPPED) and z.dead_engine(NPE.upper())
     assert not z.dead_engine("java.lang.NullPointerException at Foo.bar")

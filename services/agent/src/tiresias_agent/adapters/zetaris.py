@@ -203,6 +203,19 @@ def dead_engine(text: str) -> bool:
     return any(all(part in body for part in sig) for sig in DEAD_ENGINE_SIGNATURES)
 
 
+def _dead_without_rows(response: httpx.Response) -> bool:
+    """True when a 2xx reply shows a dead engine and carries no data rows."""
+    text = response.text[:20_000]
+    if not dead_engine(text):
+        return False
+    try:
+        payload = response.json() if response.content else {}
+    except ValueError:
+        return True
+    data = payload.get("data") if isinstance(payload, dict) else None
+    return not (isinstance(data, list) and data)
+
+
 # --- SQL templates ----------------------------------------------------------------------------
 
 
@@ -466,7 +479,20 @@ class ZetarisClient:
                     f"Zetaris {label}: connection failed ({type(exc).__name__})", recoverable=True
                 )
             else:
-                if response.status_code < 400:
+                if response.status_code < 400 and _dead_without_rows(response):
+                    # A 2xx can carry the dead-engine message too; it is an outage, not an
+                    # empty result. A reply with data rows is never classified (row text could
+                    # quote the signature).
+                    detail = self._scrub(response.text[:500], redact)
+                    error = SourceError(
+                        f"Zetaris {label}: HTTP {response.status_code}: "
+                        f"{DEAD_ENGINE_HINT}: {detail[:160]}",
+                        recoverable=True,
+                        status_code=response.status_code,
+                        detail=detail,
+                        dead_engine=True,
+                    )
+                elif response.status_code < 400:
                     result = self._parse(response, label, shown_sql, start, attempt, extra)
                     if isinstance(result, QueryResult):
                         return result
