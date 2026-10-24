@@ -18,7 +18,8 @@ how SEC filers behave:
    b. **brand**: registrants in the ticker map whose name carries the source's brand (first word
       of the title equals the source's ticker or the first word of its title, unless that word
       is generic, ``knowledge.GENERIC_NAME_WORDS``), newest CIK first. A ranking signal and the
-      only source of candidates where full-text search is unavailable (sample mode).
+      only source of candidates where full-text search returns nothing (in sample mode, any
+      search data/sample/ does not cache).
    At most MAX_CANDIDATES in all, named first.
 3. For each candidate, its own filing history (sec_submissions) must show that it became a
    separate registrant at that disposal: it existed by the disposal date (earliest former name or

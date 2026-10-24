@@ -3,6 +3,7 @@
 
 import json
 from datetime import date
+from pathlib import Path
 
 import httpx
 import pytest
@@ -16,9 +17,12 @@ from tiresias_agent.adapters.catalog import (
     TickerRow,
     ZetarisDiscovery,
     fulltext_endpoint,
+    fulltext_hit_rows,
+    fulltext_sample_file,
     fulltext_table,
     load_catalog,
 )
+from tiresias_agent.adapters.zetaris import SourceError
 from tiresias_agent.agents import source_scout
 from tiresias_agent.models import EntityHint, InformationNeed, Period
 
@@ -145,12 +149,97 @@ def test_no_evidence_at_all_says_what_was_searched(no_real_http):
     assert 'name searched: "acme"' in scout.reason
 
 
-def test_sample_mode_has_no_full_text_search_and_says_so():
+def test_sample_mode_without_a_cached_search_returns_nothing_and_says_so():
     tracer = RecordingTracer()
     d = SampleDiscovery(CATALOG, tracer=tracer)
     rows = d.filers_naming("acme", ["10-12B"], "2022-01-01", "2023-01-04")
     assert list(rows) == [] and "not in sample" in rows.note
     assert rows.sql.startswith("SELECT cik") and "FROM tiresias_sec.fts_" in rows.sql
+
+
+def _hit(ciks, names, day, form, items=()):
+    return {
+        "_source": {
+            "ciks": ciks,
+            "display_names": names,
+            "file_date": day,
+            "form": form,
+            "items": list(items),
+        }
+    }
+
+
+SEARCH = {
+    "hits": {
+        "total": {"value": 5, "relation": "eq"},
+        "hits": [
+            _hit(["0000000007"], ["Seven Corp (CIK 0000000007)"], "2022-03-01", "10-12B"),
+            _hit(["0000000007"], ["Seven Corp (CIK 0000000007)"], "2022-05-01", "10-12B/A"),
+            _hit(["0000000009"], ["Nine Inc (CIK 0000000009)"], "2022-04-01", "10-12B"),
+            # one document with two filers counts for each, under its own display name
+            _hit(
+                ["0000000008", "0000000009"],
+                ["Eight LLC (CIK 0000000008)", "Nine Inc (CIK 0000000009)"],
+                "2022-06-01",
+                "8-K",
+                ["2.01", "9.01"],
+            ),
+            _hit(["0000000008"], ["Eight LLC (CIK 0000000008)"], "2022-02-01", "8-K", ["2.01"]),
+        ],
+    }
+}
+
+
+def test_fulltext_hit_rows_aggregates_like_41_fulltext_hits_sql():
+    rows = fulltext_hit_rows(SEARCH)
+    # ORDER BY hits DESC, cik DESC
+    assert [(r["cik"], r["hits"]) for r in rows] == [
+        ("0000000009", 2),
+        ("0000000008", 2),
+        ("0000000007", 2),
+    ]
+    nine, eight, seven = rows
+    assert nine["name"] == "Nine Inc (CIK 0000000009)" and nine["forms"] == "10-12B,8-K"
+    assert eight["items"] == "2.01,9.01" and eight["first_date"] == "2022-02-01"
+    assert seven["forms"] == "10-12B,10-12B/A" and seven["last_date"] == "2022-05-01"
+    assert seven["items"] == "" and {r["total"] for r in rows} == {5}
+    assert len(fulltext_hit_rows(SEARCH, limit=1)) == 1
+    with pytest.raises(SourceError):
+        fulltext_hit_rows({"hits": {"total": {"value": 1}, "hits": [{"no_source": 1}]}})
+
+
+def test_sample_mode_serves_a_cached_search_under_the_live_table_name(tmp_path):
+    endpoint = fulltext_endpoint(CATALOG, "acme", ["10-12B"], "2021-07-13", DISPOSAL)
+    table = fulltext_table(endpoint)
+    (tmp_path / fulltext_sample_file(table)).write_text(json.dumps(SEARCH))
+    tracer = RecordingTracer()
+    rows = SampleDiscovery(CATALOG, tmp_path, tracer=tracer).filers_naming(
+        "ACME", ["10-12B", "10-12B/A"], "2021-07-13", DISPOSAL
+    )
+    assert [r.cik10 for r in rows] == ["0000000009", "0000000008", "0000000007"]
+    assert rows[1].items == ("2.01", "9.01") and rows[0].total == 5
+    assert f"FROM tiresias_sec.{table}" in rows.sql and rows.source == "sample"
+    assert "5 matching document(s); 3 filer(s) shown" in rows.note
+    line = next(e for e in tracer.events if e["action"] == "fulltext")
+    assert line["rows"] == 3 and "served from data/sample/" in line["output_summary"]
+    empty = {"hits": {"total": {"value": 0, "relation": "eq"}, "hits": []}}
+    (tmp_path / fulltext_sample_file(table)).write_text(json.dumps(empty))
+    none = SampleDiscovery(CATALOG, tmp_path).filers_naming(
+        "acme", ["10-12B"], "2021-07-13", DISPOSAL
+    )
+    assert list(none) == [] and none.note.startswith("0 matching document(s)")
+
+
+def test_every_cached_search_in_the_slice_is_named_after_its_provenance_url():
+    root = Path(__file__).resolve().parents[3] / "data" / "sample"
+    records = json.loads((root / "PROVENANCE.json").read_text())["files"]
+    cached = sorted(p.name for p in root.glob("fts_*.json"))
+    assert cached, "the slice caches at least one full-text search"
+    by_file = {r["file"]: r for r in records}
+    for name in cached:
+        url = by_file[name]["source_url"]
+        assert url.startswith("https://efts.sec.gov/LATEST/search-index?")
+        assert fulltext_sample_file(fulltext_table(url)) == name
 
 
 def test_search_phrase_uses_the_name_in_force_at_the_disposal():

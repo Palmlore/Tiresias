@@ -240,6 +240,12 @@ FORBIDDEN = [
     r"0001964738",
     r"2021-11-04",
     r"2024-04-04",
+    # the 3M -> Solventum lead example (input_examples/04, data/sample/)
+    r"\bMMM\b",
+    r"\b3M\b",
+    r"0000066740",
+    r"(?i)\bsolv\b",
+    r"fts_[0-9a-f]{16}",
 ]
 LOGIC_FILES = sorted(
     [

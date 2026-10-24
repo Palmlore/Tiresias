@@ -4,8 +4,8 @@ Usage (from the repo root; needs a running Zetaris and ZETARIS_API_KEY + SEC_USE
     cd services/agent && uv run python ../../scripts/perf_smoke.py [request.json ...] \
         [--runs 2] [--logs-dir DIR] [--out results.jsonl] [--env-file PATH]
 
-Runs ``orchestrator.run_investigation`` in live mode on each request (default: the three
-input_examples/), ``--runs`` times in a row: run 1 is "cold" for an entity Zetaris has not
+Runs ``orchestrator.run_investigation`` in live mode on each request (default: every
+input_examples/*.json, four today), ``--runs`` times in a row: run 1 is "cold" for an entity Zetaris has not
 registered yet (registration and the first SEC fetch happen in it), later runs are "warm"
 (tables registered, CACHE TABLE hit). Reads per-phase wall time from the run's own trace lines
 (``orchestrator`` ``phase_done``), plus the first evidence query, the slowest Zetaris statement

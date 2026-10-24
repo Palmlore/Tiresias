@@ -60,7 +60,7 @@ jobs:
       - run: ./scripts/validate_metadata.sh
 
   quickstart:
-    name: quickstart (docker compose, sample mode, three examples)
+    name: quickstart (docker compose, sample mode, four examples)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -77,7 +77,7 @@ jobs:
           done
           docker compose logs agent
           exit 1
-      - name: Run the three input examples
+      - name: Run the four input examples
         run: |
           for f in input_examples/*.json; do
             curl -sf -X POST localhost:8000/run -H 'Content-Type: application/json' \

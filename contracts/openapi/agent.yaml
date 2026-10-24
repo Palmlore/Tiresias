@@ -165,7 +165,7 @@ components:
         entity:
           type: object
           description: >-
-            The asked registrant. Sample mode covers only the offline slice (GE, GEHC, GEV);
+            The asked registrant. Sample mode covers only the offline slice (GE, GEHC, GEV, MMM, SOLV);
             live mode resolves any SEC registrant through the Zetaris sec_tickers view and
             registers it behind the source gate.
           properties:
