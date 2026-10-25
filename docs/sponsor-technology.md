@@ -33,13 +33,26 @@ Status: **working**. A live run from a fresh Zetaris (every Tiresias object drop
 
 **Candidates for later:** the Markovian engine (each "why" as a bounded step with compressed carryover) and World Model (the why-tree as entities and edges with provenance).
 
-Status: **in-progress**. The H-MEM service works and passes conformance 13/13, and the agent uses it in warm runs, sample mode included (memory demo in CI). Nightshift is live in live mode: the model lanes (ADR-0010) call it for extra candidates, the critic's second opinion and the action wording, traced with the routed model; measured once on case 01 on 2026-10-24 (4 calls). A live run calls it only when the user asks for depth `thorough` (critic) or `deep` (all lanes); the default `quick` is rules only (ADR-0011). Sample mode stays rule-based.
+Status: **working**, with the caveats below. H-MEM: the service passes conformance 13/13 and the agent uses it in every warm run, sample mode included, so a judge can run it (memory demo in CI; the committed sample traces show a lesson stored, recalled and rejected). Nightshift: a live run from a fresh state is committed with every model call traced ([output_examples/README.md](../output_examples/README.md)); the model lanes (ADR-0010) call it only in live mode at depth `thorough` (critic) or `deep` (all lanes); the default `quick` and sample mode make no model call (ADR-0011).
 
 ## NVIDIA
 
-Nemotron models serve the Nightshift lanes: a fast lane for the hypothesiser and reporter, a deep lane for the critic's second opinion. Nightshift 1.2.1 does not let a request pin a model, so the evidence is the receipt: every model call's trace line records `routed_model` and `provider` (on 2026-10-24 every live call was routed to a Nemotron model). The NVIDIA key lives only in Nightshift's Providers tab.
+Nemotron models serve the Nightshift lanes: a fast lane for the hypothesiser and reporter, a deep lane for the critic's second opinion. Nightshift 1.2.1 does not let a request pin a model, so the evidence is the receipt: every model call's trace line records `routed_model` and `provider`. In the committed fresh-state run all four calls were served by Nemotron models (`nvidia/nemotron-3-ultra-550b-a55b` once, `nvidia/nemotron-3.5-super-vl-120b-a12b` three times). The NVIDIA key lives only in Nightshift's Providers tab.
 
-Status: **in progress** (the lanes are built and were measured live once on 2026-10-24; sample mode makes no model call, so a judge sees them only in a live run at depth `thorough` or `deep`)
+Status: **working**, with the caveats below.
+
+### What the model-call trace shows, and what it does not
+
+The claim for Nightshift and Nemotron rests on one committed live run: case 04 (3M) at depth `deep`, from a fresh Zetaris, trace [`logs/samples/trace-run-20261024T233153Z-c3227e.jsonl`](../logs/samples/trace-run-20261024T233153Z-c3227e.jsonl). Read it with these limits:
+
+1. **One run, and a judge cannot repeat it from the quickstart.** The quickstart is sample mode, and the default depth is `quick`: neither calls a model. Repeating the run needs a Nightshift Runtime with an NVIDIA key and a Zetaris bundle. The trace is the evidence; it was not edited (only the output's `trace_file` path was made repo-relative).
+2. **Two of the three lanes appear in it.** The critic's second opinion (3 calls, deep lane) and the action's wording (1 call, fast lane). The hypothesis lane made **no** call: it only fills branch slots the rules leave free, and the three rule candidates filled all three (`MAX_BRANCHES_PER_LEVEL` = 3). That lane is covered by tests with a mocked Runtime (`tests/test_model_lanes.py`), not by a live trace.
+3. **One of the four replies was unusable.** The first critic call (Nemotron Ultra) answered in prose, not the JSON asked for; the trace marks it `ModelProtocolError` and the critic `rejected` it, so that step was decided by the rules alone. The other three replies were used.
+4. **We do not choose the model.** Nightshift 1.2.1 routes by lane and ignores explicit model ids. We claim only what each receipt names (`routed_model`, `provider`, `receipt_id`); all four were Nemotron in this run, and a different routing would show in the trace.
+5. **Prompts and replies are summarised.** Each model call's trace line keeps the first 160 characters of the prompt and the reply, the token count, the duration and the receipt id, not the full text. The receipt id can be matched in Nightshift's own request log on the machine that made the run, which a judge cannot reach.
+6. **The models advise; they don't decide.** A second opinion that disagrees goes to the `critic_escalation` gate, whose auto policy keeps the rule verdict; the wording is used only if it adds no number or name. In this run both second opinions agreed with the rules, and the root cause, residual and figures equal sample mode's.
+
+An earlier live run of case 01 at depth `deep` (2026-10-24, 4 calls, timings in the README's Models section) was measured but its trace is not committed, so it is not counted as evidence here.
 
 ## Cursor
 
