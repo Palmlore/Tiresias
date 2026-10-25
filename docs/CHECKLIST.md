@@ -30,7 +30,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [ ] One primary track selected on HackOS: *Reasoning Architecture* (OR §6; ADR-0009)
 
 ## B. Sponsor technology (required, and scored under Sponsor Tech, 10 pts)
-- [~] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10) (live mode: every read, discovery included, is Zetaris SQL (#9); sample mode, the judge default, runs the same logic on cached rows, so a judge sees Zetaris only by running `--live` against a local bundle; no live trace committed yet)
+- [x] **Zetaris integrated and load-bearing.** Every claim is a Zetaris SQL query (OR §8.1, §16; SC §10) (live mode: every read, discovery included, is Zetaris SQL (#9); sample mode, the judge default, runs the same logic on cached rows, so a judge sees Zetaris run in the committed live traces, one from a fresh Zetaris with every call traced (`logs/samples/`, [output_examples/README.md](../output_examples/README.md)), or by running `--live` against a local bundle)
   - [x] Local Zetaris running and measured ([measurements/zetaris-local.md](measurements/zetaris-local.md); reproduce with `scripts/zetaris_probe.py`)
   - [x] GE vs GE HealthCare reconciliation runs inside Zetaris (residual $114M), via `scripts/zetaris_probe.py`
   - [x] Agent's Zetaris adapter (timeout, retry, fallback to cached rows) (TE §9) (#5: live and sample sources, falls back to `data/sample/` on outage and traces `degraded`; live smoke row counts match sample mode)
@@ -41,10 +41,10 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [x] **Meterless Build rule: at least one engine in a working, user-facing feature, with test evidence** (SG §3.2) (#30: H-MEM is investigation memory in every warm run, sample mode included)
   - [x] H-MEM in `services/cognition`; official conformance 13/13 (`npm run conformance`); 6 tests
   - [x] User-facing feature: cold → warm → purge → cold memory demo through `/run` (#30: `scripts/memory_demo.py` in sample mode, run in CI's quickstart job: 3M cold stores a lesson; GE spin-off warm 5 → 3 hops; the lesson is rejected by the critic on the impairment case; purge confirmed by cognition; cold again 5 hops; `tests/test_memory.py`, 32 tests)
-- [~] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4) (#22: every model call goes through Nightshift, three lanes (hypothesiser, critic second opinion, reporter wording), the model proposes and the rules decide, ADR-0010; #24: the user picks the depth, `quick` (default, rules only) / `thorough` / `deep`, ADR-0011; measured live once on case 01 on 2026-10-24: 4 calls, ~170 s; sample mode, the judges' default, makes no model call by design, so a judge sees the lanes only live)
+- [x] **Meterless Power rule: Nightshift is the primary model provider**; real requests go through the Runtime (SG §4) (#22: every model call goes through Nightshift, three lanes (hypothesiser, critic second opinion, reporter wording), the model proposes and the rules decide, ADR-0010; #24: the user picks the depth, `quick` (default, rules only) / `thorough` / `deep`, ADR-0011; measured live once on case 01 on 2026-10-24: 4 calls, ~170 s; sample mode, the judges' default, makes no model call by design, so a judge sees the lanes only live; 25 Oct: a fresh-state live run at depth `deep` committed, 4 Nightshift calls each with lane, routed model and receipt id: `logs/samples/trace-run-20261024T233153Z-c3227e.jsonl`; caveats in sponsor-technology.md: one run, hypothesis lane made no call, one reply rejected)
   - [x] Nightshift installed in an isolated macOS VM; hotspot mode; reachable from the host and from containers (2026-10-24: Nightshift 1.2.1 in the Tart VM; host access needed macOS Local Network permission for the terminal and for Docker; `/v1/models` answers from the host and from a container)
   - [x] Agent model client (OpenAI-compatible, `meterless-app` and `meterless-scope` headers, 180 s timeout, offline-state handling) (merged #2; 2026-10-24: `python -m tiresias_agent.adapters.nightshift probe` passes on both lanes, receipts name the served model)
-- [~] **NVIDIA (optional; DGX Spark award):** a Nemotron lane pinned in Nightshift that materially powers a feature (e.g. a deep critic); evidence of which model served each request (SG §4.3–4.7; event page) (#22: Nemotron serves the lanes through Nightshift, every call traces `routed_model`, `provider` and the receipt id; live 2026-10-24: nemotron-3.5-lightning-30b-a3b and nemotron-3.5-super-vl-120b-a12b served the critic and wording lanes, one critic disagreement kept by the rules. Not pinned: Nightshift 1.2.1 routes on its own and does not honour explicit model ids)
+- [x] **NVIDIA (optional; DGX Spark award):** at least one Nemotron model through Nightshift in a working feature, showing which model handled each request (OR §15.2 as of the final rules; SG §4.3–4.7) (#22: Nemotron serves the lanes through Nightshift, every call traces `routed_model`, `provider` and the receipt id; live 2026-10-24: nemotron-3.5-lightning-30b-a3b and nemotron-3.5-super-vl-120b-a12b served the critic and wording lanes, one critic disagreement kept by the rules. Not pinned: Nightshift 1.2.1 routes on its own and does not honour explicit model ids; 25 Oct: the committed fresh-state trace shows all 4 calls served by Nemotron (Ultra once, reply rejected as prose; Super VL three times); caveats in sponsor-technology.md)
 - [x] ~~**Developed in Cursor.**~~ Optional since the organizers' 23 Oct update ("Cursor is now optional … use any AI coding tool"). Claude Code is the main coding agent. Describe only the tools actually used ([ai-usage.md](ai-usage.md)) (OR §8.1 as amended; SP cursor).
 
 ## C. Agent system (Technical 20 · Innovation 15)
@@ -84,16 +84,16 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [x] Data sources, licences and redistribution notes documented ([data-sources.md](data-sources.md)) (OR §11; TE §7)
 - [x] `data/sample/` slice with provenance (URL, fetch time, SHA-256) and `scripts/fetch_sample.py`; repo stays small (TE §7) (676 KB after #26 added 3M and Solventum with a cached full-text search; `data/sample/PROVENANCE.json`)
 - [x] No hardcoded outputs: outputs differ meaningfully across the 3 inputs; `output_examples/` is never read at runtime (SC §8; AI §4.1) (#6, #8: `tests/test_orchestrator.py::test_outputs_differ_across_cases`, `tests/test_loop_b.py::test_investigation_outputs_differ_across_cases`, the case-literal guard `test_agent_logic_has_no_case_specific_literals`; `grep -rn output_examples services/agent/src` finds nothing)
-- [~] Traces generated by the run, never hand-written, matching the input processed (SC §9; AI §4.2) (#6, #7: every run writes `logs/trace-<run_id>.jsonl` with its `run_id` and `mode`, `tests/test_orchestrator.py::test_every_trace_line_has_run_id_status_and_sample_label`, `tests/test_api.py::test_x_run_id_is_echoed_and_names_the_trace_file`; none committed to `logs/samples/` yet)
+- [x] Traces generated by the run, never hand-written, matching the input processed (SC §9; AI §4.2) (#6, #7: every run writes `logs/trace-<run_id>.jsonl` with its `run_id` and `mode`, `tests/test_orchestrator.py::test_every_trace_line_has_run_id_status_and_sample_label`, `tests/test_api.py::test_x_run_id_is_echoed_and_names_the_trace_file`; real traces in `logs/samples/`: four sample-mode runs through the judge quickstart and one live run through Zetaris, see [output_examples/README.md](../output_examples/README.md))
 - [ ] No keys in the video, deck, screenshots or logs (SC §11; DV §10)
 
 ## F. Repository documentation
 - [x] Public GitHub repo (OR §10.1; SR)
-- [~] README: setup, usage, dependencies, agent roles, examples, limitations, track named (SR §3.3; SC §3) (written; quickstart runnable in sample mode since #7, live any-company notes since #9; final pass after the UI and memory demo)
+- [~] README: setup, usage, dependencies, agent roles, examples, limitations, track named (SR §3.3; SC §3) (written; quickstart runnable in sample mode since #7, live any-company notes since #9; 25 Oct pass to the final rules: dependencies, tests, sample outputs and traces, sponsor roles; last pass after the UI)
 - [~] AI and model usage disclosure ([ai-usage.md](ai-usage.md)) (AI §6); third-party code and licences ([NOTICE](../NOTICE))
 - [x] Pre-existing components declared: none (OR §8.2; SF §3.8)
-- [ ] ≥3 sample inputs **and** matching real outputs (inputs done; outputs after real runs) (OR §10.2; TE §13)
-- [ ] `logs/samples/` traces from real runs, referenced by the outputs (TE §8)
+- [x] ≥3 sample inputs **and** matching real outputs (OR §10.2; TE §13) (four inputs; five outputs in `output_examples/`, four sample mode and one live, each naming its trace)
+- [x] `logs/samples/` traces from real runs, referenced by the outputs (TE §8) ([output_examples/README.md](../output_examples/README.md))
 - [~] Limitations stated honestly ([limitations.md](limitations.md)) (SC §13)
 - [x] `AGENTS.md` handover for coding agents
 
@@ -111,8 +111,8 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [ ] Consistent with the repo and demo; no claims the code doesn't support
 
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
-- [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris, Meterless, Cursor and NVIDIA, plus "what was unique" (SR §3.4) (drafted; finalize from what ships)
-- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris, Meterless and NVIDIA `in-progress`; Cursor `planned`, the schema has no "optional")
+- [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris (data layer), Meterless (the H-MEM engine, its feature and test; Nightshift as the AI provider and how the app connects) and NVIDIA, plus "what was unique" (SR §3.4, final rules; Cursor optional) (written 25 Oct; the fresh-state live trace with model calls is committed, and its caveats are listed there)
+- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris `working` (a fresh-state live trace with every call); Meterless and NVIDIA `working` on the same fresh-state trace, caveats in sponsor-technology.md; Cursor `planned`, the schema has no "optional")
 - [ ] Switch to the official metadata format if the organizers publish one (STATUS #1)
 
 ## J. Submission (HackOS)

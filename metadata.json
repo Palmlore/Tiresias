@@ -24,8 +24,8 @@
   },
   "sponsors": {
     "zetaris": {
-      "status": "in-progress",
-      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Live mode is measured but not yet the judge's default path (sample mode runs the same logic on cached rows), hence in-progress.",
+      "status": "working",
+      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Each Zetaris call is a trace line (SQL, outcome, rows, duration, retries); a live run from a fresh Zetaris is committed in logs/samples/. The judge's default quickstart is sample mode, which runs the same logic on cached rows.",
       "interface": "rest",
       "deployment": "local-docker",
       "data_sources": [
@@ -42,6 +42,8 @@
         "catalog/sources.yaml"
       ],
       "evidence": [
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl and output_examples/04_3m_2023_revenue_restated.live-fresh-deep.json: a live run of case 04 (3M) from a fresh Zetaris (every Tiresias object dropped, driver restarted) on 2026-10-24 23:31 UTC: the run registers the ticker list, 3M's facts and filings, a full-text search and Solventum's facts in Zetaris, and every call is traced with SQL, outcome, rows, duration and retries",
+        "logs/samples/trace-run-20261024T230646Z-45973c.jsonl: the same case live with the sources already registered, no fallback",
         "docs/measurements/live-any-company.md: live runs through local Zetaris on 2026-10-23 (three examples plus IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT), cold and warm, timed from each run's phase trace lines",
         "docs/measurements/zetaris-local.md: local bundle latencies (REST table registration 0.6–2.0 s, cached queries)",
         "services/agent/tests/test_any_company.py: no agent module outside the sponsor adapters makes HTTP calls; live discovery and registration run as Zetaris SQL (mocked endpoint)",
@@ -52,8 +54,8 @@
       ]
     },
     "meterless": {
-      "status": "in-progress",
-      "how": "Nightshift is the model provider for every model call: three lanes (extra hypotheses, a second opinion for the critic, action wording), where the model proposes and the rules and data decide (ADR-0010), chosen per question by investigation depth, quick by default (ADR-0011). Measured live once on 2026-10-24. Sample mode, the judges' default, makes no model call. H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) is the agent's investigation memory in every warm run, sample mode included: entity-free lessons stored behind a memory gate, recalled to reorder the hypothesiser, judged by the critic (helpful / not helpful / wrong feedback), and purgeable through POST /memory/purge (ADR-0005). scripts/memory_demo.py shows cold → warm → misapplied lesson rejected → purge → cold, and runs in CI.",
+      "status": "working",
+      "how": "Nightshift is the model provider for every model call: three lanes (extra hypotheses, a second opinion for the critic, action wording), where the model proposes and the rules and data decide (ADR-0010), chosen per question by investigation depth, quick by default (ADR-0011). A live run from a fresh state at depth deep is committed with every Nightshift call traced (lane, routed_model, provider, receipt id). Caveats (docs/sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not): it is one run; sample mode, the judges' default, and depth quick make no model call; in that run the hypothesis lane made no call and one of four replies was unusable and rejected. H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) is the agent's investigation memory in every warm run, sample mode included: entity-free lessons stored behind a memory gate, recalled to reorder the hypothesiser, judged by the critic (helpful / not helpful / wrong feedback), and purgeable through POST /memory/purge (ADR-0005). scripts/memory_demo.py shows cold → warm → misapplied lesson rejected → purge → cold, and runs in CI.",
       "engines": [
         "H-MEM"
       ],
@@ -72,8 +74,9 @@
         "services/cognition: `npm run conformance` passes the official H-MEM conformance suite 13/13 against the module the service loads",
         "services/cognition: `npm test` (remember, recall threshold, namespaces, gate reject, purge survives restart, REST)",
         "services/agent/tests/test_model_lanes.py and tests/test_depth.py: lanes validated, the rules decide, sample mode makes no model call, Nightshift outages degrade to the rules",
-        "2026-10-24 live run of case 01 at depth deep: 4 Nightshift calls, each traced with routed_model, provider and receipt id",
-        "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition"
+        "2026-10-24 live run of case 01 at depth deep (trace not committed; timings only, README Models): 4 Nightshift calls",
+        "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition",
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: a live run at depth deep, 4 Nightshift calls, each traced with lane, routed_model, provider and receipt id"
       ],
       "decisions": [
         "docs/decisions/ADR-0002-split-services-rest.md",
@@ -95,15 +98,16 @@
       "decisions": []
     },
     "nvidia": {
-      "status": "in-progress",
-      "how": "Nemotron models, served through Meterless Nightshift, power the model lanes: the critic's second opinion (deep lane), extra hypotheses and action wording (fast lane). Every call records the model that actually served it (routed_model) and the receipt id; on 2026-10-24 nemotron-3.5-lightning-30b-a3b and nemotron-3.5-super-vl-120b-a12b served live calls. Not pinned: Nightshift 1.2.1 routes on its own.",
+      "status": "working",
+      "how": "Nemotron models, served through Meterless Nightshift, power the model lanes: the critic's second opinion (deep lane), extra hypotheses and action wording (fast lane). Every call records the model that actually served it (routed_model) and the receipt id. In the committed fresh-state live run all four calls were served by Nemotron (nemotron-3-ultra-550b-a55b once, its reply rejected as prose; nemotron-3.5-super-vl-120b-a12b three times). Not pinned: Nightshift 1.2.1 routes on its own. Caveats (docs/sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not): one run; the hypothesis lane made no call in it.",
       "route": "via-meterless",
       "where": [
         "services/agent/src/tiresias_agent/agents/model_lanes.py",
         "services/agent/src/tiresias_agent/adapters/nightshift.py"
       ],
       "evidence": [
-        "2026-10-24 live run of case 01 at depth deep: critic second opinions and wording served by Nemotron, routed_model and receipt ids in the trace",
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: 4 calls served by nvidia/nemotron-3-ultra-550b-a55b (1) and nvidia/nemotron-3.5-super-vl-120b-a12b (3), routed_model and receipt id on each trace line",
+        "2026-10-24 live run of case 01 at depth deep (trace not committed): critic second opinions and wording served by Nemotron",
         "services/agent/tests/test_model_lanes.py::test_every_model_call_writes_one_line_with_routing_and_no_secret"
       ],
       "decisions": [

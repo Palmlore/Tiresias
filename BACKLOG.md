@@ -140,6 +140,38 @@ Found in: fix/zetaris-catch-all (24 Oct)  ·  Status: open  ·  Severity: later
 - Review at: after submission, or the next live pass with a packet capture of one DDL reply.
 - Evidence: `adapters/zetaris.py` (`ZetarisClient._parse`: `payload.get("headers") or []`); `tests/test_zetaris_matrix.py` (2xx rows).
 
+## B-26: A live run that falls back to sample data still reports `success` with no run-level flag
+Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: found while producing `output_examples/`. A live run with a wrong `ZETARIS_REST_URL` (path missing, every call HTTP 404) degraded every read to the sample slice, as rule 8 requires, and ended `status: success`, `end_state: actionable`, with the same answer as a real live run. The fallback shows only per evidence item (`degraded: true` on 13 items) and in the trace (`degraded` lines); `RunResult` has no top-level field saying the run did not reach Zetaris, and the liveness probe called the 404 "refused, run goes ahead live". Adding a run-level field changes the contract (`contracts/openapi/agent.yaml`) and the UI, which is a feature change, not part of committing outputs.
+- Safe to leave because: sample mode, the judge's default, is labelled (`sample_mode: true`, `mode: sample` on every trace line); a live run's fallback is in its trace and on each evidence item, never hidden, and the data it falls back to is the real cached SEC slice.
+- Urgent if: a judge or the demo runs live mode, or the UI shows a live result without reading the evidence items.
+- Review at: UI integration (the UI should show a "served from sample" badge), or before the demo rehearsal (Mon 26 Oct).
+- Evidence: a live run of `input_examples/04_3m_2023_revenue_restated.json` with `ZETARIS_REST_URL=http://localhost:8888` (no `/api/v1.0`): 20 `error` and 15 `degraded` trace lines, result `success`/`actionable`; `RunResult` in `services/agent/src/tiresias_agent/models.py` (no run-level `degraded`).
+
+## B-27: The agent test suite reads a running cognition service
+Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
+- Out of scope because: with `docker compose up` running, `pytest` fails 16 tests in `test_depth.py` and `test_model_lanes.py`: their sample runs use the default memory mode (warm) and the default `COGNITION_URL`, so they recall lessons that earlier runs stored in the live H-MEM service and the result shape changes. With the stack stopped all tests pass. The fix (tests default to `MEMORY_MODE=cold` or an unreachable `COGNITION_URL` in a conftest fixture) is a test change, not part of committing outputs.
+- Safe to leave because: CI runs pytest without the stack, and the failures are in the tests' environment, not the agent; `tests/test_memory.py` covers memory with its own fake service.
+- Urgent if: a judge or reviewer runs pytest with the stack up and reports failures.
+- Review at: the final README pass (state "stop the stack before pytest" or land the fixture).
+- Evidence: `docker compose up` then `cd services/agent && uv run --group dev pytest -q` gives 16 failed, 578 passed; after `docker compose stop`, 594 passed.
+
+## B-28: On an empty Zetaris the first entity read is served from the sample
+Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
+- Out of scope because: in the fresh-state live run (`logs/samples/trace-run-20261024T233153Z-c3227e.jsonl`) the first read, `SHOW LIGHTNING TABLES TIRESIAS_SEC`, answered HTTP 400 "Lightning Database 'TIRESIAS_SEC' doesn't exist"; the catch-all classes that as `unclassified`, so the registered-entity list for that read came from the sample (`degraded`). The run then registered the database and every source itself and answered from Zetaris. Reading "doesn't exist" as an empty list is a classifier change in `adapters/zetaris.py` plus a matrix test.
+- Safe to leave because: it happens once per Zetaris install (before the first registration), the line is traced, and entity resolution goes through the Zetaris ticker table, not that list.
+- Urgent if: a judge's first live run on a new bundle needs the entity list from Zetaris (`GET /entities` live on an empty bundle lists the sample's companies).
+- Review at: after submission.
+- Evidence: lines 6–7 of the trace above; `classify_reply` in `adapters/zetaris.py`.
+
+## B-29: The two committed live traces do not carry the output's `root_cause`
+
+- **Found in:** #33, round 3 (review of PR #33 against C1).
+- **Evidence:** the reporter's `report` line in `trace-run-20261024T233153Z-c3227e.jsonl` and `trace-run-20261024T230646Z-45973c.jsonl` has `end_state` and `residual` but no `root_cause`; the reporter now traces it (`tests/test_report_trace.py`) and the four sample outputs were re-run, but a trace cannot be edited (rule 1), so the live pair can only be fixed by new runs.
+- **Severity:** low. The `end_state`, `residual` and the root cause's figures (`output_summary`) are on the line; only the full sentence is unverifiable from the trace. `output_examples/README.md` says so.
+- **Why not in #33:** the fix is two new live runs, one from a fresh Zetaris: that needs every Tiresias object in Zetaris dropped (a destructive step the human runs) and the Nightshift VM, and it replaces the trace C3 and C8 are pinned to.
+- **Review point:** before submission, or if a judge or reviewer cites the live root cause as unverified; re-run both live cases and update C3/C8's run id.
+
 ## Closed
 
 - **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.
