@@ -50,6 +50,27 @@ from .runs import wait_budget_seconds as _wait_budget
 from .trace import Tracer
 
 registry = RunRegistry()
+
+
+def public_demo() -> bool:
+    """PUBLIC_DEMO=true: a hosted, public demo (deploy/gcp). Sample mode only (a request asking
+    for live mode gets 403 LiveModeDisabled) and no memory purge (403 PurgeDisabled), so a
+    visitor can neither reach live services nor wipe the shared memory. Read per request."""
+    return os.getenv("PUBLIC_DEMO", "false").strip().lower() in {"1", "true", "yes"}
+
+
+def _live_refused(sample_mode: bool | None, run_id: str | None = None) -> JSONResponse | None:
+    if public_demo() and (sample_mode is False or not settings.sample_mode):
+        return error_response(
+            403,
+            "LiveModeDisabled",
+            "This public demo runs in sample mode only (cached SEC data, rules only). Run the "
+            "project locally for live mode: see the README.",
+            run_id=run_id,
+        )
+    return None
+
+
 # Zetaris cache warm-up on start (BACKLOG B-20), reported by GET /health as zetaris_cache.
 zetaris_cache = WarmStatus()
 
@@ -149,6 +170,7 @@ def health() -> dict:
         "service": "agent",
         "version": __version__,
         "sample_mode": settings.sample_mode,
+        "public_demo": public_demo(),
         "hitl_mode": settings.hitl_mode,
         "zetaris_cache": zetaris_cache.snapshot(),
         "zetaris": zetaris_health(),
@@ -158,6 +180,9 @@ def health() -> dict:
 def _start(body: RunRequest, x_run_id: str | None) -> RunRecord | JSONResponse:
     if x_run_id is not None and not valid_run_id(x_run_id):
         return error_response(422, "ValidationError", "X-Run-Id must match [A-Za-z0-9._-]{1,100}.")
+    refused = _live_refused(body.options.sample_mode, x_run_id)
+    if refused is not None:
+        return refused
     try:
         return registry.start(body, run_id=x_run_id)
     except RunConflict:
@@ -335,6 +360,9 @@ def list_entities(
     limit: int = Query(default=entities.DEFAULT_LIMIT, ge=1, le=entities.MAX_LIMIT),
     sample_mode: bool | None = None,
 ) -> JSONResponse:
+    refused = _live_refused(sample_mode, _header_run_id(request))
+    if refused is not None:
+        return refused
     sample, tracer, source, discovery = _directory(request, sample_mode)
     body = entities.list_entities(
         q, sample=sample, source=source, discovery=discovery, tracer=tracer, limit=limit
@@ -350,6 +378,9 @@ def entity_suggestions(
     limit: int = Query(default=12, ge=1, le=20),
     sample_mode: bool | None = None,
 ) -> JSONResponse:
+    refused = _live_refused(sample_mode, _header_run_id(request))
+    if refused is not None:
+        return refused
     sample, tracer, source, discovery = _directory(request, sample_mode)
     try:
         body = entities.suggestions(
@@ -389,7 +420,15 @@ def purge_memory(
     namespace: str | None = Query(default=None, max_length=100),
 ) -> JSONResponse:
     """Purge H-MEM lessons through cognition. Reports only the count cognition confirmed: an
-    unreachable cognition is 503, a refused or malformed reply 502 (adapters.cognition)."""
+    unreachable cognition is 503, a refused or malformed reply 502 (adapters.cognition). Off in a
+    public demo (403 PurgeDisabled): the memory there is shared by every visitor."""
+    if public_demo():
+        return error_response(
+            403,
+            "PurgeDisabled",
+            "Memory purge is off in this public demo; run the project locally to purge.",
+            run_id=_header_run_id(request),
+        )
     run_id = _header_run_id(request) or f"api-{datetime.now(UTC):%Y%m%d}"
     tracer = Tracer(
         run_id,

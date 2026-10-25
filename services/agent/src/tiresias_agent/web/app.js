@@ -79,7 +79,8 @@ async function loadHealth() {
     state.health = await api("/health");
     const sample = state.health.sample_mode;
     const b = $("mode-badge");
-    b.textContent = sample ? "sample mode: cached SEC data, rules only" : "live: Zetaris + Nightshift";
+    b.textContent = (state.health.public_demo ? "public demo · " : "") +
+      (sample ? "sample mode: cached SEC data, rules only" : "live: Zetaris + Nightshift");
     b.className = `badge ${sample ? "sample" : "live"}`;
     b.title = sample
       ? "Runs the real agent logic on an offline slice of SEC data; no model is called."
@@ -503,7 +504,8 @@ function renderMemory(m) {
     el("h3", { text: "Memory (H-MEM)" }),
     el("p", { class: "note", text: m.mode === "cold" ? "Cold run: no lesson recalled or stored."
       : m.available === false ? (m.note || "Memory service unavailable: the run went on without it.")
-      : "Lessons are generic paths that worked before (no company, figure or date). The critic judges each one." }),
+      : "Lessons are generic paths that worked before (no company, figure or date). The critic judges each one." +
+        (state.health && state.health.public_demo ? " In this public demo, memory is shared by every visitor and resets when the server restarts." : "") }),
     ...recalled.map((x) => el("div", { class: "mem-item" },
       el("div", { class: "stats" }, badge(x.memory_id), badge(x.status, x.status === "supported" ? "ok" : x.status === "rejected" ? "bad" : "muted"),
         badge(`relevance ${Number(x.relevance).toFixed(2)}`, "muted")),

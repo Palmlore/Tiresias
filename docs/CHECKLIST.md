@@ -74,6 +74,7 @@ Updated **2026-10-24 AEDT** (build day 3, after #17–#30). Work now lands throu
 - [~] Full validation flow from a fresh clone (SC §14), first on **day 4**, again before submitting (2026-10-24: fresh clone from GitHub, README only, sample mode: every Quickstart step matches, 7 s of command time with cached base images; 8 friction points, README fixed in #21; again before submitting)
 - [x] CI on every PR and on `main`: agent tests and lint, cognition tests and H-MEM conformance, secrets and metadata checks, and the judge quickstart in Docker (#19, `.github/workflows/ci.yml`)
 - [x] Merged PRs' acceptance criteria re-run on `main` on demand (#20: `scripts/verify_audit.py`, 158 criteria from 16 PRs; findings B-22, B-23)
+- [x] Hosted demo (optional; not a requirement): the web UI in sample mode on Cloud Run, https://tiresias-tckagkyqxa-ts.a.run.app (feat/cloud-run: `deploy/gcp/deploy.sh`, one instance with cognition as a sidecar, `PUBLIC_DEMO=true` refuses live mode and memory purge, `tests/test_public_demo.py`; A$50 budget alert on the project)
 - [ ] **Judge installation test on a clean macOS Tahoe VM** (Tart `macos-tahoe-base`, nothing preinstalled): a newcomer following only the README gets the system running. Rule: `submission/` is all a judge sees; assume no cache, no local setup.
   - [ ] Every setup step is a script where possible (one command per step, idempotent, prints ✔/✖)
   - [ ] Steps that can't be scripted (e.g. Nightshift install, access gate, NVIDIA key) have a screenshot and a one-line reason why they're manual

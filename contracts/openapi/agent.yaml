@@ -197,6 +197,11 @@ components:
         service: {type: string, const: agent}
         version: {type: string}
         sample_mode: {type: boolean}
+        public_demo:
+          type: boolean
+          description: >
+            PUBLIC_DEMO=true (a hosted demo): requests asking for live mode get 403
+            LiveModeDisabled and POST /memory/purge gets 403 PurgeDisabled.
         hitl_mode: {type: string}
         zetaris_cache: {$ref: "#/components/schemas/ZetarisCache"}
         zetaris: {$ref: "#/components/schemas/ZetarisHealth"}

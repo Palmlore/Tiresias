@@ -1,0 +1,54 @@
+# Cloud Run service for the hosted demo: one instance, the agent with cognition (H-MEM) as a
+# sidecar on localhost, as in compose.yaml. Sample mode only (PUBLIC_DEMO), no secrets.
+# deploy.sh fills in AGENT_IMAGE, COGNITION_IMAGE and RUN_SERVICE_ACCOUNT.
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: tiresias
+  labels:
+    app: tiresias
+  annotations:
+    run.googleapis.com/ingress: all
+    # Public without an allUsers IAM binding (the org restricts IAM members to its domain).
+    run.googleapis.com/invoker-iam-disabled: "true"
+spec:
+  template:
+    metadata:
+      annotations:
+        # Exactly one instance: runs and H-MEM lessons live in that instance's memory, and the
+        # UI follows a run (SSE, gates) on the instance that started it.
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/container-dependencies: '{"agent": ["cognition"]}'
+    spec:
+      serviceAccountName: RUN_SERVICE_ACCOUNT
+      containerConcurrency: 40
+      timeoutSeconds: 900
+      containers:
+        - name: agent
+          image: AGENT_IMAGE
+          ports:
+            - containerPort: 8000
+          env:
+            - {name: SAMPLE_MODE, value: "true"}
+            - {name: PUBLIC_DEMO, value: "true"}
+            - {name: HITL_MODE, value: "auto"}
+            - {name: COGNITION_URL, value: "http://localhost:8100"}
+            - {name: MAX_CONCURRENT_RUNS, value: "4"}
+          resources:
+            limits: {cpu: "1", memory: 1Gi}
+          startupProbe:
+            httpGet: {path: /health, port: 8000}
+            periodSeconds: 2
+            failureThreshold: 30
+        - name: cognition
+          image: COGNITION_IMAGE
+          env:
+            - {name: COGNITION_PORT, value: "8100"}
+          resources:
+            limits: {cpu: "1", memory: 512Mi}
+          startupProbe:
+            tcpSocket: {port: 8100}
+            periodSeconds: 2
+            failureThreshold: 30

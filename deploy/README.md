@@ -12,5 +12,5 @@ Sample mode (`SAMPLE_MODE=true`, the default) needs only the first row.
 
 ## Cloud (overlay, not required to run)
 
-- [gcp/](gcp/README.md): Cloud Run for the services; Zetaris on a GCE VM
+- [gcp/](gcp/README.md): the hosted demo on Cloud Run (sample mode, deployed); a plan for Zetaris on a GCE VM
 - [aws/](aws/README.md): Zetaris's documented managed-cluster path
