@@ -11,9 +11,9 @@ Real outputs saved from real runs of `input_examples/`. They are **never read at
 | [04_3m_2023_revenue_restated.live-fresh-deep.json](04_3m_2023_revenue_restated.live-fresh-deep.json) | **live**, fresh Zetaris, depth `deep` (Nightshift) | `actionable` | Solventum spin-off (8-K, 2024-04-04) | −0.0156 | [trace-run-20261024T233153Z-c3227e.jsonl](../logs/samples/trace-run-20261024T233153Z-c3227e.jsonl) |
 | [04_3m_2023_revenue_restated.live-registered-quick.json](04_3m_2023_revenue_restated.live-registered-quick.json) | **live**, sources already registered, depth `quick` | `actionable` | Solventum spin-off (8-K, 2024-04-04) | −0.0156 | [trace-run-20261024T230646Z-45973c.jsonl](../logs/samples/trace-run-20261024T230646Z-45973c.jsonl) |
 
-## How they were produced (25 Oct 2026 AEDT; the live runs from main at `064c288`, the sample runs re-run on this branch once the reporter traced `root_cause`)
+## How they were produced (25 Oct 2026 AEDT; the live runs from main at `064c288`, the sample runs re-run in PR #33 once the reporter traced `root_cause`)
 
-**Sample mode, as a judge runs it.** `cp .env.example .env && docker compose up --build`, then each input posted in order 01 → 04:
+**Sample mode, as a judge runs it.** `docker compose up --build` from a clean copy of the repo with no `.env` (sample mode needs none), then each input posted in order 01 → 04. With `cp .env.example .env` first, the only difference is the placeholder User-Agent in the dry-run registration SQL, which shows as `***` instead of `sample-mode dry-run`:
 
 ```bash
 curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' \
