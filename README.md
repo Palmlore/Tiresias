@@ -12,6 +12,7 @@
 | **Track** | Reasoning Architecture |
 | **Team** | Palmlore (solo) |
 | **Status** | 🚧 **Build window open until 27 Oct 2026.** Each section says what works today; nothing is marked working that you can't run. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
+| **Try it online** | **[tiresias-tckagkyqxa-ts.a.run.app](https://tiresias-tckagkyqxa-ts.a.run.app)**: the web UI on a hosted demo, sample mode only (cached SEC data, rules only; no live Zetaris or Nightshift), memory shared by every visitor. Run it locally for everything else. |
 | **Licence** | Apache-2.0 |
 
 ---
@@ -33,6 +34,8 @@ You ask *"why did this figure change?"* and say **who is asking** (analyst, audi
 Every step (query, hypothesis, critique, human-in-the-loop gate, source registration) is written to a JSONL trace, memory recall (ids and scores), the critic's call on each lesson, feedback and the write-back included.
 
 ## Quickstart (judges)
+
+**No install:** open the hosted demo, **https://tiresias-tckagkyqxa-ts.a.run.app**, to use the web UI (see Web UI below) in sample mode. It runs the same image as `docker compose` with `PUBLIC_DEMO=true`: requests asking for live mode and the memory purge are refused (403), and H-MEM memory is shared by every visitor and resets when the server restarts. Deployment: [deploy/gcp/](deploy/gcp/README.md).
 
 **Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. H-MEM memory works in sample mode too (the cognition service runs in the same `docker compose`; see Memory below). In live mode the agent also calls Nightshift models (see Models below). **A web UI** comes with it on http://localhost:8000 (see Web UI below); branching is still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks it.
 

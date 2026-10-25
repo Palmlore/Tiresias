@@ -1,6 +1,6 @@
 # Cloud Run service for the hosted demo: one instance, the agent with cognition (H-MEM) as a
 # sidecar on localhost, as in compose.yaml. Sample mode only (PUBLIC_DEMO), no secrets.
-# deploy.sh fills in AGENT_IMAGE and COGNITION_IMAGE.
+# deploy.sh fills in AGENT_IMAGE, COGNITION_IMAGE and RUN_SERVICE_ACCOUNT.
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
@@ -22,6 +22,7 @@ spec:
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/container-dependencies: '{"agent": ["cognition"]}'
     spec:
+      serviceAccountName: RUN_SERVICE_ACCOUNT
       containerConcurrency: 40
       timeoutSeconds: 900
       containers:
