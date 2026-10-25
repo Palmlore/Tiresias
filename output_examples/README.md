@@ -1,6 +1,6 @@
 # Output examples
 
-Real outputs saved from real runs of `input_examples/`. They are **never read at runtime** (`grep -rn output_examples services/agent/src` finds nothing). Each output names the `run_id` of its trace in [`logs/samples/`](../logs/samples/).
+Real outputs saved from real runs of `input_examples/`. They are **never read at runtime** (`grep -rn output_examples services/agent/src` finds nothing). Each output names the `run_id` of its trace in [`logs/samples/`](../logs/samples/). In each trace the reporter's `action: report` line carries the output's `end_state` and `residual`, and its `output_summary` states the root cause's figures (the full `root_cause` sentence is in the output only). A run at depth `thorough`/`deep` adds two later reporter lines (`model_wording`, `reword`) for the action's wording; they carry no end state.
 
 | Output | Mode | End state | Root cause found | Residual (share of the effect left unexplained; negative = over-explained) | Trace |
 |---|---|---|---|---|---|
