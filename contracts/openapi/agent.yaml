@@ -2,7 +2,10 @@ openapi: 3.1.0
 info:
   title: Tiresias agent API
   version: 0.1.0-draft
-  description: Draft contract (ADR-0002). Endpoints are marked with their implementation status.
+  description: >
+    Draft contract (ADR-0002). Endpoints are marked with their implementation status. Outside this
+    contract, the agent also serves its web UI as static files at /ui/ (GET / redirects there); the UI
+    is a client of the endpoints below.
 servers: [{url: http://localhost:8000}]
 paths:
   /health:

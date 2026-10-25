@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tiresias</title>
+  <meta name="description" content="An evidence-backed 5 Whys root-cause agent for SEC filings.">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="./" aria-label="Tiresias home">
+      <img src="logo.svg" alt="" width="32" height="32">
+      <span class="brand-name">Tiresias</span>
+      <span class="brand-tag">why did the number change?</span>
+    </a>
+    <div class="top-status">
+      <span id="mode-badge" class="badge" title="Server mode">…</span>
+      <span id="memory-badge" class="badge muted" hidden></span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- 1. Ask -->
+    <section class="panel ask" aria-labelledby="ask-h">
+      <h2 id="ask-h"><img src="you.svg" alt="" class="who-icon"> Ask</h2>
+
+      <label class="field">
+        <span>Company</span>
+        <input id="entity-q" type="search" placeholder="Ticker or name (e.g. MMM, GE)" autocomplete="off">
+      </label>
+      <ul id="entity-list" class="entity-list" aria-label="Companies"></ul>
+
+      <div class="row">
+        <label class="field">
+          <span>I am</span>
+          <select id="role">
+            <option value="analyst">an analyst</option>
+            <option value="auditor">an auditor</option>
+            <option value="board">a board member</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="suggestions" class="suggestions" aria-live="polite"></div>
+
+      <details class="custom">
+        <summary>Ask your own question</summary>
+        <form id="custom-form" class="custom-form">
+          <label class="field"><span>Question</span>
+            <textarea id="c-question" rows="3" required placeholder="Why did 3M's reported 2023 revenue fall between its 2024 and 2025 annual reports?"></textarea></label>
+          <div class="row">
+            <label class="field"><span>Ticker</span><input id="c-ticker" required placeholder="MMM" maxlength="12"></label>
+            <label class="field"><span>Metric</span>
+              <select id="c-metric"><option>Revenues</option><option>NetIncomeLoss</option></select></label>
+            <label class="field"><span>Fiscal year</span><input id="c-year" type="number" min="2009" max="2030" value="2023" required></label>
+          </div>
+          <button type="submit" class="btn">Investigate</button>
+        </form>
+      </details>
+
+      <details class="settings">
+        <summary>Run settings</summary>
+        <label class="field"><span>Human gates</span>
+          <select id="hitl">
+            <option value="interactive">I decide at each gate</option>
+            <option value="auto">Auto (the agent's proposal)</option>
+          </select></label>
+        <label class="field"><span>Memory</span>
+          <select id="memory">
+            <option value="warm">Warm: recall and store lessons</option>
+            <option value="cold">Cold: no memory</option>
+          </select></label>
+        <label class="field"><span>Depth</span>
+          <select id="depth">
+            <option value="quick">Quick: rules only</option>
+            <option value="thorough">Thorough: + critic second opinion</option>
+            <option value="deep">Deep: every model lane</option>
+          </select>
+          <small id="depth-note" class="note"></small></label>
+      </details>
+    </section>
+
+    <!-- 2. Investigation -->
+    <section class="panel run" aria-labelledby="run-h">
+      <h2 id="run-h"><img src="tiresias.svg" alt="" class="who-icon"> Investigation</h2>
+      <div id="run-empty" class="empty">
+        <p>Pick a company and a suggested question, or ask your own.</p>
+        <p class="note">Tiresias asks "why?" one level at a time. Every link it keeps is a SQL query and the rows it returned; the critic (<img src="sphinx.svg" alt="the Sphinx" class="inline-icon">) tests each one, and you (<img src="you.svg" alt="you" class="inline-icon">) decide at the gates.</p>
+      </div>
+      <div id="run-head" hidden>
+        <p id="run-question" class="question"></p>
+        <p id="run-meta" class="note"></p>
+      </div>
+      <div id="gate-slot" aria-live="assertive"></div>
+      <div id="result" hidden></div>
+      <div id="tree-wrap" hidden>
+        <h3>Why-tree</h3>
+        <ol id="tree" class="tree"></ol>
+      </div>
+      <div id="timeline-wrap" hidden>
+        <div class="timeline-head">
+          <h3>Trace <span id="event-count" class="note"></span></h3>
+          <label class="toggle"><input id="show-all" type="checkbox"> every line</label>
+          <button id="download" class="btn small ghost" type="button">Download trace (JSONL)</button>
+        </div>
+        <ol id="timeline" class="timeline" aria-live="polite"></ol>
+      </div>
+    </section>
+
+    <!-- 3. Evidence -->
+    <section class="panel evidence" aria-labelledby="ev-h">
+      <h2 id="ev-h"><img src="sphinx.svg" alt="" class="who-icon"> Evidence</h2>
+      <div id="evidence" class="empty"><p>Select a link in the why-tree to see the SQL and the rows it rests on.</p></div>
+      <div id="memory-panel" hidden></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Tiresias · Open Agent Hackathon 2026 · Reasoning Architecture</span>
+    <a href="https://github.com/Palmlore/Tiresias">Source on GitHub</a>
+    <a href="/docs">API</a>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
