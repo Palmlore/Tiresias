@@ -250,6 +250,7 @@ def build(
         node_id=chosen[0].node_id if chosen else None,
         output_summary=f"{end_state}: {action}" if end_state else (error.message if error else ""),
         end_state=end_state,
+        root_cause=root_cause,
         residual=residual,
     )
     return result
