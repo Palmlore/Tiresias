@@ -320,7 +320,7 @@
         "sources_onboarded": 0,
         "model_calls": 0,
         "tokens": 0,
-        "seconds": 0.027,
+        "seconds": 0.024,
         "retries": 0,
         "prunes": 2,
         "gate_decisions": 2

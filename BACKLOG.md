@@ -164,6 +164,14 @@ Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
 - Review at: after submission.
 - Evidence: lines 6–7 of the trace above; `classify_reply` in `adapters/zetaris.py`.
 
+## B-29: The two committed live traces do not carry the output's `root_cause`
+
+- **Found in:** #33, round 3 (review of PR #33 against C1).
+- **Evidence:** the reporter's `report` line in `trace-run-20261024T233153Z-c3227e.jsonl` and `trace-run-20261024T230646Z-45973c.jsonl` has `end_state` and `residual` but no `root_cause`; the reporter now traces it (`tests/test_report_trace.py`) and the four sample outputs were re-run, but a trace cannot be edited (rule 1), so the live pair can only be fixed by new runs.
+- **Severity:** low. The `end_state`, `residual` and the root cause's figures (`output_summary`) are on the line; only the full sentence is unverifiable from the trace. `output_examples/README.md` says so.
+- **Why not in #33:** the fix is two new live runs, one from a fresh Zetaris: that needs every Tiresias object in Zetaris dropped (a destructive step the human runs) and the Nightshift VM, and it replaces the trace C3 and C8 are pinned to.
+- **Review point:** before submission, or if a judge or reviewer cites the live root cause as unverified; re-run both live cases and update C3/C8's run id.
+
 ## Closed
 
 - **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.

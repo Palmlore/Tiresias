@@ -387,7 +387,7 @@
                     "note": "served from data/sample/gehc_submissions.json"
                 },
                 {
-                    "sql": "CREATE LIGHTNING REST TABLE gehc_facts_raw FROM TIRESIAS_SEC REQUEST(\n    endpoint \"https://data.sec.gov/api/xbrl/companyfacts/CIK0001932393.json\",\n    method \"get\", response_type \"json\", http_encoding \"URLENCODED\"\n) HEADER (user-agent \"***\") BODY ()",
+                    "sql": "CREATE LIGHTNING REST TABLE gehc_facts_raw FROM TIRESIAS_SEC REQUEST(\n    endpoint \"https://data.sec.gov/api/xbrl/companyfacts/CIK0001932393.json\",\n    method \"get\", response_type \"json\", http_encoding \"URLENCODED\"\n) HEADER (user-agent \"sample-mode dry-run\") BODY ()",
                     "filter": "dry run: 7 statements from zetaris/sql for catalog sec_companyfacts",
                     "source": "sample",
                     "row_count": 7,
@@ -465,7 +465,7 @@
         "sources_onboarded": 1,
         "model_calls": 0,
         "tokens": 0,
-        "seconds": 0.061,
+        "seconds": 0.059,
         "retries": 1,
         "prunes": 2,
         "gate_decisions": 3
