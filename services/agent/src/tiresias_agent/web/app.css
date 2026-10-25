@@ -112,6 +112,21 @@ details > summary { cursor: pointer; color: var(--parchment); margin: 12px 0 8px
 .delta.neg { color: var(--bad); }
 .delta.pos { color: var(--ok); }
 
+.cast { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 10px 0 4px; }
+@media (max-width: 720px) { .cast { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cast-item { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px;
+  padding: 8px 10px; background: var(--ink); min-width: 0; }
+.cast-item img { width: 26px; height: 26px; flex: none; }
+.cast-item div { display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
+.cast-item b { font-weight: 600; }
+.cast-item span { color: var(--stone); }
+.cast-item.tiresias b { color: var(--bronze); }
+.cast-item.sphinx b { color: var(--celeste); }
+.cast-item.you b { color: var(--parchment); }
+.cast-item.data b { color: var(--text); }
+.data-mark { font: 600 10px var(--mono); border: 1px solid var(--stone); color: var(--stone); border-radius: 4px;
+  padding: 2px 3px; flex: none; }
+
 /* gates */
 .gate { border: 1px solid var(--parchment); border-radius: 8px; padding: 12px 14px; margin: 10px 0;
   background: #1f2430; }

@@ -60,7 +60,7 @@ function money(v) {
   return `${s}$${a.toLocaleString()}`;
 }
 const pct = (v) => (v === null || v === undefined ? "–" : `${(v * 100).toFixed(1)}%`);
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
 const residualText = (v) => (v < 0 ? `over-explained by ${pct(-v)} of the change`
   : v > 0 ? `${pct(v)} of the change left unexplained` : "none: the change is fully explained");
 const badge = (text, cls = "") => el("span", { class: `badge ${cls}`, text });
@@ -228,6 +228,8 @@ function resetRunView(req) {
   $("timeline-wrap").hidden = false;
   $("timeline").replaceChildren();
   $("event-count").textContent = "";
+  castCounts = { tiresias: 0, sphinx: 0, you: 0, human: 0, data: 0 };
+  renderCast();
   $("evidence").className = "empty";
   $("evidence").replaceChildren(el("p", { text: "Select a link in the why-tree to see the SQL and the rows it rests on." }));
   $("memory-panel").hidden = true;
@@ -247,8 +249,33 @@ function lineText(line) {
   return line.output_summary || line.input_summary || line.question || line.action;
 }
 
+// The cast strip: who did what so far, counted from the trace lines as they stream in.
+let castCounts = { tiresias: 0, sphinx: 0, you: 0, human: 0, data: 0 };
+
+function countCast(line) {
+  if (line.agent === "orchestrator" || NOISY.has(line.agent)) return;
+  if (line.agent === "gate") {
+    if (line.action === "decide") {
+      castCounts.you += 1;
+      if (line.decided_by === "human") castCounts.human += 1;
+    }
+  } else if (SPHINX.has(line.agent)) castCounts.sphinx += 1;
+  else if ((line.agent === "zetaris_adapter" || line.agent === "catalog") && line.sql) castCounts.data += 1;
+  else if (!SYSTEM.has(line.agent)) castCounts.tiresias += 1;
+}
+
+function renderCast() {
+  const c = castCounts;
+  $("cast-tiresias").textContent = plural(c.tiresias, "step");
+  $("cast-sphinx").textContent = plural(c.sphinx, "verdict");
+  $("cast-you").textContent = plural(c.you, "gate decision") + (c.you ? ` (${c.human} by you)` : "");
+  $("cast-data").textContent = plural(c.data, "SQL call");
+}
+
 function onTrace(run, line) {
   $("event-count").textContent = `(${run.lines.length} lines)`;
+  countCast(line);
+  renderCast();
   if (line.agent === "gate") onGateLine(run, line);
   const showAll = $("show-all").checked;
   const isNoise = NOISY.has(line.agent) || line.action === "heartbeat";
