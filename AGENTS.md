@@ -70,7 +70,7 @@ curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d '{"que
 # checks before every push
 ./scripts/check_secrets.sh && ./scripts/validate_metadata.sh
 python3 scripts/verify_audit.py [--python services/agent/.venv/bin/python] [--with-cognition]   # re-run docs/measurements/verifier-audit-2026-10-24 (no uv, no network)
-# Hosted demo (sample mode, Cloud Run, project tiresias-512703; needs gcloud): idempotent build + deploy, prints the URL
+# Hosted demo (sample mode, Cloud Run; needs gcloud and GCP_PROJECT in .env): idempotent build + deploy, prints the URL
 ./deploy/gcp/deploy.sh [PROJECT_ID] [REGION]
 # Zetaris (local, outside this repo)
 cd ~/Repos/hackathon2026/zetaris/zetaris-platform && ./verify.sh   # UI localhost:3000, REST :8888

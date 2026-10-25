@@ -64,6 +64,7 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
 .inline-icon { width: 16px; height: 16px; vertical-align: -3px; }
 .empty { color: var(--stone); }
 .note { color: var(--stone); font-size: 13px; }
+.demo-note { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 
 /* form controls */
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; flex: 1; min-width: 0; }

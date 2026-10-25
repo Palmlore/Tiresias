@@ -9,7 +9,8 @@ metadata:
     app: tiresias
   annotations:
     run.googleapis.com/ingress: all
-    # Public without an allUsers IAM binding (the org restricts IAM members to its domain).
+    # Public without an allUsers IAM binding (works where an organisation policy restricts IAM
+    # members to its own domain).
     run.googleapis.com/invoker-iam-disabled: "true"
 spec:
   template:
