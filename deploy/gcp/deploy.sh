@@ -5,15 +5,17 @@
 #   deploy/gcp/deploy.sh [PROJECT_ID] [REGION]
 # The project comes from the argument, else GCP_PROJECT in the environment, else GCP_PROJECT in
 # the repo's .env (gitignored); it is never committed. Region likewise (default
-# australia-southeast1).
+# asia-southeast1, a region where Cloud Run maps custom domains).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# DEMO_DOMAIN (argument-free, from the environment or .env) maps a custom domain if set.
 # Read one KEY=value from .env without sourcing it (other lines need not be shell-safe).
 env_get() { [ -f "$ROOT/.env" ] && sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1 | tr -d "\"'" || true; }
 PROJECT="${1:-${GCP_PROJECT:-$(env_get GCP_PROJECT)}}"
 REGION="${2:-${GCP_REGION:-$(env_get GCP_REGION)}}"
-REGION="${REGION:-australia-southeast1}"
+REGION="${REGION:-asia-southeast1}"
+DOMAIN="${DEMO_DOMAIN:-$(env_get DEMO_DOMAIN)}"
 if [ -z "$PROJECT" ]; then
   echo "No GCP project: set GCP_PROJECT in .env (see .env.example) or pass it as the first argument." >&2
   exit 2
@@ -65,4 +67,15 @@ gcloud run services replace "$spec" --project "$PROJECT" --region "$REGION"
 url="$(gcloud run services describe tiresias --project "$PROJECT" --region "$REGION" --format 'value(status.url)')"
 step "Check"
 curl -sf "$url/health" && echo
+
+if [ -n "$DOMAIN" ]; then
+  step "Domain mapping ${DOMAIN}"
+  gcloud beta run domain-mappings describe --domain "$DOMAIN" --project "$PROJECT" --region "$REGION" \
+      >/dev/null 2>&1 \
+    || gcloud beta run domain-mappings create --service tiresias --domain "$DOMAIN" \
+         --project "$PROJECT" --region "$REGION"
+  gcloud beta run domain-mappings describe --domain "$DOMAIN" --project "$PROJECT" --region "$REGION" \
+    --format 'table(status.resourceRecords[].name, status.resourceRecords[].type, status.resourceRecords[].rrdata)'
+  url="https://${DOMAIN}"
+fi
 printf '\nDemo: %s\n' "$url"
