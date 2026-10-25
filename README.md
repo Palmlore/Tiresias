@@ -12,7 +12,7 @@
 | **Track** | Reasoning Architecture |
 | **Team** | Palmlore (solo) |
 | **Status** | 🚧 **Build window open until 27 Oct 2026.** Each section says what works today; nothing is marked working that you can't run. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
-| **Try it online** | **[tiresias-tckagkyqxa-ts.a.run.app](https://tiresias-tckagkyqxa-ts.a.run.app)**: the web UI on a hosted demo, sample mode only (cached SEC data, rules only; no live Zetaris or Nightshift), memory shared by every visitor. Run it locally for everything else. |
+| **Try it online** | **[tiresias-tckagkyqxa-ts.a.run.app](https://tiresias-tckagkyqxa-ts.a.run.app)**: a demo-grade hosted copy of the web UI, sample mode only (cached SEC data, rules only), on deliberately small resources to keep its cost bounded: it can be slow or busy. Run it locally for live mode and full performance. |
 | **Licence** | Apache-2.0 |
 
 ---
@@ -35,7 +35,7 @@ Every step (query, hypothesis, critique, human-in-the-loop gate, source registra
 
 ## Quickstart (judges)
 
-**No install:** open the hosted demo, **https://tiresias-tckagkyqxa-ts.a.run.app**, to use the web UI (see Web UI below) in sample mode. It runs the same image as `docker compose` with `PUBLIC_DEMO=true`: requests asking for live mode and the memory purge are refused (403), and H-MEM memory is shared by every visitor and resets when the server restarts. Deployment: [deploy/gcp/](deploy/gcp/README.md).
+**No install:** open the demo-grade hosted copy, **https://tiresias-tckagkyqxa-ts.a.run.app**, to use the web UI (see Web UI below) in sample mode. It runs the same image as `docker compose` with `PUBLIC_DEMO=true`: requests asking for live mode and the memory purge are refused (403), and H-MEM memory is shared by every visitor and resets when the server restarts. The hosted demo runs on deliberately small resources so its cost stays bounded: one instance (1 vCPU and 1 GiB for the agent, 1 vCPU and 512 MiB for the memory service), at most 4 runs at a time (a fifth gets 429 `TooManyRuns`: retry shortly), no autoscaling, no CDN, no login. Under load it is slow or busy rather than more expensive. Deployment: [deploy/gcp/](deploy/gcp/README.md).
 
 **Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. H-MEM memory works in sample mode too (the cognition service runs in the same `docker compose`; see Memory below). In live mode the agent also calls Nightshift models (see Models below). **A web UI** comes with it on http://localhost:8000 (see Web UI below); branching is still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks it.
 

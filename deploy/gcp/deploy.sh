@@ -3,12 +3,22 @@
 # them to Artifact Registry, replace the service from service.yaml, print the URL.
 # Idempotent. Needs gcloud logged in with rights on the project.
 #   deploy/gcp/deploy.sh [PROJECT_ID] [REGION]
+# The project comes from the argument, else GCP_PROJECT in the environment, else GCP_PROJECT in
+# the repo's .env (gitignored); it is never committed. Region likewise (default
+# australia-southeast1).
 set -euo pipefail
 
-PROJECT="${1:-${GCP_PROJECT:-tiresias-512703}}"
-REGION="${2:-${GCP_REGION:-australia-southeast1}}"
-REPO_NAME=tiresias
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# Read one KEY=value from .env without sourcing it (other lines need not be shell-safe).
+env_get() { [ -f "$ROOT/.env" ] && sed -n "s/^$1=//p" "$ROOT/.env" | tail -n 1 | tr -d "\"'" || true; }
+PROJECT="${1:-${GCP_PROJECT:-$(env_get GCP_PROJECT)}}"
+REGION="${2:-${GCP_REGION:-$(env_get GCP_REGION)}}"
+REGION="${REGION:-australia-southeast1}"
+if [ -z "$PROJECT" ]; then
+  echo "No GCP project: set GCP_PROJECT in .env (see .env.example) or pass it as the first argument." >&2
+  exit 2
+fi
+REPO_NAME=tiresias
 TAG="$(git -C "$ROOT" rev-parse --short HEAD)"
 REPO="${REGION}-docker.pkg.dev/${PROJECT}/${REPO_NAME}"
 
@@ -23,9 +33,9 @@ gcloud artifacts repositories describe "$REPO_NAME" --location "$REGION" --proje
   || gcloud artifacts repositories create "$REPO_NAME" --repository-format docker \
        --location "$REGION" --project "$PROJECT" --description "Tiresias demo images"
 
-# The org forbids Cloud Build's default service account (cloudbuild.disableCreateDefaultServiceAccount),
-# so builds run as tiresias-build (push images, write logs, read the uploaded source) and the
-# service runs as tiresias-run, which has no role: the demo calls no Google API.
+# Least privilege, and it works where an organisation policy disables Cloud Build's default
+# service account: builds run as tiresias-build (push images, write logs, read the uploaded
+# source) and the service runs as tiresias-run, which has no role (the demo calls no Google API).
 BUILD_SA="tiresias-build@${PROJECT}.iam.gserviceaccount.com"
 RUN_SA="tiresias-run@${PROJECT}.iam.gserviceaccount.com"
 step "Service accounts"

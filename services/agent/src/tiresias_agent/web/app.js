@@ -85,6 +85,13 @@ async function loadHealth() {
     b.title = sample
       ? "Runs the real agent logic on an offline slice of SEC data; no model is called."
       : "Every read goes through Zetaris; depth thorough/deep calls Nemotron models through Nightshift.";
+    if (state.health.public_demo) {
+      const n = $("demo-note");
+      n.textContent = "Demo-grade hosting: this public copy runs on one small server to keep its cost " +
+        "bounded, so it can be slow, and a run may be refused for a moment when four are already " +
+        "running. Sample data only; run it locally for live mode.";
+      n.hidden = false;
+    }
     const depth = $("depth");
     depth.disabled = sample;
     $("depth-note").textContent = sample
