@@ -4,7 +4,7 @@
 
 **https://tiresias-tckagkyqxa-ts.a.run.app**: the web UI and the HTTP API in **sample mode**, for anyone to try without installing anything.
 
-**Demo grade, on purpose.** It runs on deliberately small resources so its cost stays bounded: one instance (1 vCPU, 1 GiB for the agent, 512 MiB for memory), at most 4 runs at a time (a fifth gets 429 `TooManyRuns`), no autoscaling, no CDN, no login. Under load it is slow or busy rather than more expensive. It is not a production deployment: see "Exposure" below.
+**Demo grade, on purpose.** It runs on deliberately small resources so its cost stays bounded: one instance (1 vCPU and 1 GiB for the agent, 1 vCPU and 512 MiB for the memory service), at most 4 runs at a time (a fifth gets 429 `TooManyRuns`), no autoscaling, no CDN, no login. Under load it is slow or busy rather than more expensive. It is not a production deployment: see "Exposure" below.
 
 | What | How |
 |---|---|
