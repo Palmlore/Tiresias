@@ -1,0 +1,12 @@
+# Builds the two images of the hosted demo from the repo root (deploy/gcp/deploy.sh submits it).
+# The agent image is built from the repo root like compose.yaml does (root .dockerignore).
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_REPO}/agent:${_TAG}", "-f", "services/agent/Dockerfile", "."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["build", "-t", "${_REPO}/cognition:${_TAG}", "services/cognition"]
+images:
+  - "${_REPO}/agent:${_TAG}"
+  - "${_REPO}/cognition:${_TAG}"
+options:
+  logging: CLOUD_LOGGING_ONLY
