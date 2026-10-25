@@ -34,7 +34,7 @@ Every step (query, hypothesis, critique, human-in-the-loop gate, source registra
 
 ## Quickstart (judges)
 
-**Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. H-MEM memory works in sample mode too (the cognition service runs in the same `docker compose`; see Memory below). In live mode the agent also calls Nightshift models (see Models below); branching and a UI are still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks them.
+**Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. H-MEM memory works in sample mode too (the cognition service runs in the same `docker compose`; see Memory below). In live mode the agent also calls Nightshift models (see Models below). **A web UI** comes with it on http://localhost:8000 (see Web UI below); branching is still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks it.
 
 Needs Docker Desktop (or Docker Engine) with **Compose v2.24 or later** (`docker compose version`), ports 8000 and 8100 free, and about 750 MB of disk for the two images. The first build also pulls the Python and Node base images, which can take a few minutes; later builds take seconds.
 
@@ -43,6 +43,7 @@ git clone https://github.com/Palmlore/Tiresias && cd Tiresias
 cp .env.example .env              # keep SAMPLE_MODE=true; no keys needed
 docker compose up --build         # agent :8000, cognition :8100 (add -d to run in the background)
 
+# open http://localhost:8000 in a browser for the web UI, or use the API:
 # in another terminal: wait until the agent answers, then ask the lead example: why did 3M's 2023 revenue fall?
 until curl -sf localhost:8000/health >/dev/null; do sleep 1; done
 curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d @input_examples/04_3m_2023_revenue_restated.json; echo
@@ -57,6 +58,16 @@ ls logs/                          # one JSONL trace per run: logs/trace-<run_id>
 The `trace_file` in each reply is the path inside the container (`/app/logs/…`); on your machine the same file is under `logs/`.
 
 Each result leads with the decision: `end_state` (`actionable`, `evidence-frontier`, …) and the recommended `action`, then the `effect`, the `why_tree` (each link with its SQL, rows and the critic's verdict), the `residual` (share of the effect left unexplained; negative when over-explained) and `stats`. In sample mode all four examples end `actionable`. The lead one, **04 (3M)**: 3M's 2023 revenue was restated from $32.68B to $24.61B; Loop A traces the drop to 3M's 8-K disposal filing (items 2.01, 9.01, filed 2024-04-04) and stops at the evidence frontier, because the missing revenue lives in another registrant; Loop B finds that registrant from filing evidence, not its name (Solventum Corp, the filer whose Form 10 names 3M, from an EDGAR full-text search the sample caches), registers it behind the source gate and reconciles: Solventum reports $8.20B, so the add-back over-explains by $126M (`residual` −0.0156). 01 and 02 reconcile GE's restatements to GE HealthCare and GE Vernova the same way, and 03 stops at GE's goodwill impairment. Write your own question in the same shape as [input_examples/](input_examples/) (schema: `RunRequest` in [contracts/openapi/agent.yaml](contracts/openapi/agent.yaml)); a malformed body gets a structured 422.
+
+### Web UI
+
+Open **http://localhost:8000** once the stack is up (it redirects to `/ui/`). Pick a company, then one of the questions Tiresias found in its filings (or ask your own), and watch the run:
+
+- **Ask**: the companies the agent can investigate (`GET /entities`) and, for the one you pick, questions derived from its filings, with the checks behind each (`GET /entities/{cik}/suggestions`). Your role (analyst, auditor, board) changes the action Tiresias recommends. A forecast or what-if question is declined with in-scope alternatives.
+- **Investigation**: the trace streams in as the agent works (`GET /runs/{id}/events`): Tiresias's steps in bronze, the Sphinx (the critic) in blue, Zetaris queries with their SQL. By default you decide at each human-in-the-loop gate (critic escalation, source registration, storing a memory lesson); "Run settings" switches to auto. Then the result: end state, action, root cause, residual and the why-tree.
+- **Evidence**: click a link of the why-tree to see the SQL it rests on, the rows returned and the critic's reasoning; below, the H-MEM lessons recalled (followed or rejected) and stored.
+
+The UI only shows what the API returns: no figure is computed or kept in the browser. "Download trace" saves the run's trace lines as streamed. A badge in the header says whether the agent runs in sample mode (cached SEC data, rules only) or live.
 
 **Watch a run live.** Pass your own run id with `X-Run-Id` (it is echoed, stamped on every trace line and names the trace file), start the run in the background, and stream its trace as Server-Sent Events. A run id can be used once (reusing it returns 409 `RunConflict`), so pick a new one each time you repeat this:
 

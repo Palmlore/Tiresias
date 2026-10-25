@@ -13,11 +13,13 @@ import secrets
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__, entities
 from .adapters.catalog import make_discovery
@@ -429,6 +431,19 @@ def purge_memory(
     )
     result = PurgeResult(purged=purged.purged, namespace=target, requested_by=requested_by)
     return JSONResponse(content=result.model_dump(mode="json"), headers=_echo(request))
+
+
+# --- web UI (static files in tiresias_agent/web; a thin client over the endpoints above) -----
+
+WEB_DIR = Path(__file__).parent / "web"
+
+
+@app.get("/", include_in_schema=False)
+def index() -> RedirectResponse:
+    return RedirectResponse("/ui/")
+
+
+app.mount("/ui", StaticFiles(directory=WEB_DIR, html=True), name="ui")
 
 
 def main() -> None:

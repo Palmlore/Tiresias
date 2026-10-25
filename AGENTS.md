@@ -18,7 +18,7 @@ Open the rest only when the task needs them:
 ## Layout
 | Path | What |
 |---|---|
-| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `runs.py`, `app.py`, `agents/`, `adapters/` (see Building blocks). **Loop A + Loop B (`run_investigation`) run as a library, a CLI and over HTTP (sample mode): `POST /run` (sync), `POST /runs` + `GET /runs/{id}` (async) and `GET /runs/{id}/events` (SSE) work, plus the entity directory `GET /entities` and `GET /entities/{cik}/suggestions`; `POST /memory/purge` purges H-MEM lessons through cognition; `/runs/{id}/branch` returns a structured 501.** |
+| `services/agent/` | Python 3.11+ / FastAPI (uv). Built: `trace.py`, `models.py`, `config.py`, `gates.py`, `orchestrator.py`, `runs.py`, `app.py`, `agents/`, `adapters/` (see Building blocks). **Loop A + Loop B (`run_investigation`) run as a library, a CLI and over HTTP (sample mode): `POST /run` (sync), `POST /runs` + `GET /runs/{id}` (async) and `GET /runs/{id}/events` (SSE) work, plus a web UI at `/` (`web/`), the entity directory `GET /entities` and `GET /entities/{cik}/suggestions`; `POST /memory/purge` purges H-MEM lessons through cognition; `/runs/{id}/branch` returns a structured 501.** |
 | `services/cognition/` | TypeScript / Node ≥22.18, no npm dependencies. H-MEM memory over REST. **Working.** |
 | `services/cognition/engine/hmem/` | Vendored Meterless H-MEM reference (commit `1742dec`). **Never edit**; wrap it in `src/`. |
 | `contracts/openapi/` | REST contracts. Update them in the same change as the code. |
@@ -52,6 +52,7 @@ cd services/cognition && npm test && npm run conformance   # 6 tests; H-MEM conf
 cd services/agent && uv sync && uv run --group dev pytest -q && uv run --group dev ruff check src tests
 # whole stack (sample mode by default)
 docker compose up --build            # agent :8000, cognition :8100 (sample mode works with an empty .env)
+# Web UI: open http://localhost:8000 (redirects to /ui/; static files in services/agent/src/tiresias_agent/web)
 # HTTP API (Docker, or no Docker: cd services/agent && uv run python -m tiresias_agent.app)
 curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -H 'X-Run-Id: demo-1' \
      -d @input_examples/01_ge_2022_revenue_restated.json            # RunResult JSON; trace in logs/trace-demo-1.jsonl

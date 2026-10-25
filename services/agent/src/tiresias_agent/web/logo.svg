@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Tiresias">
+  <title>Tiresias</title>
+  <rect x="28" y="14" width="14" height="100" rx="7" ry="7" fill="#D4A054"/>
+  <defs>
+    <mask id="veil-logo" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="128" height="128" fill="white"/>
+      <rect x="50" y="51.0" width="72" height="14" fill="black"/>
+    </mask>
+  </defs>
+  <circle cx="86" cy="58" r="36" fill="#D4A054" mask="url(#veil-logo)"/>
+</svg>

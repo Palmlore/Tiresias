@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="The Sphinx">
+  <title>The Sphinx</title>
+  <polygon points="36,44 50,6 64,44" fill="#7EB6C9"/>
+  <polygon points="64,44 78,6 92,44" fill="#7EB6C9"/>
+  <circle cx="64" cy="62" r="30" fill="#7EB6C9"/>
+  <polygon points="90,48 122,40 122,56 94,60" fill="#7EB6C9"/>
+</svg>
