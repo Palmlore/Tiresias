@@ -1,11 +1,13 @@
 """Meterless Nightshift Runtime client (OpenAI-compatible chat completions).
 
-Nightshift routes by the app's mode, so the model named in a request is only a lane
-(``meterless/fast`` or ``meterless/deep``). The model that actually answered is read from the
-response's receipt (``meterless.routed_model``, ``winning_route.provider``) and is ``None`` when
-the receipt does not say. Nightshift 1.2.1 does not honour explicit model ids (METERLESS_MODEL_* only
-name the lane), and the same lane was routed to different Nemotron models on 2026-10-24, so every
-call's trace line records ``routed_model`` and ``receipt_id``. When Nightshift is offline the client raises ``ModelUnavailable`` so the
+A request names a lane (``meterless/fast``, ``meterless/deep``: Nightshift picks the model) or,
+from Nightshift 1.2.4, a model id listed by ``GET /v1/models`` (honoured; an id that is not enabled
+is refused, not re-routed). Nightshift 1.2.1 ignored explicit ids and routed the same lane to
+different Nemotron models on 2026-10-24. Either way the model that actually answered is read from
+the response's receipt (``meterless.routed_model``, ``winning_route.provider``; ``None`` when the
+receipt does not say), and every call's trace line records ``routed_model`` and ``receipt_id``.
+``chat_json`` asks for ``response_format: json_object`` (Nemotron 3 Ultra otherwise writes its
+reasoning before the JSON). When Nightshift is offline the client raises ``ModelUnavailable`` so the
 orchestrator can fall back to the rule-based path (ADR-0007).
 
 CLI: ``uv run python -m tiresias_agent.adapters.nightshift probe [--env-file PATH]``.
@@ -368,7 +370,12 @@ class NightshiftClient:
         action: str = "chat",
         trace_fields: dict[str, Any] | None = None,
     ) -> tuple[Any, ModelReply]:
-        """Ask for a single JSON value and parse it. Returns (parsed, reply)."""
+        """Ask for a single JSON object and parse it. Returns (parsed, reply).
+
+        ``response_format`` defaults to ``{"type": "json_object"}``: without it Nemotron 3 Ultra
+        writes its reasoning before the JSON, and the reply is unusable (measured 2026-10-26)."""
+        if response_format is None:
+            response_format = {"type": "json_object"}
         instruction = {
             "role": "system",
             "content": "Reply with one JSON value only. No prose before or after it.",

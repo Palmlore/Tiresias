@@ -19,8 +19,8 @@ quick (default) = none, rules only; thorough = the critic lane; deep = all three
 else ``MODEL_LANES=on`` = deep, else quick. A depth with model lanes and no configured Runtime
 (or ``MAX_MODEL_CALLS_PER_RUN=0``) runs as quick with a ``degraded`` line. Every call is counted against
 ``MAX_MODEL_CALLS_PER_RUN`` and the run's wall-clock budget, and is traced by the Nightshift client
-as one line (lane, requested and routed model, provider, latency, receipt id). Nightshift routes
-on its own (explicit model ids are not honoured), so the routed model comes from the receipt.
+as one line (lane, requested and routed model, provider, latency, receipt id). A lane lets Nightshift
+pick the model (1.2.4 honours a pinned model id), so the routed model comes from the receipt.
 ``ModelUnavailable`` (offline, timeout, unauthorised) switches the lanes off for the rest of the
 run with a ``degraded`` line: the run continues on the rules and never fails because of a model.
 """
