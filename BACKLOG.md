@@ -172,6 +172,22 @@ Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
 - **Why not in #33:** the fix is two new live runs, one from a fresh Zetaris: that needs every Tiresias object in Zetaris dropped (a destructive step the human runs) and the Nightshift VM, and it replaces the trace C3 and C8 are pinned to.
 - **Review point:** before submission, or if a judge or reviewer cites the live root cause as unverified; re-run both live cases and update C3/C8's run id.
 
+## B-30: Loop A accepts a broad-scope disposal filing as 100% of a restatement without measuring the disposed business
+Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: the sweep measures, it does not change the critic. On JNJ (FY2022) and MRK (FY2019) the critic accepted `filing_event: 8-K 2.01 (scope broad)` with "intervention: resetting it to baseline moves the metric to <original> and removes 100%": the counterfactual is the original figure itself, so the share is asserted, not measured; IBM, FTV and BBWI took the same kind of event to the evidence frontier and Loop B instead. JNJ's cited filing (2022-12-22) may be an acquisition, not the Kenvue separation (not verified).
+- Safe to leave because: the report itself says "keep the residual open until the disposed business's Revenues" are measured, and the sweep doc counts these two as actionable but not reconciled.
+- Urgent if: a demo or judge question lands on JNJ or MRK, or a judge reads "actionable" as "reconciled".
+- Review at: after submission, or before any claim that counts actionable runs as correct.
+- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (JNJ, MRK rows); traces in workspace/sweep-logs (not committed).
+
+## B-31: Source scout can register a wrong counterparty (name/brand match), which the critic then rejects
+Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: the sweep measures only. RTX FY2018 → the scout picked nVent Electric (a Pentair spin-off) and IP FY2023 → "IP STRATEGY HOLDINGS, INC." ("carries the source's brand"); both were registered in Zetaris behind the auto source gate, then the critic found no reconciling add-back and both ended at evidence-frontier.
+- Safe to leave because: no wrong answer was accepted; the cost is one wasted registration per run (bounded by MAX_NEW_SOURCES_PER_RUN).
+- Urgent if: a wrong counterparty's figure happens to fall inside tolerance (a false reconciliation), or a demo uses RTX or IP.
+- Review at: after submission (scout ranking: require the parent to be named in the candidate's Form 10, down-rank brand-only matches).
+- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (RTX, IP rows).
+
 ## Closed
 
 - **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.
