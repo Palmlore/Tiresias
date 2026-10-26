@@ -368,7 +368,12 @@ class NightshiftClient:
         action: str = "chat",
         trace_fields: dict[str, Any] | None = None,
     ) -> tuple[Any, ModelReply]:
-        """Ask for a single JSON value and parse it. Returns (parsed, reply)."""
+        """Ask for a single JSON object and parse it. Returns (parsed, reply).
+
+        ``response_format`` defaults to ``{"type": "json_object"}``: without it Nemotron 3 Ultra
+        writes its reasoning before the JSON, and the reply is unusable (measured 2026-10-26)."""
+        if response_format is None:
+            response_format = {"type": "json_object"}
         instruction = {
             "role": "system",
             "content": "Reply with one JSON value only. No prose before or after it.",

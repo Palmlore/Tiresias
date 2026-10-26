@@ -311,6 +311,42 @@ def test_chat_json_accepts_fenced_and_unfenced(text):
     assert reply.lane == "deep"
 
 
+def test_chat_json_asks_for_json_mode_by_default():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=completion('{"a": 1}'))
+
+    make_client(handler).chat_json([{"role": "user", "content": "x"}], lane="deep")
+    assert seen["body"]["response_format"] == {"type": "json_object"}
+
+
+def test_chat_json_keeps_an_explicit_response_format():
+    seen = {}
+    schema = {"type": "json_schema", "json_schema": {"name": "x", "schema": {"type": "object"}}}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=completion('{"a": 1}'))
+
+    make_client(handler).chat_json(
+        [{"role": "user", "content": "x"}], lane="fast", response_format=schema
+    )
+    assert seen["body"]["response_format"] == schema
+
+
+def test_chat_keeps_free_text_without_response_format():
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=completion("blue"))
+
+    make_client(handler).chat([{"role": "user", "content": "x"}], lane="fast")
+    assert "response_format" not in seen["body"]
+
+
 def test_chat_json_garbage_raises_protocol_error():
     def handler(request):
         return httpx.Response(200, json=completion("I think the answer is maybe 1"))
