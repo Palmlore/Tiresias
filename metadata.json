@@ -99,7 +99,7 @@
     },
     "nvidia": {
       "status": "working",
-      "how": "Nemotron models, served through Meterless Nightshift, power the model lanes: the critic's second opinion (deep lane), extra hypotheses and action wording (fast lane). Every call records the model that actually served it (routed_model) and the receipt id. In the committed fresh-state live run all four calls were served by Nemotron (nemotron-3-ultra-550b-a55b once, its reply rejected as prose; nemotron-3.5-super-vl-120b-a12b three times). Not pinned: Nightshift 1.2.1 routes on its own. Caveats (docs/sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not): one run; the hypothesis lane made no call in it.",
+      "how": "Nemotron models, served through Meterless Nightshift, power the model lanes: the critic's second opinion (deep lane), extra hypotheses and action wording (fast lane). Every call records the model that actually served it (routed_model) and the receipt id. In the committed fresh-state live run all four calls were served by Nemotron (nemotron-3-ultra-550b-a55b once, its reply rejected as prose; nemotron-3.5-super-vl-120b-a12b three times). That run was on Nightshift 1.2.1, which routed on its own; from 1.2.4 (2026-10-26) the lanes are pinned to Nemotron ids and every reply is requested as JSON. Caveats (docs/sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not): one run; the hypothesis lane made no call in it.",
       "route": "via-meterless",
       "where": [
         "services/agent/src/tiresias_agent/agents/model_lanes.py",
