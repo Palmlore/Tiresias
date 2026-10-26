@@ -67,8 +67,8 @@ Add one row per file when it lands.
 
 | File | Source (tool, model, or real run + date) | Figures shown and where they come from | Licence |
 |---|---|---|---|
-| `brand/palette.json` | Written 2026-10-23 in a Cursor agent session. Contrast ratios measured with sRGB relative luminance (WCAG 2.x). | None | Apache-2.0 |
-| `brand/logo.svg`, `brand/logo-1024.png` | Geometry in [`scripts/render_brand.py`](../scripts/render_brand.py), 2026-10-23. PNG rasterised with Pillow from the same shapes. No third-party artwork. | None (mark only: staff + veiled disc) | Apache-2.0 |
+| `brand/palette.json` | Written 2026-10-23 in a Cursor agent session (Grok 4.6, medium). Contrast ratios measured with sRGB relative luminance (WCAG 2.x). | None | Apache-2.0 |
+| `brand/logo.svg`, `brand/logo-1024.png` | Geometry in [`scripts/render_brand.py`](../scripts/render_brand.py), 2026-10-23, written in the same Cursor agent session (Grok 4.6, medium). PNG rasterised with Pillow from the same shapes. No third-party artwork. | None (mark only: staff + veiled disc) | Apache-2.0 |
 | `characters/tiresias.svg`, `characters/tiresias.png` | Same renderer, 2026-10-23. Bronze, veiled eyes, staff. | None | Apache-2.0 |
 | `characters/sphinx.svg`, `characters/sphinx.png` | Same renderer, 2026-10-23. Celeste, ears and one wing. | None | Apache-2.0 |
 | `characters/you.svg`, `characters/you.png` | Same renderer, 2026-10-23. Parchment figure in a stone gate. | None | Apache-2.0 |
