@@ -9,9 +9,9 @@ Who the users are and why they need this: [problem-and-users.md](problem-and-use
 | 1. Notice | A model stops reconciling after a new 10-K: last year's revenue is not what it was. Or a monthly sweep of the coverage list. | — | — |
 | 2. Pick a company | Types a ticker, CIK or name. | `GET /entities?q=…`: companies ready now, and (live) any SEC registrant, each with its expected first-run wait. | works today |
 | 3. Pick a question | Takes a suggestion or writes one, and says who is asking (analyst, auditor, board). | `GET /entities/{cik}/suggestions`: restatements, the largest year-on-year changes and extremes found in the company's own filings, each checked by the framer and ready to post. A forecast or a non-SEC company is stopped with a reason and runnable alternatives. | works today |
-| 4. Choose depth | Quick, or a slower and more thorough look. | Shows the expected wait before starting. Quick = rules only; thorough adds the model critic's second opinion; deep adds model hypotheses and wording (Nemotron through Meterless Nightshift). | rules: works today; depth choice: in progress |
-| 5. Watch | Watches the why-tree build. | `GET /runs/{id}/events` streams every step: phase start, heartbeat, done; each query, hypothesis, critic verdict and gate. | works today (API); UI in progress |
-| 6. Decide at a gate | Approves or denies, e.g. "Register the spun-off company's filings as a new source?" | The source, critic-escalation and memory gates pause for a person in interactive mode (`"hitl_mode": "interactive"`): the SSE stream shows a `gate`/`waiting` line, `GET /runs/{id}/gates` lists it, `POST /runs/{id}/gates/{gate_id}` answers it and the run resumes with that choice; unanswered within `GATE_TIMEOUT_SECONDS` (120 s) the proposal applies. Judges' runs use `auto`. | works today (API, sample mode; HTTP round trip tested in `tests/test_gate_api.py`); UI in progress |
+| 4. Choose depth | Quick, or a slower and more thorough look. | Shows the expected wait before starting. Quick = rules only; thorough adds the model critic's second opinion; deep adds model hypotheses and wording (Nemotron through Meterless Nightshift). | works today (rules; thorough and deep need live mode: Nemotron through Nightshift) |
+| 5. Watch | Watches the why-tree build. | `GET /runs/{id}/events` streams every step: phase start, heartbeat, done; each query, hypothesis, critic verdict and gate. | works today (API and web UI at `/ui`) |
+| 6. Decide at a gate | Approves or denies, e.g. "Register the spun-off company's filings as a new source?" | The source, critic-escalation and memory gates pause for a person in interactive mode (`"hitl_mode": "interactive"`): the SSE stream shows a `gate`/`waiting` line, `GET /runs/{id}/gates` lists it, `POST /runs/{id}/gates/{gate_id}` answers it and the run resumes with that choice; unanswered within `GATE_TIMEOUT_SECONDS` (120 s) the proposal applies. Judges' runs use `auto`. | works today (API and web UI; HTTP round trip tested in `tests/test_gate_api.py`) |
 | 7. Act | Reads the decision first, then the evidence. | `end_state` and the recommended `action` for this asker, then every link's SQL, rows, share explained and the residual left over. | works today |
 | 8. Follow up | Asks again as an auditor, or digs under one node. | Same question, different asker stops at a different cause; branching from a node of a finished run. | asker profiles work; branching planned |
 | 9. Next time | — | Lessons (not answers) from past runs shorten the next similar investigation; memory can be purged. | works (H-MEM, sample and live): `scripts/memory_demo.py` shows 5 → 3 hops on a similar case, a rejected misapplied lesson and the purge |
@@ -35,7 +35,7 @@ The lead story is one a judge can run with no keys: 3M → Solventum is in the o
 | **Honest refusal** | any | "What will revenue be next year?" is refused with a reason and up to three questions that can be answered from filings. | works today |
 | **The model is challenged** | 3M, Crane NXT or GE at depth *deep* | Nemotron, through Nightshift, gives the critic a second opinion; when it disagrees, the gate keeps the rule verdict and the trace shows both. | measured once on GE case 01 (2026-10-24): one disagreement, rule verdict kept |
 | **Impairment** | GE FY2018 | A net loss traced to a $22.1B goodwill impairment. A smaller-company impairment is still to be chosen at rehearsal. | sample and live |
-| **Memory** | two similar spin-offs | Cold run, warm run with fewer steps, purge, cold again. | planned |
+| **Memory** | two similar spin-offs | Cold run, warm run with fewer steps, purge, cold again. | works: `scripts/memory_demo.py` (sample mode, in CI): 5 → 3 hops on the warm run, a misapplied lesson rejected, purge |
 
 **The no-key demo is 3M → Solventum.** Sample mode, which judges run without keys, holds the GE family and 3M/Solventum ([data/sample/](../data/sample/)), with the one EDGAR full-text search the 3M scout runs cached under the name of its live Zetaris table, so the scout finds Solventum offline exactly as it does live. Crane NXT runs live only; adding it to the slice is the same `scripts/fetch_sample.py` change (two entities and one `FULLTEXT` entry) plus an input example.
 
@@ -46,6 +46,10 @@ The lead story is one a judge can run with no keys: 3M → Solventum is in the o
 3. **Investigate**: the why-tree growing from `GET /runs/{id}/events` (a report that builds itself, not a chat); phase spinners from `phase_start` / `heartbeat` / `phase_done`; the critic's rejections and retries visible; a gate dialog when one is waiting (the `gate`/`waiting` line or `waiting_gate`: question, options, proposal, context, deadline countdown; the answer is `POST /runs/{id}/gates/{gate_id}`).
 4. **Result**: decision first (`end_state`, `action`), then the evidence panel per link (SQL, rows, share, label, the model's opinion when there is one), the residual, and the trace file.
 5. **Follow up**: ask as another role; later, branch from a node.
+
+## Coverage beyond the examples
+
+A pre-registered live sweep of spin-off parents we did not pick as examples, with every outcome reported: [measurements/coverage-sweep-2026-10-26.md](measurements/coverage-sweep-2026-10-26.md).
 
 ## Out of scope (said plainly)
 

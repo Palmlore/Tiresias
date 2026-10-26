@@ -89,6 +89,8 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 #   stdout: the RunResult JSON only; trace lines go to stderr and <repo>/logs/trace-<run_id>.jsonl
 #   a relative request path resolves against the cwd, then the repo root
 #   any SEC registrant live: {"entity": {"ticker": "IBM"}} or {"entity": {"name": "Hilton Worldwide Holdings Inc."}}
+# Coverage sweep (pre-registered companies, live; API in live mode on the host): docs/measurements/coverage-sweep-2026-10-26.md
+python3 scripts/coverage_sweep.py --api http://localhost:8020 --out FILE.jsonl [--only JNJ,IBM]
 # Live latency per phase (needs Zetaris + .env; cold = first run for an entity, then warm). Writes no repo files
 cd services/agent && uv run python ../../scripts/perf_smoke.py [request.json ...] [--runs 2] [--logs-dir DIR] [--out FILE.jsonl] [--env-file PATH]
 #   defaults: the four input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
