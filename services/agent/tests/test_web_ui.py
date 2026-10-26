@@ -55,3 +55,13 @@ def test_ui_never_writes_html_from_data():
 def test_ui_loads_nothing_from_another_origin():
     page = (WEB / "index.html").read_text()
     assert not re.search(r'(?:src|href)="(?:https?:)?//(?!github\.com/Palmlore)', page)
+
+
+def test_model_chip_comes_from_routed_model_only():
+    # The chip names what Nightshift's receipts say served the run, never the requested model.
+    js = (WEB / "app.js").read_text()
+    chip = js[js.index("function modelChip") : js.index("function renderResult")]
+    assert "requested_model" not in chip
+    assert "if (line.routed_model) run.models.set(line.routed_model" in js
+    assert "renderResult(rec.result, run.models)" in js
+    assert "if (!models || !models.size) return null;" in chip
