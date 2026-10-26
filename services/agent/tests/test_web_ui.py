@@ -452,3 +452,106 @@ def test_story_hooks_read_the_same_run_as_the_debug_view():
     page = (WEB / "index.html").read_text()
     assert page.index('src="app.js"') < page.index('src="story.js"')
     assert '<main class="layout" hidden>' in page and 'data-view="debug"' in page
+
+
+# ---- prompt gates: the Sphinx asks on the user's behalf, proceeds after 5 s unless taken over ----
+
+GATE_LINE = {
+    "agent": "gate",
+    "action": "waiting",
+    "gate": "critic_escalation",
+    "gate_id": "g1",
+    "node_id": "n0.1",
+    "question": "Cause is plausible but its share cannot be measured. Hand it to Loop B, or prune it?",
+    "options": ["frontier", "prune"],
+    "proposal": "frontier",
+    "deadline": "2026-10-26T07:00:00Z",
+}
+
+# A fake clock and POST: timers run when the test says so; every POST is recorded.
+_HARNESS = f"""
+const posts = [], timers = new Map(); let nextId = 1, changes = 0, reject = null;
+const deps = {{
+  post: (gateId, body) => {{ posts.push({{ gateId, body }}); return reject ? Promise.reject(new Error(reject)) : Promise.resolve({{}}); }},
+  setTimer: (fn, ms) => {{ const id = nextId++; timers.set(id, fn); return id; }},
+  clearTimer: (id) => timers.delete(id),
+  onChange: () => {{ changes += 1; }},
+}};
+const tickAll = () => {{ const fns = [...timers.values()]; timers.clear(); fns.forEach((f) => f()); }};
+const line = {json.dumps(GATE_LINE)};
+"""
+
+
+def test_prompt_proceeds_automatically_after_five_seconds():
+    got = _story(
+        _HARNESS + "const p = promptGate(line, deps);\n"
+        "const seen = [p.left];\n"
+        "for (let i = 0; i < 4; i++) { tickAll(); seen.push(p.left); }\n"
+        "const before = posts.length;\n"
+        "tickAll();\n"
+        "setTimeout(() => console.log(JSON.stringify({ seen, before, posts, state: p.state,\n"
+        "  timers: timers.size, ask: sphinxAsks(line), by: answeredBy(posts[0].body.note) })), 0);"
+    )
+    assert got["seen"] == [5, 4, 3, 2, 1] and got["before"] == 0  # no POST before 5 s
+    assert got["posts"] == [
+        {
+            "gateId": "g1",
+            "body": {"choice": "frontier", "note": "proceeded automatically after 5 s (UI)"},
+        }
+    ]
+    assert "automatically" in got["posts"][0]["body"]["note"]
+    assert got["state"] == "answered" and got["timers"] == 0
+    assert got["ask"] == "Should we look for the missing data?"
+    assert got["by"] == "auto"
+
+
+def test_prompt_proceed_posts_now_and_take_over_cancels_the_timer():
+    got = _story(
+        _HARNESS + "const a = promptGate(line, deps);\n"
+        "a.proceed(); a.proceed();\n"  # a second click sends nothing more
+        "const b = promptGate({ ...line, gate_id: 'g2' }, deps);\n"
+        "b.takeOver();\n"
+        "for (let i = 0; i < 10; i++) tickAll();\n"
+        "setTimeout(() => console.log(JSON.stringify({ posts, a: a.state, b: b.state,\n"
+        "  card: starCard(line).actions.map((x) => [x.id, x.recommended]),\n"
+        "  byProceed: answeredBy('proceed (UI)'), byYou: answeredBy(null) })), 0);"
+    )
+    assert got["posts"] == [
+        {"gateId": "g1", "body": {"choice": "frontier", "note": "proceed (UI)"}}
+    ]
+    assert got["a"] == "answered"
+    assert got["b"] == "takeover"  # no POST: the STAR card takes over
+    assert got["card"] == [["frontier", True], ["prune", False]]
+    assert got["byProceed"] == "proceed" and got["byYou"] == "you"
+
+
+def test_prompt_409_shows_what_applied():
+    got = _story(
+        _HARNESS + "reject = 'GateExpired: the gate expired; the proposal applied';\n"
+        "const p = promptGate(line, deps); p.proceed();\n"
+        "setTimeout(() => console.log(JSON.stringify({ state: p.state, message: p.message })), 0);"
+    )
+    assert got["state"] == "conflict" and got["message"].startswith("GateExpired")
+
+
+def test_prompt_answers_read_back_from_the_trace_and_auto_runs_never_prompt():
+    answered = {**GATE_LINE, "action": "answered", "choice": "frontier", "decided_by": "human"}
+    got = _story(
+        "const s = storyInit({ question: 'q' });\n"
+        f"storyReduce(s, {json.dumps(GATE_LINE)});\n"
+        "const waiting = gatesToPrompt(s, new Map()).map((g) => g.gate_id);\n"
+        f"storyReduce(s, {json.dumps({**answered, 'note': 'proceeded automatically after 5 s (UI)'})});\n"
+        "const after = gatesToPrompt(s, new Map()).length;\n"
+        "const by = s.gates.get('g1').outcome.by;\n"
+        "const auto = storyInit({ question: 'q' });\n"
+        f"for (const l of {json.dumps(_trace(SAMPLE))}) storyReduce(auto, l);\n"
+        "console.log(JSON.stringify({ waiting, after, by, autoPrompts: gatesToPrompt(auto, new Map()).length }));"
+    )
+    assert got == {"waiting": ["g1"], "after": 0, "by": "auto", "autoPrompts": 0}
+
+
+def test_pause_toggle_says_five_seconds_and_hosted_demo_has_a_30_s_backstop():
+    page = (WEB / "index.html").read_text()
+    assert "Pause at each decision (5 s to take over)" in page
+    service = (REPO / "deploy" / "gcp" / "service.yaml").read_text()
+    assert '{name: GATE_TIMEOUT_SECONDS, value: "30"}' in service

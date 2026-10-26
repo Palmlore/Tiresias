@@ -35,6 +35,7 @@ spec:
             - {name: SAMPLE_MODE, value: "true"}
             - {name: PUBLIC_DEMO, value: "true"}
             - {name: HITL_MODE, value: "auto"}
+            - {name: GATE_TIMEOUT_SECONDS, value: "30"}   # backstop behind the UI's 5 s prompt
             - {name: COGNITION_URL, value: "http://localhost:8100"}
             - {name: MAX_CONCURRENT_RUNS, value: "4"}
           resources:
