@@ -7,7 +7,9 @@ requesting agent's proposal) and returns a ``GateDecision``. Modes:
   or "<gate>"; a missing or invalid entry falls back to the policy, and the trace says so;
 - ``interactive``: an ``ask`` callable decides: ``GateChannel.ask`` over the HTTP API (the run
   waits for ``POST /runs/{id}/gates/{gate_id}``, at most GATE_TIMEOUT_SECONDS and never beyond
-  the run budget left; no answer applies the policy with ``decided_by: "timeout"``) or a stdin
+  the run budget left; no answer applies the policy with ``decided_by: "timeout"``; a gate the
+  user took over (``POST .../hold``) waits for them, bounded only by the run budget, and if that
+  runs out applies no choice on their behalf: ``decided_by: "budget"``, status quo) or a stdin
   prompt in the CLI (``--interactive``); without one it falls back to the policy.
 Every decision is one trace line with gate, gate_mode and decided_by. The source and memory
 gates (Loop B, H-MEM) reuse this class with their own policies.
@@ -22,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from .config import gate_timeout_seconds
+from .config import LoopBudgets, gate_timeout_seconds
 from .trace import mask_secret_values, redact, secret_env_values
 
 AGENT = "gate"
@@ -55,7 +57,8 @@ class GateDecision:
 @dataclass(frozen=True)
 class Answer:
     """What an ``ask`` callable may return instead of a bare choice. ``decided_by="timeout"``
-    means nobody answered in time: the gate applies the policy."""
+    means nobody answered in time: the gate applies the policy. ``decided_by="budget"`` means the
+    user held the gate and the run budget ran out first: the gate keeps the status quo."""
 
     choice: str | None
     note: str | None = None
@@ -64,6 +67,19 @@ class Answer:
 
 
 Policy = Callable[[GateRequest], tuple[str, str]]  # -> (choice, reason)
+
+
+# The option that changes nothing, per gate: what a held gate keeps when the run budget runs out
+# before the user answers (never the proposal applied on their behalf). critic_escalation's
+# "frontier" leaves the cause open (an information need), not accepted and not pruned.
+STATUS_QUO = ("deny", "discard", "frontier", "keep-rule")
+
+
+def status_quo(request: GateRequest) -> tuple[str, str]:
+    for option in STATUS_QUO:
+        if option in request.options:
+            return option, f"kept the status quo ({option})"
+    return request.proposal, "no status-quo option; kept the proposal"
 
 
 def follow_proposal(request: GateRequest) -> tuple[str, str]:
@@ -118,6 +134,13 @@ class Gate:
                 note, gate_id = answer.note, answer.gate_id
                 if answer.decided_by == "timeout":
                     decided_by, reason = "timeout", "no answer before the gate deadline; "
+                elif answer.decided_by == "budget":
+                    choice, why = status_quo(request)
+                    decided_by = "budget"
+                    reason = (
+                        "held by the user and the run budget ran out before their answer: no "
+                        f"choice applied on their behalf; {why}; the run stops at its budget"
+                    )
                 elif answer.choice in request.options:
                     choice, decided_by = answer.choice, answer.decided_by
                     reason = "interactive answer"
@@ -222,11 +245,12 @@ class PendingGate:
     created_at: str
     deadline: str
     timeout_seconds: float
-    status: str = "waiting"  # waiting | answered | expired
+    status: str = "waiting"  # waiting | held | answered | expired
     choice: str | None = None  # as shown (one of shown["options"])
     note: str | None = None
     decided_by: str | None = None
     answered_at: str | None = None
+    held_at: str | None = None
 
     @classmethod
     def make(cls, gate_id: str, request: GateRequest, **fields: Any) -> PendingGate:
@@ -270,6 +294,7 @@ class PendingGate:
             "note": self.note,
             "decided_by": self.decided_by,
             "answered_at": self.answered_at,
+            "held_at": self.held_at,
         }
 
 
@@ -280,8 +305,11 @@ class GateChannel:
     blocks that thread (only that one) until ``answer`` is called from the API or the wait ends.
     The wait is GATE_TIMEOUT_SECONDS (read at call time), capped at the run budget left
     (``run_deadline``, on ``clock``); with no answer the gate expires (``gate``/``expired``) and
-    the Gate applies its policy with ``decided_by: "timeout"``. Answer and expiry are decided
-    under one lock, so a late answer gets GateClosed, never a second decision.
+    the Gate applies its policy with ``decided_by: "timeout"``. ``hold`` (the user took it over)
+    switches the wait to the run budget left: the proposal is never applied on a held gate; if the
+    budget runs out first the gate ends with ``decided_by: "budget"`` (``gate``/``budget``) and the
+    Gate keeps the status quo. Answer, hold and expiry are decided under one lock, so a late answer
+    gets GateClosed, never a second decision.
     """
 
     def __init__(
@@ -298,6 +326,12 @@ class GateChannel:
         self.clock = clock
         self._gates: dict[str, PendingGate] = {}
         self._cond = threading.Condition()
+
+    def _budget_left(self) -> float:
+        deadline = self.run_deadline
+        if deadline is None:  # rule 7: a held gate is still bounded, by the run budget
+            return LoopBudgets.from_env().run_seconds
+        return max(0.0, deadline - self.clock())
 
     def _wait_seconds(self) -> float:
         wait = self.timeout if self.timeout is not None else gate_timeout_seconds()
@@ -340,6 +374,30 @@ class GateChannel:
                 f"(POST /runs/<run_id>/gates/{gate_id})",
             )
             self._cond.wait_for(lambda: pending.status != "waiting", timeout=wait)
+            if pending.status == "held":  # taken over: wait for the user, up to the run budget
+                end = self.clock() + self._budget_left()
+                while pending.status == "held":
+                    left = end - self.clock()
+                    if left <= 0:
+                        break
+                    self._cond.wait_for(lambda: pending.status != "held", timeout=left)
+                if pending.status == "held":
+                    pending.status, pending.decided_by = "expired", "budget"
+                    pending.answered_at = _iso(datetime.now(UTC))
+                    self.tracer.emit(
+                        agent=AGENT,
+                        action="budget",
+                        status="degraded",
+                        node_id=shown["node_id"],
+                        gate=shown["gate"],
+                        gate_mode="interactive",
+                        gate_id=gate_id,
+                        decided_by="budget",
+                        proposal=shown["proposal"],
+                        output_summary="held by the user; the run budget ran out before their "
+                        "answer: no choice applied on their behalf (status quo), the run stops",
+                    )
+                    return Answer(choice=None, gate_id=gate_id, decided_by="budget")
             if pending.status != "waiting":
                 choice = pending.options[pending.choice] if pending.choice else None
                 return Answer(
@@ -372,7 +430,7 @@ class GateChannel:
             pending = self._gates.get(gate_id)
             if pending is None:
                 raise GateNotFound(gate_id)
-            if pending.status != "waiting":
+            if pending.status not in ("waiting", "held"):
                 raise GateClosed(gate_id, pending.status)
             shown = pending.shown
             if choice not in pending.options:  # the options as shown (scrubbed)
@@ -404,10 +462,43 @@ class GateChannel:
             self._cond.notify_all()
             return pending.public()
 
+    def hold(self, gate_id: str, note: str | None = None) -> dict[str, Any]:
+        """The user took a waiting gate over (from the API thread): it now waits for their answer,
+        bounded only by the run budget. Holding a held gate again is a no-op. Raises
+        GateNotFound or GateClosed (answered or expired); returns the gate."""
+        with self._cond:
+            pending = self._gates.get(gate_id)
+            if pending is None:
+                raise GateNotFound(gate_id)
+            if pending.status == "held":
+                return pending.public()
+            if pending.status != "waiting":
+                raise GateClosed(gate_id, pending.status)
+            shown = pending.shown
+            note = scrub(note, limit=MAX_NOTE) if note else None
+            pending.status, pending.held_at = "held", _iso(datetime.now(UTC))
+            self.tracer.emit(
+                agent=AGENT,
+                action="held",
+                node_id=shown["node_id"],
+                gate=shown["gate"],
+                gate_mode="interactive",
+                gate_id=gate_id,
+                target_agent="human",
+                note=note,
+                proposal=shown["proposal"],
+                output_summary="taken over by the user: waiting for their answer (no countdown; "
+                "bounded by the run budget)",
+            )
+            self._cond.notify_all()
+            return pending.public()
+
     def list(self) -> list[dict[str, Any]]:
         with self._cond:
             return [g.public() for g in self._gates.values()]
 
     def waiting(self) -> dict[str, Any] | None:
         with self._cond:
-            return next((g.public() for g in self._gates.values() if g.status == "waiting"), None)
+            return next(
+                (g.public() for g in self._gates.values() if g.status in ("waiting", "held")), None
+            )

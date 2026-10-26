@@ -496,14 +496,25 @@ class GateAnswer(BaseModel):
     auto: bool = False  # a UI applied the recommendation after its countdown, not a person
 
 
+class GateHold(BaseModel):
+    """POST /runs/{run_id}/gates/{gate_id}/hold body (optional): the user took the decision over.
+    A held gate waits for their answer; GATE_TIMEOUT_SECONDS no longer applies, only the run's
+    wall-clock budget does."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    note: str | None = Field(default=None, max_length=500)
+
+
 class GateWaiting(BaseModel):
     """One interactive gate of a run (gates.PendingGate.public): the ``gate``/``waiting`` trace
-    line's fields, then its outcome once answered (decided_by human, or ui-auto for a UI's
-    countdown) or expired (timeout)."""
+    line's fields, ``held`` once the user takes it over, then its outcome once answered
+    (decided_by human, or ui-auto for a UI's countdown) or expired (timeout; budget when the run
+    budget ran out on a held gate)."""
 
     gate_id: str
     gate: GateName
-    status: Literal["waiting", "answered", "expired"]
+    status: Literal["waiting", "held", "answered", "expired"]
     question: str
     options: list[str]
     proposal: str
@@ -513,12 +524,15 @@ class GateWaiting(BaseModel):
         default_factory=dict, description="The evidence the decision rests on, scrubbed"
     )
     created_at: str
-    deadline: str = Field(description="UTC; past it the policy's proposal applies")
+    deadline: str = Field(
+        description="UTC; past it the policy's proposal applies, unless the gate is held"
+    )
     timeout_seconds: float
     choice: str | None = None
     note: str | None = None
-    decided_by: Literal["human", "ui-auto", "timeout"] | None = None
+    decided_by: Literal["human", "ui-auto", "timeout", "budget"] | None = None
     answered_at: str | None = None
+    held_at: str | None = None
 
 
 class GateList(BaseModel):

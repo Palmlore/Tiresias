@@ -114,6 +114,27 @@ paths:
         "404": {description: "Unknown run (RunNotFound) or gate, or a run without interactive gates (GateNotFound)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
         "409": {description: "Already answered (GateAlreadyAnswered) or expired (GateExpired)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
         "422": {description: "A choice that is not one of the gate's options, or an invalid body (ValidationError)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+  /runs/{run_id}/gates/{gate_id}/hold:
+    post:
+      summary: Take a waiting gate over; it waits for this user's answer (implemented)
+      description: >
+        The user took the decision over: the gate stops counting down (GATE_TIMEOUT_SECONDS no
+        longer applies the proposal) and waits for POST /runs/{run_id}/gates/{gate_id}. Only the
+        run's wall-clock budget (RUN_BUDGET_SECONDS) still bounds it; if that runs out first the
+        gate ends with decided_by budget, applies no choice on the user's behalf (it keeps the
+        status quo: deny, discard or leave the cause open) and the run stops at end state budget.
+        One gate/held trace line. Holding a held gate again is a no-op (200).
+      parameters:
+        - {name: run_id, in: path, required: true, schema: {type: string}}
+        - {name: gate_id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: false
+        content: {application/json: {schema: {$ref: "#/components/schemas/GateHold"}}}
+      responses:
+        "200": {description: "The held gate (status held)", content: {application/json: {schema: {$ref: "#/components/schemas/GateWaiting"}}}}
+        "404": {description: "Unknown run (RunNotFound) or gate, or a run without interactive gates (GateNotFound)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "409": {description: "Already answered (GateAlreadyAnswered) or expired (GateExpired)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
+        "422": {description: "An invalid body (ValidationError)", content: {application/json: {schema: {$ref: "#/components/schemas/Error"}}}}
   /entities:
     get:
       summary: Companies to ask about, for a picker with type-ahead (implemented)
@@ -279,6 +300,11 @@ components:
         choice: {type: string, minLength: 1, maxLength: 64, description: "One of the gate's options"}
         note: {type: [string, "null"], maxLength: 500, description: "Kept in the trace, scrubbed of secrets"}
         auto: {type: boolean, default: false, description: "true when a UI applied the recommendation after its countdown, not a person: recorded as decided_by ui-auto; only the proposal may be applied so (else 422)"}
+    GateHold:
+      type: object
+      additionalProperties: false
+      properties:
+        note: {type: [string, "null"], maxLength: 500, description: "Kept in the trace, scrubbed of secrets"}
     GateWaiting:
       type: object
       description: >
@@ -289,7 +315,7 @@ components:
       properties:
         gate_id: {type: string, description: "g1, g2, ... in the order the run reached them"}
         gate: {type: string, enum: [framing, source, critic_escalation, memory]}
-        status: {type: string, enum: [waiting, answered, expired]}
+        status: {type: string, enum: [waiting, held, answered, expired], description: "held: the user took it over; it waits for their answer, bounded only by the run budget"}
         question: {type: string}
         options: {type: array, items: {type: string}}
         proposal: {type: string, description: "The requesting agent's proposal: what auto would choose, and what a timeout applies"}
@@ -297,12 +323,13 @@ components:
         requested_by: {type: string}
         context: {type: object, description: "The evidence the decision rests on (share, claim, entity, cik, tags...), scrubbed: secret keys and bearer tokens masked, strings cut to 300 characters"}
         created_at: {type: string, format: date-time}
-        deadline: {type: string, format: date-time, description: "UTC; past it the proposal applies (decided_by timeout)"}
+        deadline: {type: string, format: date-time, description: "UTC; past it the proposal applies (decided_by timeout), unless the gate is held"}
         timeout_seconds: {type: number, description: "GATE_TIMEOUT_SECONDS capped at the run budget left"}
         choice: {type: [string, "null"]}
         note: {type: [string, "null"]}
-        decided_by: {type: [string, "null"], enum: [human, ui-auto, timeout, null]}
+        decided_by: {type: [string, "null"], enum: [human, ui-auto, timeout, budget, null], description: "budget: the run budget ran out on a held gate; no choice was applied on the user's behalf"}
         answered_at: {type: [string, "null"], format: date-time}
+        held_at: {type: [string, "null"], format: date-time}
     GateList:
       type: object
       required: [run_id, hitl_mode, gates]

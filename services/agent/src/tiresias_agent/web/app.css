@@ -358,3 +358,6 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .exchange td:first-child { white-space: nowrap; color: var(--parchment); }
 #s-run.finished .s-panes { grid-template-columns: 1fr; }
 #s-run.finished .s-tree-pane { position: static; max-height: none; }
+/* Take over: paused, the user's call; the recommendation is only nudged, never applied. */
+.star .note.paused { color: var(--celeste); }
+.btn.small.nudge { outline: 2px solid var(--celeste); outline-offset: 2px; }
