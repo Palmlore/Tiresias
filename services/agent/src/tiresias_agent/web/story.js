@@ -207,6 +207,16 @@ function storyReduce(s, l) {
       s.gates.set(l.gate_id, { line: l, outcome: null });
       turn(s, "decision", "star", { gate_id: l.gate_id, gate: l.gate, node_ids: l.node_id ? [l.node_id] : [] });
       break;
+    case "gate/held": {
+      const g = s.gates.get(l.gate_id);
+      if (g) g.held = true;
+      break;
+    }
+    case "gate/budget": {  // held, and the run budget ran out: nothing applied on the user's behalf
+      const g = s.gates.get(l.gate_id);
+      if (g) g.outcome = { choice: null, by: "budget" };
+      break;
+    }
     case "gate/answered":
     case "gate/expired": {
       const g = s.gates.get(l.gate_id);
@@ -364,14 +374,31 @@ function answeredBy(note) {
   return "you";
 }
 
+const OUTCOME_WORDS = {
+  you: "You chose",
+  proceed: "You proceeded with the recommendation",
+  auto: `Proceeded automatically after ${PROMPT_SECONDS} s`,
+  timeout: "No answer in time; the recommendation applied",
+  budget: "Paused until the run budget ran out; nothing was applied on your behalf",
+};
+
+function outcomeText(outcome, c) {
+  if (!outcome) return "decided";
+  const words = OUTCOME_WORDS[outcome.by] || "Decided";
+  if (outcome.choice === null) return words;
+  return `${words}: ${(c.actions.find((x) => x.id === outcome.choice) || { label: outcome.choice }).label}`;
+}
+
 function sphinxAsks(line) {
   const w = GATE_WORDS[line.gate];
   return (w && w.ask) || line.question || "Proceed with the recommendation?";
 }
 
-// One countdown per waiting gate. deps: { post(gateId, body) -> Promise, setTimer(fn, ms) -> id,
+// One countdown per waiting gate. deps: { post(gateId, body) -> Promise, hold(gateId) -> Promise,
+// setTimer(fn, ms) -> id,
 // clearTimer(id), onChange() }. States: counting -> posting -> answered | conflict | error, or
-// counting -> takeover (the STAR card; the user answers before the server's own deadline).
+// counting -> holding -> takeover (POST .../hold: the gate waits for the user, no countdown, only
+// the run budget bounds it; Take over is the user's call, full stop) | conflict | error.
 function promptGate(line, deps) {
   const p = { gate_id: line.gate_id, choice: line.proposal, state: "counting", left: PROMPT_SECONDS, message: "" };
   let timer = null;
@@ -405,8 +432,17 @@ function promptGate(line, deps) {
     if (p.state !== "counting") return;
     if (timer !== null) deps.clearTimer(timer);
     timer = null;
-    p.state = "takeover";
+    p.state = "holding";
     deps.onChange();
+    return Promise.resolve(deps.hold(p.gate_id)).then(() => {
+      p.state = "takeover";
+      deps.onChange();
+    }, (e) => {
+      const msg = String((e && e.message) || e);
+      p.state = /^Gate(AlreadyAnswered|Expired)\b/.test(msg) ? "conflict" : "error";
+      p.message = msg;
+      deps.onChange();
+    });
   };
   p.cancel = () => { if (timer !== null) deps.clearTimer(timer); timer = null; if (p.state === "counting") p.state = "cancelled"; };
   timer = deps.setTimer(tick, 1000);
@@ -500,6 +536,8 @@ function storyLine(line) {
     story.prompts.set(g.gate_id, promptGate(g, {
       post: (gateId, body) => api(`/runs/${encodeURIComponent(story.runId)}/gates/${encodeURIComponent(gateId)}`,
         { method: "POST", body: JSON.stringify(body) }),
+      hold: (gateId) => api(`/runs/${encodeURIComponent(story.runId)}/gates/${encodeURIComponent(gateId)}/hold`,
+        { method: "POST", body: JSON.stringify({ note: "taken over (UI)" }) }),
       setTimer: (fn, ms) => setTimeout(fn, ms),
       clearTimer: (id) => clearTimeout(id),
       onChange: scheduleRender,
@@ -721,27 +759,22 @@ function starItem(s, t) {
   const done = g.outcome || g.closed;
   const pr = story.prompts.get(t.gate_id);
   if (!done && pr && pr.state !== "takeover") return sphinxPrompt(g.line, c, pr);
+  const held = g.held || (pr && pr.state === "takeover");
   const box = sEl("div", { class: `star${done ? " done" : ""}`, "data-gate": t.gate_id },
     sEl("dl", { class: "star-dl" },
       sEl("dt", { text: "Situation" }), sEl("dd", {}, c.situation, c.facts.length ? sEl("span", { class: "note", text: ` (${c.facts.join(" · ")})` }) : null),
       sEl("dt", { text: "Task" }), sEl("dd", { text: c.task }),
       sEl("dt", { text: "Action" }), sEl("dd", {}, done
-        ? sEl("span", { text: g.outcome ? `${OUTCOME_WORDS[g.outcome.by] || "Decided"}: ${(c.actions.find((x) => x.id === g.outcome.choice) || { label: g.outcome.choice }).label}` : "decided" })
+        ? sEl("span", { text: outcomeText(g.outcome, c) })
         : sEl("div", { class: "star-actions" }, c.actions.map((x) => sEl("button", {
-          type: "button", class: `btn small${x.recommended ? "" : " alt"}`,
+          type: "button", class: `btn small${x.recommended ? (held ? " nudge" : "") : " alt"}`,
           onclick: (ev) => answerGate(t.gate_id, x.id, ev.currentTarget) },
         sEl("span", { text: x.label + (x.recommended ? " (recommended)" : "") }), sEl("small", { class: "choice-id", text: x.id }))))),
       sEl("dt", { text: "Result" }), sEl("dd", {}, sEl("ul", { class: "results" }, c.actions.map((x) => sEl("li", {}, sEl("b", { text: `${x.label}: ` }), x.result))))),
-    !done && c.deadline ? sEl("p", { class: "note countdown", "data-deadline": c.deadline, text: countdownText(c.deadline) }) : null);
+    !done && held ? sEl("p", { class: "note paused", text: "Paused · your call. Nothing proceeds until you choose; the recommended option is highlighted." }) : null,
+    !done && !held && c.deadline ? sEl("p", { class: "note countdown", "data-deadline": c.deadline, text: countdownText(c.deadline) }) : null);
   return box;
 }
-
-const OUTCOME_WORDS = {
-  you: "You chose",
-  proceed: "You proceeded with the recommendation",
-  auto: `Proceeded automatically after ${PROMPT_SECONDS} s`,
-  timeout: "No answer in time; the recommendation applied",
-};
 
 // The Sphinx asks on the user's behalf: the question, the recommendation, a 5 s countdown,
 // Proceed (now) and Take over (the STAR card).
@@ -761,6 +794,7 @@ function sphinxPrompt(line, c, pr) {
 function promptText(pr) {
   if (pr.state === "counting") return `Proceeding in ${pr.left} s…`;
   if (pr.state === "posting") return "Proceeding…";
+  if (pr.state === "holding") return "Taking over…";
   if (pr.state === "conflict") return `Already decided: ${pr.message.replace(/^Gate\w+: /, "")}`;
   if (pr.state === "error") return `Could not answer: ${pr.message}`;
   return "";

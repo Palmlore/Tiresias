@@ -48,7 +48,14 @@ def test_every_endpoint_the_ui_calls_exists():
     literals += re.findall(r"\"(/(?:health|runs|entities|memory)[^\"]*)\"", js)
     # ${...} placeholders become one path segment; a query string is not part of the route
     called = {re.sub(r"\$\{[^}]+\}", "x", lit).split("?")[0] for lit in literals}
-    assert {"/health", "/entities", "/runs", "/runs/x/events", "/runs/x/gates/x"} <= called, called
+    assert {
+        "/health",
+        "/entities",
+        "/runs",
+        "/runs/x/events",
+        "/runs/x/gates/x",
+        "/runs/x/gates/x/hold",
+    } <= called, called
     routes = [r.path for r in app_module.app.routes if hasattr(r, "methods")]
     patterns = [re.compile("^" + re.sub(r"\{[^}]+\}", "[^/]+", p) + "$") for p in routes]
     for path in called:
@@ -470,9 +477,10 @@ GATE_LINE = {
 
 # A fake clock and POST: timers run when the test says so; every POST is recorded.
 _HARNESS = f"""
-const posts = [], timers = new Map(); let nextId = 1, changes = 0, reject = null;
+const posts = [], holds = [], timers = new Map(); let nextId = 1, changes = 0, reject = null, rejectHold = null;
 const deps = {{
   post: (gateId, body) => {{ posts.push({{ gateId, body }}); return reject ? Promise.reject(new Error(reject)) : Promise.resolve({{}}); }},
+  hold: (gateId) => {{ holds.push(gateId); return rejectHold ? Promise.reject(new Error(rejectHold)) : Promise.resolve({{}}); }},
   setTimer: (fn, ms) => {{ const id = nextId++; timers.set(id, fn); return id; }},
   clearTimer: (id) => timers.delete(id),
   onChange: () => {{ changes += 1; }},
@@ -516,7 +524,7 @@ def test_prompt_proceed_posts_now_and_take_over_cancels_the_timer():
         "const b = promptGate({ ...line, gate_id: 'g2' }, deps);\n"
         "b.takeOver();\n"
         "for (let i = 0; i < 10; i++) tickAll();\n"
-        "setTimeout(() => console.log(JSON.stringify({ posts, a: a.state, b: b.state,\n"
+        "setTimeout(() => console.log(JSON.stringify({ posts, holds, a: a.state, b: b.state,\n"
         "  card: starCard(line).actions.map((x) => [x.id, x.recommended]),\n"
         "  byProceed: answeredBy('proceed (UI)'), byYou: answeredBy(null) })), 0);"
     )
@@ -524,9 +532,45 @@ def test_prompt_proceed_posts_now_and_take_over_cancels_the_timer():
         {"gateId": "g1", "body": {"choice": "frontier", "note": "proceed (UI)"}}
     ]
     assert got["a"] == "answered"
-    assert got["b"] == "takeover"  # no POST: the STAR card takes over
+    assert got["b"] == "takeover"  # no answer POST: the STAR card takes over
+    assert got["holds"] == ["g2"]  # ...after holding the gate: no deadline applies the proposal
     assert got["card"] == [["frontier", True], ["prune", False]]
     assert got["byProceed"] == "proceed" and got["byYou"] == "you"
+
+
+def test_take_over_holds_the_gate_and_nothing_ever_proceeds_on_its_own():
+    held = {**GATE_LINE, "action": "held"}
+    budget = {**GATE_LINE, "action": "budget", "decided_by": "budget"}
+    got = _story(
+        _HARNESS + "const p = promptGate(line, deps); p.takeOver();\n"
+        "for (let i = 0; i < 60; i++) tickAll();\n"  # a minute of fake time
+        "const s = storyInit({ question: 'q' });\n"
+        f"storyReduce(s, {json.dumps(GATE_LINE)}); storyReduce(s, {json.dumps(held)});\n"
+        "const g = s.gates.get('g1');\n"
+        "const s2 = storyInit({ question: 'q' });\n"
+        f"storyReduce(s2, {json.dumps(GATE_LINE)}); storyReduce(s2, {json.dumps(budget)});\n"
+        "const c = starCard(line);\n"
+        "setTimeout(() => console.log(JSON.stringify({ posts, holds, state: p.state,\n"
+        "  timers: timers.size, held: g.held === true, outcome: g.outcome,\n"
+        "  budget: s2.gates.get('g1').outcome, words: outcomeText(s2.gates.get('g1').outcome, c) })), 0);"
+    )
+    assert got["holds"] == ["g1"] and got["posts"] == []  # never an answer on the user's behalf
+    assert got["state"] == "takeover" and got["timers"] == 0
+    assert got["held"] and got["outcome"] is None
+    assert got["budget"] == {"choice": None, "by": "budget"}
+    assert "nothing was applied on your behalf" in got["words"]
+    js = (WEB / "story.js").read_text()
+    star = js[js.index("function starItem") : js.index("function sphinxPrompt")]
+    assert "Paused · your call" in star and "!done && !held && c.deadline" in star
+
+
+def test_take_over_on_a_closed_gate_shows_what_applied():
+    got = _story(
+        _HARNESS + "rejectHold = 'GateAlreadyAnswered: the gate is answered';\n"
+        "const p = promptGate(line, deps); p.takeOver();\n"
+        "setTimeout(() => console.log(JSON.stringify({ state: p.state, posts })), 0);"
+    )
+    assert got["state"] == "conflict" and got["posts"] == []
 
 
 def test_prompt_409_shows_what_applied():

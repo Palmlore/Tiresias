@@ -168,6 +168,75 @@ def test_a_ui_countdown_answer_is_recorded_as_ui_auto_not_human(client, tmp_path
     assert [(g.gate_id, g.decided_by) for g in listed.gates] == [("g1", "ui-auto"), ("g2", "human")]
 
 
+def _hold(client, run_id: str, gate_id: str, note: str | None = None):
+    body = None if note is None else {"note": note}
+    return client.post(f"/runs/{run_id}/gates/{gate_id}/hold", json=body)
+
+
+def test_a_held_gate_waits_past_the_gate_timeout_for_the_user(client, tmp_path, monkeypatch):
+    # Take over = the user's call, full stop: GATE_TIMEOUT_SECONDS never applies the proposal.
+    monkeypatch.setenv("GATE_TIMEOUT_SECONDS", "0.2")
+    rid = _start(client, run_id="gate-hold")
+    first = _waiting(client, rid, "critic_escalation")
+    held = _hold(client, rid, "g1", note="taking over")
+    assert held.status_code == 200, held.text
+    assert GateWaiting.model_validate(held.json()).status == "held" and held.json()["held_at"]
+    assert _hold(client, rid, "g1").json()["status"] == "held"  # idempotent
+    time.sleep(1.0)  # five times the gate timeout
+    still = client.get(f"/runs/{rid}/gates").json()
+    assert still["waiting_gate"]["gate_id"] == "g1" and still["waiting_gate"]["status"] == "held"
+    assert client.get(f"/runs/{rid}").json()["status"] == "running"
+    wrong = next(o for o in first["options"] if o != first["proposal"])
+    assert _answer(client, rid, "g1", wrong).status_code == 200  # the user's own choice
+    _finish(rid)
+    lines = _lines(tmp_path, rid)
+    held_lines = _gate_lines(lines, "held")
+    assert [(h["gate_id"], h["note"]) for h in held_lines] == [("g1", "taking over")]
+    assert not [e for e in _gate_lines(lines, "expired") if e["gate_id"] == "g1"]
+    decide = next(d for d in _gate_lines(lines, "decide") if d["gate_id"] == "g1")
+    assert decide["decided_by"] == "human" and decide["choice"] == wrong
+
+
+def test_a_held_gate_at_the_run_budget_applies_no_choice_on_the_users_behalf(
+    client, tmp_path, monkeypatch
+):
+    monkeypatch.setenv("GATE_TIMEOUT_SECONDS", "0.2")
+    monkeypatch.setenv("RUN_BUDGET_SECONDS", "1.5")
+    rid = _start(client, run_id="gate-hold-budget")
+    first = _waiting(client, rid, "critic_escalation")
+    assert _hold(client, rid, "g1").status_code == 200
+    result = _finish(rid)
+    assert result.end_state == "budget"
+    lines = _lines(tmp_path, rid)
+    budget = _gate_lines(lines, "budget")
+    assert [(b["gate_id"], b["decided_by"], b["status"]) for b in budget] == [
+        ("g1", "budget", "degraded")
+    ]
+    decide = next(d for d in _gate_lines(lines, "decide") if d["gate_id"] == "g1")
+    assert decide["decided_by"] == "budget" and "no choice applied" in decide["output_summary"]
+    assert decide["choice"] == "frontier"  # status quo: the cause stays open
+    assert not _gate_lines(lines, "answered")
+    listed = client.get(f"/runs/{rid}/gates").json()["gates"]
+    first_gate = listed[0]
+    assert (first_gate["gate_id"], first_gate["status"], first_gate["decided_by"]) == (
+        "g1",
+        "expired",
+        "budget",
+    )
+    assert first["proposal"] in first["options"]
+
+
+def test_hold_errors_404_and_409(client):
+    assert _hold(client, "nope", "g1").status_code == 404
+    rid = _start(client, run_id="gate-hold-err")
+    _waiting(client, rid, "critic_escalation")
+    _error(_hold(client, rid, "g9"), 404, "GateNotFound")
+    assert _answer(client, rid, "g1", "frontier").status_code == 200
+    _error(_hold(client, rid, "g1"), 409, "GateAlreadyAnswered")
+    _answer(client, rid, _waiting(client, rid, "source")["gate_id"], "register")
+    _finish(rid)
+
+
 def test_deny_at_the_source_gate_keeps_the_frontier(client):
     rid = _start(client)
     _answer(client, rid, _waiting(client, rid, "critic_escalation")["gate_id"], "frontier")

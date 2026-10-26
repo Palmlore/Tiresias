@@ -36,6 +36,7 @@ from .models import (
     ErrorDetail,
     ErrorResponse,
     GateAnswer,
+    GateHold,
     GateList,
     GateWaiting,
     PurgeRequest,
@@ -295,7 +296,7 @@ def list_gates(run_id: str) -> JSONResponse:
     if record is None:
         return _unknown(run_id)
     gates = record.gates.list() if record.gates else []
-    waiting = next((g for g in gates if g["status"] == "waiting"), None)
+    waiting = next((g for g in gates if g["status"] in ("waiting", "held")), None)
     body = GateList(run_id=run_id, hitl_mode=record.hitl_mode, waiting_gate=waiting, gates=gates)
     return JSONResponse(content=body.model_dump(mode="json"), headers={"X-Run-Id": run_id})
 
@@ -322,6 +323,28 @@ def answer_gate(run_id: str, gate_id: str, body: GateAnswer) -> JSONResponse:
         return error_response(409, kind, f"Gate {gate_id} is already {err.status}.", run_id=run_id)
     except InvalidChoice as err:
         return error_response(422, "ValidationError", str(err), run_id=run_id)
+    content = GateWaiting.model_validate(gate).model_dump(mode="json")
+    return JSONResponse(content=content, headers={"X-Run-Id": run_id})
+
+
+@app.post("/runs/{run_id}/gates/{gate_id}/hold")
+def hold_gate(run_id: str, gate_id: str, body: GateHold | None = None) -> JSONResponse:
+    """Take a waiting gate over: it waits for this user's answer (no countdown), bounded only by
+    the run budget. Holding again is a no-op. 404 unknown run or gate, 409 answered or expired."""
+    record = registry.get(run_id)
+    if record is None:
+        return _unknown(run_id)
+    if record.gates is None:
+        return error_response(
+            404, "GateNotFound", "This run has no interactive gates.", run_id=run_id
+        )
+    try:
+        gate = record.gates.hold(gate_id, body.note if body else None)
+    except GateNotFound:
+        return error_response(404, "GateNotFound", f"No gate {gate_id} in this run.", run_id=run_id)
+    except GateClosed as err:
+        kind = "GateExpired" if err.status == "expired" else "GateAlreadyAnswered"
+        return error_response(409, kind, f"Gate {gate_id} is already {err.status}.", run_id=run_id)
     content = GateWaiting.model_validate(gate).model_dump(mode="json")
     return JSONResponse(content=content, headers={"X-Run-Id": run_id})
 
