@@ -65,11 +65,11 @@ Deviation from the procedure: IBM was run first, as the script's trial, instead 
 
 | # | Parent | Question the rule picked (first restatement suggestion) | End state | Counterparty Loop B found | Share explained / residual | Scored run | Score |
 |---|---|---|---|---|---|---|---|
-| 1 | JNJ | FY2022 revenue, 10-K filed 2023-02-16 ($93.78B) vs 2024-02-16 ($78.74B) | actionable | none (Loop A only) | 100% / 0%, asserted, not measured (B-30) | 4.4 s | actionable, **not reconciled** |
+| 1 | JNJ | FY2022 revenue, 10-K filed 2023-02-16 ($93.78B) vs 2024-02-16 ($78.74B) | actionable | none (Loop A only) | 100% / 0%, measured on JNJ's own disposed-group revenue ($15.04B; see [post-fix rerun](#post-fix-rerun-b-30)) | 4.4 s | actionable, **not reconciled** (no Loop B add-back) |
 | 2 | DHR | FY2022 revenue, $31.47B vs $26.64B | evidence-frontier | none: asks for a segment breakdown | — | 4.7 s | frontier; Veralto **not found** |
 | 3 | K | — | not resolved: `K` was not in the SEC ticker list at run time | — | — | — | not resolved |
 | 4 | IBM | FY2019 revenue, $77.15B vs $57.71B | actionable | **Kyndryl Holdings** (CIK 0001867072) | 104% / −4.35% (over-explained by $846M) | 13.5 s | **reconciled**, right counterparty |
-| 5 | MRK | FY2019 revenue, $46.84B vs $39.12B | actionable | none (Loop A only; cites the 8-K filed 2021-06-03) | 100% / 0%, asserted, not measured (B-30) | 7.9 s | actionable, **not reconciled** |
+| 5 | MRK | FY2019 revenue, $46.84B vs $39.12B | actionable | none (Loop A only; cites the 8-K filed 2021-06-03, the Organon separation) | 100% / 0%, measured on MRK's own disposed-group revenue ($7.72B; see [post-fix rerun](#post-fix-rerun-b-30)) | 7.9 s | actionable, **not reconciled** (no Loop B add-back) |
 | 6 | RTX | FY2018 revenue, $66.50B vs $34.70B | evidence-frontier | nVent Electric (**wrong**: a Pentair spin-off), registered then rejected (B-31) | — | 30.4 s | frontier; Carrier/Otis **not found** |
 | 7 | FTV | FY2023 revenue, $6.07B vs $3.91B | actionable | **Ralliant Corp** (CIK 0002041385) | 100% / −0.2% | 22.3 s | **reconciled**; a 2025 separation, not the listed Vontier (2020) |
 | 8 | BBWI | FY2020 revenue, $12.91B vs $5.41B | actionable | **Victoria's Secret & Co.** (CIK 0001856437) | 100% / 0.0% | 18.6 s | **reconciled**, right counterparty |
@@ -94,7 +94,7 @@ Deviation from the procedure: IBM was run first, as the script's trial, instead 
 |---|---|---|
 | Reconciled within tolerance, right counterparty for the question asked | **3** | IBM (Kyndryl), BBWI (Victoria's Secret), FTV (Ralliant) |
 | Actionable, right counterparty, not reconciled (residual 23.5%) | 1 | DD (Qnity) |
-| Actionable from Loop A only, share asserted (B-30) | 2 | JNJ, MRK |
+| Actionable from Loop A only: share measured on the parent's own disposed-group revenue, no Loop B add-back | 2 | JNJ (Kenvue), MRK (Organon) |
 | Evidence-frontier, no cause asserted | 5 | DHR, RTX, PFE, IP, BDX |
 | Not resolved | 1 | K |
 | **Wrong answer accepted** | **0** | (two wrong counterparties were registered and rejected by the critic: RTX, IP, B-31) |
@@ -109,7 +109,27 @@ Each add-back figure is the counterparty's own XBRL fact, read through Zetaris f
 
 ### What this does and does not show
 
-- It shows that, on spin-off parents chosen by a rule rather than by us, the agent reconciled 3 of 12 within tolerance with the right counterparty found from filing evidence, stopped without asserting a cause on 5, and accepted **no wrong reconciliation**; it also shows two weaknesses, both deferred: an unmeasured Loop A acceptance on 2 of 12 (B-30) and a wrong counterparty registered (then rejected) on 2 of 12 (B-31).
+- It shows that, on spin-off parents chosen by a rule rather than by us, the agent reconciled 3 of 12 within tolerance with the right counterparty found from filing evidence, stopped without asserting a cause on 5, and accepted **no wrong reconciliation**; it also shows two weaknesses: the wrong 8-K cited on 1 of 12 (JNJ, B-30, fixed; see below) and a wrong counterparty registered (then rejected) on 2 of 12 (B-31, deferred).
 - N is small (12 + 3 controls), one run each, one day, one Zetaris bundle; spin-offs only; XBRL company facts only (no segment data, no narrative text: DHR and BDX stopped on that).
 - "Reconciled" is our own scoring (add-back within the critic's 5% tolerance), not an external ground truth, and the spot-check checks source and period, not the printed statements.
 - Depth `quick` only: the Nemotron critic (depth `thorough`) was not part of this sweep.
+
+## Post-fix rerun (B-30)
+
+**The first write-up of JNJ and MRK was wrong.** It said their 100% share was asserted, not measured, because the counterfactual equals the original figure. Reading the rows (2026-10-26, evening) shows the share **was measured**: each parent's restating 10-K reports the disposed business's revenue as its own XBRL fact, `DisposalGroupIncludingDiscontinuedOperationRevenue`, and the analyst measures the disposal on it (`agents/analyst.py`, disposal branch):
+
+- **MRK** FY2019: $7.719B in the 10-K filed 2022-02-25 (Organon), against a restatement of −$7.72B. The cited 8-K (items 2.01, 9.01, filed 2021-06-03) is the Organon separation. Correct.
+- **JNJ** "FY2022": JNJ keeps a 52/53-week year, so the question's period is the year to 2022-01-02 (BACKLOG B-32: the label follows the end date). JNJ's 10-K filed 2024-02-16 reports $15.035B of disposed-group revenue (the Kenvue consumer-health business) for that period, against a restatement of −$15.04B. The measurement is correct, **but the action cited the wrong filing**: two 8-K item 2.01 filings fall in the window, 2022-12-22 (items 1.01, 2.01, 7.01, 9.01: the Abiomed acquisition) and 2023-08-25 (the Kenvue separation), and the reporter cited the oldest.
+
+The counterfactual equals the original figure because the disposed revenue matches the restatement to the rounding, not because it was derived from it.
+
+**Fix** (`fix/b30-unmeasured-acceptance`): the analyst now writes the fact the share rests on into the measurement ("the filer reports $15.04B of DisposalGroupIncludingDiscontinuedOperationRevenue for the period (10-K filed 2024-02-16)"), and when several filings match the event, the action names all of them in date order instead of picking one (item 2.01 covers acquisitions and disposals alike, so the filings alone do not say which is the separation). An unmeasured disposal still goes to the evidence frontier, as before (test `tests/test_b30_disposal.py`). The four input examples keep their end state and action text.
+
+**Rerun** with the fixed code, same settings (live, depth `quick`, auto gates, cold memory; both companies already registered), rows appended to the JSONL with `"group": "rerun-b30"` (the scored rows above are unchanged):
+
+| Parent | End state | Share / residual | Seconds | What changed |
+|---|---|---|---|---|
+| JNJ | actionable | 100% / 0% | 22.6 | the measurement names the disposed-group revenue fact; the action names both 2.01 filings (2022-12-22 and 2023-08-25) |
+| MRK | actionable | 100% / 0% | 33.7 | the measurement names the disposed-group revenue fact; the cited filing is unchanged |
+
+Still open, deferred: the action keeps the generic "keep the residual open until the disposed business's Revenues is reconciled" even when the parent's own fact already measures it with a 0% residual (BACKLOG B-33).

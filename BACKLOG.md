@@ -172,14 +172,6 @@ Found in: feat/real-outputs (25 Oct)  ·  Status: open  ·  Severity: later
 - **Why not in #33:** the fix is two new live runs, one from a fresh Zetaris: that needs every Tiresias object in Zetaris dropped (a destructive step the human runs) and the Nightshift VM, and it replaces the trace C3 and C8 are pinned to.
 - **Review point:** before submission, or if a judge or reviewer cites the live root cause as unverified; re-run both live cases and update C3/C8's run id.
 
-## B-30: Loop A accepts a broad-scope disposal filing as 100% of a restatement without measuring the disposed business
-Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: judge-visible
-- Out of scope because: the sweep measures, it does not change the critic. On JNJ (FY2022) and MRK (FY2019) the critic accepted `filing_event: 8-K 2.01 (scope broad)` with "intervention: resetting it to baseline moves the metric to <original> and removes 100%": the counterfactual is the original figure itself, so the share is asserted, not measured; IBM, FTV and BBWI took the same kind of event to the evidence frontier and Loop B instead. JNJ's cited filing (2022-12-22) may be an acquisition, not the Kenvue separation (not verified).
-- Safe to leave because: the report itself says "keep the residual open until the disposed business's Revenues" are measured, and the sweep doc counts these two as actionable but not reconciled.
-- Urgent if: a demo or judge question lands on JNJ or MRK, or a judge reads "actionable" as "reconciled".
-- Review at: after submission, or before any claim that counts actionable runs as correct.
-- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (JNJ, MRK rows); traces in workspace/sweep-logs (not committed).
-
 ## B-31: Source scout can register a wrong counterparty (name/brand match), which the critic then rejects
 Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: judge-visible
 - Out of scope because: the sweep measures only. RTX FY2018 → the scout picked nVent Electric (a Pentair spin-off) and IP FY2023 → "IP STRATEGY HOLDINGS, INC." ("carries the source's brand"); both were registered in Zetaris behind the auto source gate, then the critic found no reconciling add-back and both ended at evidence-frontier.
@@ -187,6 +179,22 @@ Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: 
 - Urgent if: a wrong counterparty's figure happens to fall inside tolerance (a false reconciliation), or a demo uses RTX or IP.
 - Review at: after submission (scout ranking: require the parent to be named in the candidate's Form 10, down-rank brand-only matches).
 - Evidence: docs/measurements/coverage-sweep-2026-10-26.md (RTX, IP rows).
+
+## B-32: The period label follows the end date, so a 52/53-week year is labelled one year late
+Found in: fix/b30-unmeasured-acceptance (B-30 investigation)  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: the B-30 fix changes the analyst's measurement text and the reporter's citation only; relabelling periods touches the framer, the suggester and every question text.
+- Safe to leave because: the dates and values are right and every question names both filings; only the "FY" label is off. JNJ's year to 2022-01-02 is called "FY2022" (JNJ calls it fiscal 2021).
+- Urgent if: a demo or judge question lands on a 52/53-week filer (JNJ, many retailers) and the label is compared with the company's own "fiscal year".
+- Review at: after submission (use the XBRL `fy` of the baseline fact, or show the period dates).
+- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Post-fix rerun, JNJ); `Frame.period_label`.
+
+## B-33: A disposal measured on the parent's own fact still says "keep the residual open until … reconciled"
+Found in: fix/b30-unmeasured-acceptance  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: the action template for a Loop A disposal is shared with the unmeasured case; rewording it changes committed example outputs, which needs a separate, reviewed change.
+- Safe to leave because: the measurement and the 0% residual are shown right next to the action; the sentence asks for a check that is already done, it does not claim anything false.
+- Urgent if: a judge reads the action for JNJ or MRK and asks why a 0% residual is "open".
+- Review at: after submission.
+- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Post-fix rerun); `agents/knowledge.py` `ACTIONS[("portfolio_change", "model")]`.
 
 ## Closed
 
@@ -200,3 +208,4 @@ Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: 
 - **B-20** (found in housekeeping (24 Oct), closed in #27): Zetaris lost its table cache on restart and the first query could time out (3M: three 20 s timeouts, then the sample): `python -m tiresias_agent.adapters.zetaris warm` re-caches the raw tables of `ZETARIS_WARM_ENTITIES` (default 3M, Solventum, the GE showcase) first, one at a time, with a 120 s statement timeout, and the API runs it in the background on a live start (`ZETARIS_WARM_ON_START`, `GET /health` `zetaris_cache`); [zetaris/README.md](zetaris/README.md#apply), `tests/test_warm.py`. Heap limit found on the way: B-24.
 - **B-22** (found in the verifier audit #20, closed in #25): AGENTS.md rule 4 and the parallel-PR rule disagreed on who updates the status docs: rule 4 now says the same commit for a change that lands alone, the coordinator right after the merge for parallel PRs.
 - **B-23** (found in the verifier audit #20, closed in #25): Cursor read `planned` in metadata.json and `optional` elsewhere: README and sponsor-technology.md now say `planned` and why (the schema has no "optional").
+- **B-30** (found in #46, closed in fix/b30-unmeasured-acceptance): the JNJ/MRK share was measured after all, on each parent's own `DisposalGroupIncludingDiscontinuedOperationRevenue` fact (the first write-up said asserted); the real defect was JNJ's action citing the oldest of two 8-K 2.01 filings (the Abiomed acquisition, not the Kenvue separation). The measurement now names the fact it rests on, and several matching filings are all named; `tests/test_b30_disposal.py`, [coverage-sweep post-fix rerun](docs/measurements/coverage-sweep-2026-10-26.md#post-fix-rerun-b-30).

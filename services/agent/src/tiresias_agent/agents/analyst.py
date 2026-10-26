@@ -189,6 +189,12 @@ def _measure_filing_event(
         m.testable = False
         return
     m.variable_target = float(mag_tgt.val)
+    # The share is measured on this fact, a separate XBRL value the filer reports for the disposed
+    # business; say so, so a 100% share is not read as asserted (B-30).
+    m.mechanism.append(
+        f"the filer reports {money(mag_tgt.val)} of {concept} for the period "
+        f"({mag_tgt.form} filed {mag_tgt.filed})"
+    )
     m.effect = -float(mag_tgt.val) if frame.kind == "restatement" else None
     if m.effect is not None:
         m.counterfactual = frame.target.value - m.effect
