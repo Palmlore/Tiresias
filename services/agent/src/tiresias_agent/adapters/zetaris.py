@@ -541,7 +541,9 @@ class ZetarisClient:
         Failures are classified by ``classify_reply`` and ``_parse`` (``cause``, see "Error
         classification"); only an outage is retried. A reply showing a dead engine
         (``dead_engine``) is recoverable whatever its status and is not retried (it does not
-        heal in a second). The error line carries ``cause`` (and ``http_status``, ``excerpt``). After ``mark_down`` every statement
+        heal in a second). The error line carries ``cause`` (and ``http_status``, ``excerpt``). Every line
+        of a statement that was sent also carries the last attempt's ``exchange_fields`` (endpoint,
+        method, service_host, http_status, request_bytes, response_bytes). After ``mark_down`` every statement
         fails at once as recoverable, without a request (the liveness probe found Zetaris down)."""
         retries = self.config.max_retries if max_retries is None else max(0, max_retries)
         url = f"{self.config.rest_url.rstrip('/')}/sql-editor/sqls/run"
@@ -570,6 +572,7 @@ class ZetarisClient:
                 dead_engine=self.down_dead_engine,
             )
         error: SourceError | None = None
+        exchange: dict[str, Any] = {}
         for attempt in range(retries + 1):
             headers = {
                 "Authorization": f"Bearer {self.config.api_key}",
@@ -584,8 +587,13 @@ class ZetarisClient:
                 "source": "SqlEditor",
                 "limit": self._row_limit,
             }
+            request = self._http.build_request(
+                "POST", url, json=body, headers=headers, timeout=wait
+            )
+            exchange = exchange_fields(request, None)  # this attempt's; replaced on a reply
             try:
-                response = self._http.post(url, json=body, headers=headers, timeout=wait)
+                response = self._http.send(request)
+                exchange = exchange_fields(request, response)
             except httpx.TimeoutException:
                 error = SourceError(
                     f"Zetaris {label}: timed out after {wait:g} s", recoverable=True
@@ -611,7 +619,9 @@ class ZetarisClient:
                         dead_engine=True,
                     )
                 elif response.status_code < 400:
-                    result = self._parse(response, label, shown_sql, start, attempt, extra, redact)
+                    result = self._parse(
+                        response, label, shown_sql, start, attempt, extra, redact, exchange
+                    )
                     if isinstance(result, QueryResult):
                         return result
                     error = result
@@ -659,6 +669,7 @@ class ZetarisClient:
                 retry_count=error.retry_count,
                 source="zetaris",
                 output_summary=f"{outcome}: {error}",
+                **exchange,
                 **extra,
             )
             raise error
@@ -673,7 +684,7 @@ class ZetarisClient:
             source="zetaris",
             output_summary=str(error),
             **({"outcome": "engine_down"} if error.dead_engine else {}),
-            **error.trace_fields(),
+            **{**exchange, **error.trace_fields()},
             **extra,
         )
         raise error
@@ -693,6 +704,7 @@ class ZetarisClient:
         attempt: int,
         extra: Mapping[str, Any] | None = None,
         redact: Sequence[str] = (),
+        exchange: Mapping[str, Any] | None = None,
     ) -> QueryResult | SourceError:
         excerpt = self._scrub(response.text[:EXCERPT_CHARS], redact)
         status = response.status_code
@@ -747,6 +759,7 @@ class ZetarisClient:
             duration_ms=result.duration_ms,
             retry_count=attempt,
             source="zetaris",
+            **dict(exchange or {}),
             **dict(extra or {}),
         )
         return result
@@ -754,6 +767,21 @@ class ZetarisClient:
 
 def _ms(start: float) -> int:
     return round((time.perf_counter() - start) * 1000)
+
+
+def exchange_fields(request: httpx.Request, response: httpx.Response | None) -> dict[str, Any]:
+    """What went over the wire on one attempt, for its trace line: the path only (no query
+    string), the method, host:port (never userinfo), the HTTP status (None when no reply came
+    back) and the bytes sent and received. Headers (the API key) are never included."""
+    url = request.url
+    return {
+        "endpoint": url.path,
+        "method": request.method,
+        "service_host": f"{url.host}:{url.port}" if url.port else url.host,
+        "http_status": response.status_code if response is not None else None,
+        "request_bytes": len(request.content),
+        "response_bytes": len(response.content) if response is not None else None,
+    }
 
 
 # --- Evidence sources -------------------------------------------------------------------------
