@@ -59,7 +59,7 @@ Controls C1 and C2 follow steps 1–5 with their rule; C3 posts its fixed questi
 
 Run on 2026-10-26 between 18:15 and 18:40 AEDT, main `f7d7880` plus `scripts/coverage_sweep.py`, live mode against the local Zetaris bundle (driver heap 4 GB), depth `quick` (rules only, no model call), auto gates, cold memory. Raw results, one line per company: [`coverage-sweep-2026-10-26.jsonl`](coverage-sweep-2026-10-26.jsonl) (no trace content; traces are kept outside the repository). **Zetaris stayed alive before and after every run (no restart). No run read the offline sample** (0 sample-mode trace lines in every live run, BACKLOG B-26).
 
-Deviation from the procedure: IBM was run first, as the script's trial, instead of fourth; it followed the procedure otherwise, and its result is kept as its scored row. The other companies ran in the listed order.
+Deviation from the procedure: IBM was run first, as the script's trial, instead of fourth; it followed the procedure otherwise, and its result is kept as its scored row. The other companies ran in the listed order, appended to the same file (`--append`).
 
 ### Spin-off parents (12)
 

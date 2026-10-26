@@ -40,3 +40,15 @@ def test_unreachable_api_records_a_row_per_company(tmp_path):
     assert rows[0]["outcome"] == "not resolved"
     assert rows[0]["zetaris_before"].startswith("health")
     assert rows[2]["outcome"] == "error"
+
+
+def test_rerun_replaces_the_output_unless_append(tmp_path):
+    out = tmp_path / "results.jsonl"
+    api = f"http://127.0.0.1:{_closed_port()}"
+    cmd = [sys.executable, str(ROOT / "scripts/coverage_sweep.py"), "--api", api, "--out", str(out)]
+    for extra in ([], [], ["--append"]):
+        subprocess.run(
+            [*cmd, "--only", "KHC", *extra], check=True, capture_output=True, timeout=120
+        )
+    tickers = [json.loads(line)["ticker"] for line in out.read_text().splitlines()]
+    assert tickers == ["KHC", "KHC"]  # the second run replaced the first; --append added one

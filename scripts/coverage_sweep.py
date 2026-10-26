@@ -7,7 +7,7 @@ API in live mode (every read through Zetaris) and writes one JSON line per compa
 content, no secrets. Traces stay where the API writes them (LOGS_DIR, outside the repo).
 
     # API in live mode on the host (Zetaris up), e.g. on :8020, then:
-    python3 scripts/coverage_sweep.py --api http://localhost:8020 --out results.jsonl [--only JNJ,DHR]
+    python3 scripts/coverage_sweep.py --api http://localhost:8020 --out results.jsonl [--only JNJ,DHR] [--append]
 
 Stdlib only. Each HTTP call has a timeout; a company that fails is recorded, never skipped.
 """
@@ -166,7 +166,11 @@ def run_one(api: str, request: dict) -> tuple[dict | None, float, int]:
     req["options"] = {**(req.get("options") or {}), **OPTIONS}
     t = time.monotonic()
     status, body = call(api, "POST", "/run", req, timeout=RUN_TIMEOUT)
-    return body if status and isinstance(body, dict) else None, round(time.monotonic() - t, 1), status
+    return (
+        body if status and isinstance(body, dict) else None,
+        round(time.monotonic() - t, 1),
+        status,
+    )
 
 
 def record(
@@ -233,11 +237,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--api", default="http://localhost:8020")
     ap.add_argument("--out", required=True)
     ap.add_argument("--only", default="")
+    ap.add_argument(
+        "--append",
+        action="store_true",
+        help="add to --out instead of replacing it (e.g. after a one-company trial)",
+    )
     args = ap.parse_args(argv)
     only = {t.strip().upper() for t in args.only.split(",") if t.strip()}
     out = Path(args.out)
     plan = [(t, y, e, False) for t, y, e in PARENTS] + [(t, y, None, True) for t, y in CONTROLS]
-    with out.open("a") as fh:
+    with out.open("a" if args.append else "w") as fh:
         for ticker, year, expected, control in plan:
             if only and ticker not in only:
                 continue
