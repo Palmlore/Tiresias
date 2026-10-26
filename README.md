@@ -1,5 +1,7 @@
 # Tiresias
 
+![Tiresias: ask why, get the evidence](assets/brand/cover.png)
+
 [![CI](https://github.com/Palmlore/Tiresias/actions/workflows/ci.yml/badge.svg)](https://github.com/Palmlore/Tiresias/actions/workflows/ci.yml)
 
 **An evidence-backed "5 Whys" root-cause agent for financial analysts, built on SEC filings.**

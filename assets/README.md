@@ -10,7 +10,11 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `brand/logo.svg`, `brand/logo-1024.png` | Tiresias mark (square) | SVG + 1024×1024 PNG, transparent background |
 | `brand/cover.png` | Project image: HackOS submission card, README header, video thumbnail | 1920×1080 PNG (16:9), ≤ 1 MB |
 | `brand/social.png` | Link preview (GitHub social preview) | 1280×640 PNG, ≤ 1 MB |
+| `brand/cover.svg`, `brand/social.svg` | Sources of the two PNGs above (`scripts/render_art.py --png` renders them with headless Chrome) | SVG |
 | `characters/{tiresias,sphinx,you}.svg` | The three characters, as icons for the UI, deck and video | SVG (+ 512×512 PNG each), one colour family |
+| `illustrations/empty-investigation.svg` | The cast beside an empty why-tree, for the UI's Investigation panel before a run (no text) | SVG 640×360, transparent |
+| `illustrations/why-tree.svg` | The why-tree motif: one accepted cause drilled to its evidence rows, two pruned | SVG 600×520, transparent |
+| `icons/phase-{understand,recall,drill,source,reconcile}.svg` | Icons for a run-progress stepper (resolve + scope + frame → memory recall → Loop A → Loop B source → reconcile) | SVG 128×128, `currentColor` (default stone) |
 | `diagrams/architecture.svg` | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
 | `screenshots/NN-<what>.png` **[TBC]** (needs the UI and the final runs) | Real captures of the UI, terminal and trace, numbered in demo order | PNG, ≥ 1600 px wide, ≤ 1 MB each |
 | `deck/tiresias-deck.pdf` | The slide deck, as submitted. Draft it now; slide 7 (product visuals) is **[TBC]**, and the sponsor-status wording is re-checked at freeze | PDF, 16:9, fonts embedded, ≤ 20 MB |
@@ -68,3 +72,6 @@ Add one row per file when it lands.
 | `characters/tiresias.svg`, `characters/tiresias.png` | Same renderer, 2026-10-23. Bronze, veiled eyes, staff. | None | Apache-2.0 |
 | `characters/sphinx.svg`, `characters/sphinx.png` | Same renderer, 2026-10-23. Celeste, ears and one wing. | None | Apache-2.0 |
 | `characters/you.svg`, `characters/you.png` | Same renderer, 2026-10-23. Parchment figure in a stone gate. | None | Apache-2.0 |
+| `brand/cover.svg`, `brand/cover.png`, `brand/social.svg`, `brand/social.png` | [`scripts/render_art.py`](../scripts/render_art.py), 2026-10-26, Claude Code session (Claude Opus 5.5). Places the mark and the three character icons from `render_brand.py` unchanged, plus the why-tree motif; PNGs rendered from the SVGs with headless Chrome. | None (text: name, tagline, event and track only) | Apache-2.0 |
+| `illustrations/empty-investigation.svg`, `illustrations/why-tree.svg` | Same script, 2026-10-26. Original geometry. | None | Apache-2.0 |
+| `icons/phase-*.svg` (5) | Same script, 2026-10-26. Original geometry, fills only. | None | Apache-2.0 |
