@@ -41,7 +41,7 @@ Before running anything we committed a list of 12 US companies that spun off a b
 
 - **No wrong number.** 6 companies got an answer: 3 reconciled to the right spun-off company within 5% (IBM → Kyndryl, Bath & Body Works → Victoria's Secret, Fortive → Ralliant), 1 found the right company but left 23.5% unexplained (DuPont → Qnity), and 2 measured the disposal on the parent's own restated filing (J&J, Merck). The audit found all 6 correct, 4 with caveats (a fiscal-year label, an extra candidate filing cited for J&J), none wrong.
 - **Limited recall.** 5 runs stopped at the evidence frontier without claiming a cause. One stop was right (the buyer files nothing with the SEC); 3 could have been answered from XBRL (Danaher, Becton Dickinson: not filed as an 8-K item 2.01; RTX: two spun-off companies), so they are recall gaps ([limitations](docs/limitations.md), BACKLOG B-34–B-36). One ticker did not resolve.
-- **Time.** Median 13.5 s per question once a company is registered (p90 22.3 s); registering a company Zetaris had not seen added a median 27 s. The controls behaved: a forecast was refused by the scope check, a non-spin-off stopped at the frontier.
+- **Time.** Median 13.5 s per question once a company is registered (p90 22.3 s); registering a company Zetaris had not seen added a median 27.2 s. The controls behaved: a forecast was refused by the scope check, a non-spin-off stopped at the frontier.
 
 ## Quickstart (judges)
 
