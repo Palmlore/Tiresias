@@ -14,7 +14,7 @@ const SPHINX = new Set(["critic"]);
 const YOU = new Set(["gate"]);
 const SYSTEM = new Set(["api", "orchestrator", "model_lanes", "memory_client", "Memory",
   "zetaris_adapter", "catalog", "nightshift"]);
-// Adapter-level duplicates of a line another agent already writes; shown with "every line".
+// Adapter-level duplicates of a line another agent already writes; not counted in the cast strip.
 const NOISY = new Set(["memory_client", "Memory", "heartbeat"]);
 
 const $ = (id) => document.getElementById(id);
@@ -71,6 +71,108 @@ function endStateClass(s) {
   if (s === "budget" || s === "cyclic") return "warn";
   return "";
 }
+
+// ---- declutter: pure helpers over the API's own fields (tests run them in Node) ------------
+
+// Which trace lines a reader needs first. decision: a verdict, a gate, a registered source, the
+// report, a stored lesson or a model dissent; step: the other reasoning steps and model calls;
+// evidence: a SQL read in the data layer; plumbing: orchestration, caching, liveness and the
+// adapters' duplicates. The timeline shows decision + step; "every line" shows all four.
+const DECISIONS = new Set(["critic/accept", "critic/prune", "critic/frontier", "critic/escalate",
+  "critic/lesson_support", "critic/lesson_reject", "gate/decide", "gate/waiting", "gate/answered",
+  "gate/expired", "onboarder/register", "reporter/report", "memory/remember"]);
+const DATA_AGENTS = new Set(["zetaris_adapter", "catalog"]);
+const PLUMBING_AGENTS = new Set(["api", "orchestrator", "model_lanes", "memory_client", "Memory"]);
+const PLUMBING_DATA = /^(list_|bootstrap:|liveness|uncache|discovery_cache|register_)/;
+const SHOWN_BY_DEFAULT = new Set(["decision", "step"]);
+
+function tier(line) {
+  if (DECISIONS.has(`${line.agent}/${line.action}`)) return "decision";
+  // second_opinion is "rejected" when the model disagrees with the rule verdict
+  if (line.agent === "critic" && line.action === "second_opinion" && line.status === "rejected") return "decision";
+  if (line.agent === "scope" && line.in_scope === false) return "decision";
+  if (PLUMBING_AGENTS.has(line.agent) || line.action === "heartbeat") return "plumbing";
+  if (DATA_AGENTS.has(line.agent)) return line.sql && !PLUMBING_DATA.test(line.action) ? "evidence" : "plumbing";
+  return "step";
+}
+
+// One Nightshift call = the client's own line (it carries latency_ms); the critic's second_opinion
+// line repeats routed_model and must not be counted twice.
+const isModelCall = (line) => Boolean(line.routed_model) && line.latency_ms !== undefined && line.latency_ms !== null;
+
+const isAccepted = (n) => n.verdict === "accept" || n.verdict === "accepted";
+const isPruned = (n) => n.verdict === "prune" || n.verdict === "pruned";
+
+// The chain the answer rests on: root -> the deepest accepted link, following parent_id.
+function acceptedPath(nodes) {
+  const list = nodes || [];
+  const byId = new Map(list.map((n) => [n.node_id, n]));
+  const up = (n) => {
+    const ids = [];
+    for (let x = n; x && ids.length <= list.length; x = x.parent_id ? byId.get(x.parent_id) : null) ids.unshift(x.node_id);
+    return ids;
+  };
+  let best = [];
+  for (const n of list.filter(isAccepted)) {
+    const path = up(n);
+    if (path.length > best.length) best = path;
+  }
+  return best;
+}
+
+// What the critic ruled out, with its reason.
+function ruledOut(nodes) {
+  return (nodes || []).filter(isPruned).map((n) => ({ node_id: n.node_id, claim: n.claim, reason: n.reason || null }));
+}
+
+// Per sponsor, from the streamed lines (and H-MEM from RunResult.memory at the end). A data-layer
+// read with source "sample" was served from the offline slice, not by Zetaris, and is counted apart.
+function sponsorSummary(lines, memory) {
+  const s = { zetaris: { sql_calls: 0, rows: 0, ms: 0, registered: 0 },
+    sample: { sql_calls: 0, rows: 0 }, nightshift: { calls: 0, models: new Map() }, hmem: null };
+  let registered = 0;
+  for (const l of lines || []) {
+    if (DATA_AGENTS.has(l.agent) && l.sql) {
+      if (l.source === "sample") {
+        s.sample.sql_calls += 1;
+        s.sample.rows += Number(l.rows) || 0;
+      } else {
+        s.zetaris.sql_calls += 1;
+        s.zetaris.rows += Number(l.rows) || 0;
+        s.zetaris.ms += Number(l.duration_ms) || 0;
+      }
+    }
+    if (l.agent === "onboarder" && l.action === "register" && l.status === "success") registered += 1;
+    if (isModelCall(l)) {
+      s.nightshift.calls += 1;
+      s.nightshift.models.set(l.routed_model, (s.nightshift.models.get(l.routed_model) || 0) + 1);
+    }
+  }
+  // a source registered with no Zetaris call in the run was registered in the sample slice
+  if (s.zetaris.sql_calls) s.zetaris.registered = registered;
+  else s.sample.registered = registered;
+  if (memory) {
+    s.hmem = { available: memory.available !== false, recalled: (memory.recalled || []).length,
+      stored: memory.stored && memory.stored.stored ? 1 : 0 };
+  }
+  return s;
+}
+
+function sponsorBadges(s) {
+  if (!s) return [];
+  const z = s.zetaris, d = s.sample, n = s.nightshift, h = s.hmem;
+  return [
+    z.sql_calls ? badge(`Zetaris: ${plural(z.sql_calls, "SQL call")}, ${z.rows.toLocaleString()} rows, ${(z.ms / 1000).toFixed(1)} s` +
+      (z.registered ? `, ${plural(z.registered, "source")} registered` : ""), "sponsor") : null,
+    d.sql_calls ? badge(`Sample data: ${plural(d.sql_calls, "read")}, ${d.rows.toLocaleString()} rows` +
+      (d.registered ? `, ${plural(d.registered, "source")} registered` : "") + (z.sql_calls ? "" : " (no Zetaris call)"), "sample") : null,
+    n.calls ? badge(`Nightshift: ${plural(n.calls, "model call")}`, "sponsor") : null,
+    h ? badge(h.available ? `H-MEM: ${h.recalled} recalled, ${h.stored} stored` : "H-MEM: unavailable", "sponsor") : null,
+  ];
+}
+
+// replaceChildren/append turn null into the text "null"; pass children through this first.
+const present = (...xs) => xs.flat().filter((x) => x !== null && x !== undefined && x !== false);
 
 // ---- header: server mode ------------------------------------------------------------------
 
@@ -190,7 +292,7 @@ async function startRun(request) {
     showResultError(e.message);
     return;
   }
-  const run = { id: started.run_id, lines: [], gates: new Map(), models: new Map(), source: null, finished: false };
+  const run = { id: started.run_id, lines: [], parsed: [], gates: new Map(), source: null, finished: false };
   state.run = run;
   const wait = started.depth && started.depth.expected_wait;
   $("run-meta").textContent = `run ${run.id}` +
@@ -203,6 +305,7 @@ async function startRun(request) {
     let line;
     try { line = JSON.parse(msg.data); } catch { return; }
     run.lines.push(msg.data);
+    run.parsed.push(line);
     onTrace(run, line);
   });
   src.addEventListener("end", () => {
@@ -228,7 +331,7 @@ function resetRunView(req) {
   $("timeline-wrap").hidden = false;
   $("timeline").replaceChildren();
   $("event-count").textContent = "";
-  castCounts = { tiresias: 0, sphinx: 0, you: 0, human: 0, data: 0 };
+  castCounts = { tiresias: 0, sphinx: 0, you: 0, human: 0, data: 0, sample: 0 };
   renderCast();
   $("evidence").className = "empty";
   $("evidence").replaceChildren(el("p", { text: "Select a link in the why-tree to see the SQL and the rows it rests on." }));
@@ -250,7 +353,7 @@ function lineText(line) {
 }
 
 // The cast strip: who did what so far, counted from the trace lines as they stream in.
-let castCounts = { tiresias: 0, sphinx: 0, you: 0, human: 0, data: 0 };
+let castCounts = { tiresias: 0, sphinx: 0, you: 0, human: 0, data: 0, sample: 0 };
 
 function countCast(line) {
   if (line.agent === "orchestrator" || NOISY.has(line.agent)) return;
@@ -260,7 +363,11 @@ function countCast(line) {
       if (line.decided_by === "human") castCounts.human += 1;
     }
   } else if (SPHINX.has(line.agent)) castCounts.sphinx += 1;
-  else if ((line.agent === "zetaris_adapter" || line.agent === "catalog") && line.sql) castCounts.data += 1;
+  else if (DATA_AGENTS.has(line.agent) && line.sql) {
+    // a read served from the offline sample slice is not a Zetaris call
+    if (line.source === "sample") castCounts.sample += 1;
+    else castCounts.data += 1;
+  }
   else if (!SYSTEM.has(line.agent)) castCounts.tiresias += 1;
 }
 
@@ -269,20 +376,24 @@ function renderCast() {
   $("cast-tiresias").textContent = plural(c.tiresias, "step");
   $("cast-sphinx").textContent = plural(c.sphinx, "verdict");
   $("cast-you").textContent = plural(c.you, "gate decision") + (c.you ? ` (${c.human} by you)` : "");
-  $("cast-data").textContent = plural(c.data, "SQL call");
+  $("cast-data").textContent = plural(c.data, "SQL call") + (c.sample ? ` · ${plural(c.sample, "sample read")}` : "");
+}
+
+function eventCount(run) {
+  const shown = run.parsed.filter((l) => SHOWN_BY_DEFAULT.has(tier(l))).length;
+  $("event-count").textContent = $("show-all").checked
+    ? `(${run.lines.length} lines)` : `(${run.lines.length} lines, ${shown} shown)`;
 }
 
 function onTrace(run, line) {
-  $("event-count").textContent = `(${run.lines.length} lines)`;
+  eventCount(run);
   countCast(line);
   renderCast();
-  if (line.routed_model) run.models.set(line.routed_model, (run.models.get(line.routed_model) || 0) + 1);
   if (line.agent === "gate") onGateLine(run, line);
-  const showAll = $("show-all").checked;
-  const isNoise = NOISY.has(line.agent) || line.action === "heartbeat";
+  const t = tier(line);
   const li = renderLine(line);
-  if (isNoise) li.dataset.noise = "1";
-  if (isNoise && !showAll) li.hidden = true;
+  li.dataset.tier = t;
+  if (!SHOWN_BY_DEFAULT.has(t) && !$("show-all").checked) li.hidden = true;
   const tl = $("timeline");
   const atBottom = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 40;
   tl.append(li);
@@ -319,7 +430,10 @@ function renderLine(line) {
 
 $("show-all").addEventListener("change", () => {
   const all = $("show-all").checked;
-  for (const li of $("timeline").querySelectorAll("[data-noise]")) li.hidden = !all;
+  for (const li of $("timeline").querySelectorAll("[data-tier]")) {
+    li.hidden = !all && !SHOWN_BY_DEFAULT.has(li.dataset.tier);
+  }
+  if (state.run) eventCount(state.run);
 });
 
 // Gates: a "waiting" line opens a card; "answered" or "decide" closes it.
@@ -384,7 +498,8 @@ async function finishRun(run) {
     return;
   }
   if (rec.error && !rec.result) { showResultError(`${rec.error.type}: ${rec.error.message}`); return; }
-  renderResult(rec.result, run.models);
+  const sponsors = sponsorSummary(run.parsed, rec.result && rec.result.memory);
+  renderResult(rec.result, sponsors.nightshift.models, sponsors);
 }
 
 function showResultError(message) {
@@ -405,7 +520,7 @@ function modelChip(models) {
   return chip;
 }
 
-function renderResult(r, models) {
+function renderResult(r, models, sponsors) {
   const box = $("result");
   box.hidden = false;
   const cls = r.scope ? "scope" : r.end_state === "evidence-frontier" ? "frontier" : "";
@@ -431,7 +546,8 @@ function renderResult(r, models) {
     r.stats && !r.scope ? el("div", { class: "stats" },
       badge(`${r.stats.hops} hops`), badge(`${r.stats.queries} queries`),
       badge(plural(r.stats.sources_onboarded, "source") + " registered"), badge(plural(r.stats.gate_decisions, "gate decision")),
-      badge(`${r.stats.prunes ?? 0} pruned`), badge(`${r.stats.model_calls} model calls`), badge(`${r.stats.seconds} s`)) : null);
+      badge(`${r.stats.prunes ?? 0} pruned`), badge(`${r.stats.model_calls} model calls`), badge(`${r.stats.seconds} s`)) : null,
+    r.stats && !r.scope && sponsors ? el("div", { class: "stats sponsors" }, sponsorBadges(sponsors)) : null);
   box.replaceChildren(card);
   if (r.scope) box.append(scopeCard(r.scope));
   renderTree(r.why_tree || []);
@@ -459,8 +575,8 @@ function renderTree(nodes) {
     kids.get(k).push(n);
   }
   const build = (parent) => (kids.get(parent) || []).map((n) => {
-    const pruned = n.verdict === "prune" || n.verdict === "pruned";
-    const good = n.verdict === "accept" || n.verdict === "accepted" || n.verdict === "root";
+    const pruned = isPruned(n);
+    const good = isAccepted(n) || n.verdict === "root";
     const btn = el("button", { type: "button", "aria-pressed": "false", onclick: () => selectNode(n, btn) },
       el("div", { class: "claim", text: n.claim }),
       el("div", { class: "chips" },
@@ -472,9 +588,11 @@ function renderTree(nodes) {
         n.model_opinion ? badge(`model: ${n.model_opinion.decision || "opinion"}`, "muted") : null,
         (n.evidence || []).some((x) => x.degraded) ? badge("degraded", "warn") : null));
     const sub = build(n.node_id);
-    return el("li", { class: `node${pruned ? " pruned" : ""}` }, btn, sub.length ? el("ol", {}, sub) : null);
+    return el("li", { class: `node${pruned ? " pruned ruled-out" : ""}${onPath.has(n.node_id) ? " on-path" : ""}` },
+      btn, sub.length ? el("ol", {}, sub) : null);
   });
   const roots = nodes.filter((n) => !n.parent_id || !nodes.some((m) => m.node_id === n.parent_id));
+  const onPath = new Set(acceptedPath(nodes));
   $("tree").replaceChildren(...roots.flatMap((r) => {
     kids.set("__root_" + r.node_id, [r]);
     return build("__root_" + r.node_id);
@@ -511,7 +629,7 @@ function selectNode(n, btn) {
       el("p", { text: `${m.decision || ""}${m.label ? ` (${m.label})` : ""}${m.agrees === false ? " · disagrees with the rules" : m.agrees ? " · agrees with the rules" : ""}` }),
       m.rationale ? el("p", { class: "note", text: m.rationale }) : null));
   }
-  box.replaceChildren(...parts);
+  box.replaceChildren(...present(parts));
 }
 
 function evidenceItem(ev) {
@@ -546,7 +664,7 @@ function renderMemory(m) {
   mb.textContent = `memory ${m.mode}${m.available === false ? " (unavailable)" : ""}`;
   const recalled = m.recalled || [];
   box.hidden = false;
-  box.replaceChildren(
+  box.replaceChildren(...present(
     el("h3", { text: "Memory (H-MEM)" }),
     el("p", { class: "note", text: m.mode === "cold" ? "Cold run: no lesson recalled or stored."
       : m.available === false ? (m.note || "Memory service unavailable: the run went on without it.")
@@ -561,7 +679,7 @@ function renderMemory(m) {
       el("div", { class: "stats" }, badge(m.stored.stored ? "lesson stored" : "not stored", m.stored.stored ? "ok" : "muted"),
         m.stored.memory_id ? badge(m.stored.memory_id) : null),
       m.stored.content ? el("p", { text: m.stored.content }) : null,
-      m.stored.reason ? el("p", { class: "note", text: m.stored.reason }) : null) : null);
+      m.stored.reason ? el("p", { class: "note", text: m.stored.reason }) : null) : null));
 }
 
 // ---- wiring --------------------------------------------------------------------------------
