@@ -295,8 +295,8 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .s-convo > summary { margin: 0 0 8px; color: var(--stone); }
 .s-convo[open] > summary { color: var(--stone); }
 .s-turns { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
-.msg { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 8px; align-items: start; }
-.avatar { width: 28px; height: 28px; }
+.msg { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 10px; align-items: start; }
+.avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--ink-3); }
 .bubble { background: var(--ink-2); border: 1px solid var(--line); border-radius: 4px 12px 12px 12px; padding: 8px 12px;
   font-size: 14px; min-width: 0; }
 .bubble .who { display: block; font-size: 12px; font-weight: 600; margin-bottom: 2px; }

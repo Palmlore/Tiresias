@@ -31,8 +31,9 @@ def test_ui_page_and_assets_are_served():
     assets = re.findall(r'(?:src|href)="([a-z-]+\.(?:js|css|svg))"', page.text)
     assert {"app.js", "story.js", "empty-investigation.svg"} <= set(assets)
     # the progress bar's icons are named in story.js, not in the page
-    assets += re.findall(r'icon: "([a-z-]+\.svg)"', (WEB / "story.js").read_text())
+    assets += re.findall(r'icon: "([a-z-]+\.(?:svg|png))"', (WEB / "story.js").read_text())
     assert len([a for a in assets if a.startswith("phase-")]) == 5
+    assert {"tiresias-portrait.png", "sphinx-portrait.png", "you-portrait.png"} <= set(assets)
     for asset in assets:
         assert client.get(f"/ui/{asset}").status_code == 200, asset
 

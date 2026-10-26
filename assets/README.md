@@ -11,7 +11,8 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `brand/cover.png` | Project image: HackOS submission card, README header, video thumbnail | 1920×1080 PNG (16:9), ≤ 1 MB |
 | `brand/social.png` | Link preview (GitHub social preview) | 1280×640 PNG, ≤ 1 MB |
 | `brand/cover.svg`, `brand/social.svg` | Sources of the two PNGs above (`scripts/render_art.py --png` renders them with headless Chrome) | SVG |
-| `characters/{tiresias,sphinx,you}.svg` | The three characters, as icons for the UI, deck and video | SVG (+ 512×512 PNG each), one colour family |
+| `characters/{tiresias,sphinx,you}.svg` | The three characters as 16–32 px marks (headers, inline, Debug) | SVG (+ 512×512 PNG each), one colour family |
+| `characters/{tiresias,sphinx,you}-portrait.png` | Story-view avatars (circular, one product ring). Tiresias linen/ivory; Sphinx golden sandstone; You = cooler stone gate + spark | 512×512 PNG, transparent corners |
 | `illustrations/empty-investigation.svg` | The cast beside an empty why-tree, for the UI's Investigation panel before a run (no text) | SVG 640×360, transparent |
 | `illustrations/why-tree.svg` | The why-tree motif: one accepted cause drilled to its evidence rows, two pruned | SVG 600×520, transparent |
 | `icons/phase-{understand,recall,drill,source,reconcile}.svg` | Icons for a run-progress stepper (resolve + scope + frame → memory recall → Loop A → Loop B source → reconcile) | SVG 128×128, `currentColor` (default stone) |
@@ -42,6 +43,7 @@ Keep the whole folder under about 30 MB; no Git LFS. The agent image never inclu
 ## Visual direction
 
 - **Characters, introduced gradually and never more than three:** **Tiresias**, the blind seer and the agent's voice (veiled eyes, a staff; calm, deliberate). **The Sphinx**, the critic who asks "Why?" and guards uncomfortable truths. **You**, the analyst at the gates who judges and decides. Simple, flat icons that read at 32 px; no gore, no mythological clutter.
+- **Story portraits (locked 2026-10-26):** round chat avatars, one shared bronze product ring (not ovals, not a second painted frame). **Tiresias** = linen/ivory robe, copper staff (`tiresias-portrait.png`). **Sphinx** = golden sandstone brick bust — stone with a gold hue, to contrast the linen (`sphinx-portrait.png`). **You** = cooler/darker stone gate + spark, no face (`you-portrait.png`). Oil-paint dark charcoal ground. Geometric SVGs stay the 16–32 px Debug marks. Do not regenerate these three without a new lock.
 - **Tone:** evidence over oracle. The tagline: *"Tiresias named the cause first, but had no evidence and was not believed. This Tiresias brings the evidence."*
 - **Palette:** a dark ink background, one warm accent (bronze or gold) for Tiresias, one cool accent for the Sphinx, and neutral text; WCAG AA contrast for any text. Tokens: [`brand/palette.json`](brand/palette.json). Use the same palette in the deck, diagrams and UI.
 - **Type:** one sans-serif family for text, one monospace for SQL and trace lines; deck body text ≥ 24 pt.
@@ -72,6 +74,9 @@ Add one row per file when it lands.
 | `characters/tiresias.svg`, `characters/tiresias.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Bronze, veiled eyes, staff. | None | Apache-2.0 |
 | `characters/sphinx.svg`, `characters/sphinx.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Celeste, ears and one wing. | None | Apache-2.0 |
 | `characters/you.svg`, `characters/you.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Parchment figure in a stone gate. | None | Apache-2.0 |
+| `characters/tiresias-portrait.png` | Cursor image session 2026-10-26 (`dir-tiresias-linen`); circular crop, no stretch. Linen/ivory robe, copper staff, veiled. Not a likeness of a real person. | None | Apache-2.0 |
+| `characters/sphinx-portrait.png` | Cursor image session 2026-10-26: the sphinx from `dir-lock-cast-and-tree` redrawn as a filled circle (`dir-sphinx-golden-round`). Golden sandstone brick — stone with a gold hue, to contrast linen Tiresias. One product ring. | None | Apache-2.0 |
+| `characters/you-portrait.png` | Same session (`dir-you-gate-spark-a`). Stone door + spark; no face. Circular crop. | None | Apache-2.0 |
 | `brand/cover.svg`, `brand/cover.png`, `brand/social.svg`, `brand/social.png` | [`scripts/render_art.py`](../scripts/render_art.py), 2026-10-26, Claude Code session (Claude Opus 5.5). Places the mark and the three character icons from `render_brand.py` unchanged, plus the why-tree motif; PNGs rendered from the SVGs with headless Chrome. | None (text: name, tagline, event and track only) | Apache-2.0 |
 | `illustrations/empty-investigation.svg`, `illustrations/why-tree.svg` | Same script, 2026-10-26. Original geometry. | None | Apache-2.0 |
 | `icons/phase-*.svg` (5) | Same script, 2026-10-26. Original geometry, fills only. | None | Apache-2.0 |

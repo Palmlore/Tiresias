@@ -690,10 +690,10 @@ function selectStoryNode(id) {
 }
 
 const WHO = {
-  you: { name: "You", icon: "you.svg" },
-  tiresias: { name: "Tiresias", icon: "tiresias.svg" },
-  sphinx: { name: "The Sphinx", icon: "sphinx.svg" },
-  decision: { name: "Decision", icon: "you.svg" },
+  you: { name: "You", icon: "you-portrait.png" },
+  tiresias: { name: "Tiresias", icon: "tiresias-portrait.png" },
+  sphinx: { name: "The Sphinx", icon: "sphinx-portrait.png" },
+  decision: { name: "Decision", icon: "you-portrait.png" },
 };
 
 function renderTurns(s) {
