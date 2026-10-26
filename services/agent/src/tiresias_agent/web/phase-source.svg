@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="New source" fill="currentColor" color="#9B968C">
+  <title>New source</title>
+  <ellipse cx="54" cy="28" rx="38" ry="14"/>
+  <rect x="16" y="28" width="76" height="66"/>
+  <ellipse cx="54" cy="94" rx="38" ry="14"/>
+  <rect x="94" y="78" width="12" height="40" rx="6"/>
+  <rect x="80" y="92" width="40" height="12" rx="6"/>
+</svg>

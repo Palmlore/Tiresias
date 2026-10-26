@@ -194,6 +194,8 @@ async function loadHealth() {
         "running. Sample data only; run it locally for live mode.";
       n.hidden = false;
     }
+    // live/sample per run only when the server itself runs live (a sample server may have no Zetaris)
+    $("sample-field").hidden = sample || Boolean(state.health.public_demo);
     const depth = $("depth");
     depth.disabled = sample;
     $("depth-note").textContent = sample
@@ -278,6 +280,7 @@ function withSettings(request) {
   if (!req.asker.levers || !req.asker.levers.length) req.asker.levers = DEFAULT_LEVERS[req.asker.role];
   req.options = { ...(req.options || {}), hitl_mode: $("hitl").value, memory: $("memory").value };
   if (state.health && !state.health.sample_mode) req.options.depth = $("depth").value;
+  if (!$("sample-field").hidden) req.options.sample_mode = $("sample").value === "sample";
   return req;
 }
 
@@ -285,6 +288,7 @@ async function startRun(request) {
   if (state.run && state.run.source) state.run.source.close();
   const req = withSettings(request);
   resetRunView(req);
+  if (typeof storyStart === "function") storyStart(req); // the story view (story.js) reads the same run
   let started;
   try {
     started = await api("/runs", { method: "POST", body: JSON.stringify(req) });
@@ -292,6 +296,7 @@ async function startRun(request) {
     showResultError(e.message);
     return;
   }
+  if (typeof storySetRun === "function") storySetRun(started);
   const run = { id: started.run_id, lines: [], parsed: [], gates: new Map(), source: null, finished: false };
   state.run = run;
   const wait = started.depth && started.depth.expected_wait;
@@ -307,6 +312,7 @@ async function startRun(request) {
     run.lines.push(msg.data);
     run.parsed.push(line);
     onTrace(run, line);
+    if (typeof storyLine === "function") storyLine(line);
   });
   src.addEventListener("end", () => {
     src.close();
@@ -500,9 +506,11 @@ async function finishRun(run) {
   if (rec.error && !rec.result) { showResultError(`${rec.error.type}: ${rec.error.message}`); return; }
   const sponsors = sponsorSummary(run.parsed, rec.result && rec.result.memory);
   renderResult(rec.result, sponsors.nightshift.models, sponsors);
+  if (typeof storyDone === "function") storyDone(rec, sponsors);
 }
 
 function showResultError(message) {
+  if (typeof storyError === "function") storyError(message);
   const box = $("result");
   box.hidden = false;
   box.replaceChildren(el("div", { class: "result error" }, el("h4", { text: "The run did not finish" }), el("p", { text: message })));
