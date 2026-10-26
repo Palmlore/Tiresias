@@ -196,6 +196,30 @@ Found in: fix/b30-unmeasured-acceptance  ·  Status: open  ·  Severity: judge-v
 - Review at: after submission.
 - Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Post-fix rerun); `agents/knowledge.py` `ACTIONS[("portfolio_change", "model")]`.
 
+## B-34: A Loop A disposal action lists an acquisition filing as a candidate disposal
+Found in: docs/sweep-correctness-audit  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: found by the independent audit (no code change in that PR); the fix belongs to the reporter/analyst event filter and changes example outputs only where several 2.01 filings match.
+- Safe to leave because: the figures and the measured 100% share are right, and the action presents the filings as "one of 2 filings in the window", not as the cause.
+- Urgent if: a judge reads JNJ's action: it offers the 8-K of 2022-12-22, whose item 2.01 is J&J's tender-offer acquisition of Abiomed, as a possible disposal next to the Kenvue separation (2023-08-25).
+- Review at: after submission.
+- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Correctness audit); coverage-sweep-2026-10-26-audit.jsonl, JNJ `e.cited` (`item_2_01_is_an_acquisition: true`).
+
+## B-35: Suggested restatement questions can compare two different revenue concepts
+Found in: docs/sweep-correctness-audit  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: found by the audit; the suggester's concept matching is product code.
+- Safe to leave because: the investigation of such a question ends at the evidence frontier and asserts no cause.
+- Urgent if: a judge picks PFE's suggestion: "$50.91B vs $59.55B for FY2023" sets `RevenueFromContractWithCustomerExcludingAssessedTax` in one 10-K against `Revenues` in the next; the first 10-K's own `Revenues` for the year is $58,496M.
+- Review at: after submission.
+- Evidence: coverage-sweep-2026-10-26-audit.jsonl, PFE (`same_concept: false`).
+
+## B-36: Separations not filed under 8-K item 2.01, or with two counterparties, stop at the frontier though XBRL could reconcile them
+Found in: docs/sweep-correctness-audit  ·  Status: open  ·  Severity: judge-visible
+- Out of scope because: a recall improvement to Loop A's event search and Loop B's single-counterparty add-back, not a fix for a wrong answer.
+- Safe to leave because: the agent stops without asserting a cause, and says what is missing.
+- Urgent if: a judge tries Danaher (Veralto), Becton Dickinson (Embecta) or RTX (Carrier + Otis): each counterparty's own figure would reconcile within 0.3% of the original, but the run ends at the evidence frontier.
+- Review at: after submission.
+- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Correctness audit, frontier table); audit JSONL `would_reconcile: true` for DHR, RTX, BDX.
+
 ## Closed
 
 - **B-1** (found in #5, closed in #7): Agent Docker image can't see `data/sample/` or `zetaris/sql/`: image built from the repo root, allow-list `.dockerignore`, `tests/test_packaging.py`.

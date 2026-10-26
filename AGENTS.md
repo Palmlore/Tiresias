@@ -91,6 +91,7 @@ cd services/agent && uv run python -m tiresias_agent.orchestrator input_examples
 #   any SEC registrant live: {"entity": {"ticker": "IBM"}} or {"entity": {"name": "Hilton Worldwide Holdings Inc."}}
 # Coverage sweep (pre-registered companies, live; API in live mode on the host): docs/measurements/coverage-sweep-2026-10-26.md
 python3 scripts/coverage_sweep.py --api http://localhost:8020 --out FILE.jsonl [--only JNJ,IBM]
+cd services/agent && uv run python ../../scripts/audit_sweep.py --env-file ../../.env   # independent SEC audit of the sweep (offline tooling)
 # Live latency per phase (needs Zetaris + .env; cold = first run for an entity, then warm). Writes no repo files
 cd services/agent && uv run python ../../scripts/perf_smoke.py [request.json ...] [--runs 2] [--logs-dir DIR] [--out FILE.jsonl] [--env-file PATH]
 #   defaults: the four input_examples, 2 runs each, traces in logs/perf/; prints one JSON line per run + a Markdown table
