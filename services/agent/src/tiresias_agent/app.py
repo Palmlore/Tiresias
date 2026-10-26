@@ -302,8 +302,10 @@ def list_gates(run_id: str) -> JSONResponse:
 
 @app.post("/runs/{run_id}/gates/{gate_id}")
 def answer_gate(run_id: str, gate_id: str, body: GateAnswer) -> JSONResponse:
-    """Answer a waiting gate: the run resumes with this choice (decided_by human). 404 unknown
-    run or gate, 409 already answered or expired, 422 a choice that is not an option."""
+    """Answer a waiting gate: the run resumes with this choice (decided_by human, or ui-auto when
+    ``auto`` is set: a UI applied the recommendation after its countdown). 404 unknown run or
+    gate, 409 already answered or expired, 422 a choice that is not an option, or ``auto`` with a
+    choice other than the proposal."""
     record = registry.get(run_id)
     if record is None:
         return _unknown(run_id)
@@ -312,7 +314,7 @@ def answer_gate(run_id: str, gate_id: str, body: GateAnswer) -> JSONResponse:
             404, "GateNotFound", "This run has no interactive gates.", run_id=run_id
         )
     try:
-        gate = record.gates.answer(gate_id, body.choice, body.note)
+        gate = record.gates.answer(gate_id, body.choice, body.note, auto=body.auto)
     except GateNotFound:
         return error_response(404, "GateNotFound", f"No gate {gate_id} in this run.", run_id=run_id)
     except GateClosed as err:
