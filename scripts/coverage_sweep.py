@@ -65,6 +65,9 @@ def call(api: str, method: str, path: str, body: dict | None = None, timeout: fl
             return err.code, json.loads(err.read() or b"null")
         except ValueError:
             return err.code, None
+    except (urllib.error.URLError, OSError, ValueError) as err:
+        # Unreachable API, timeout or a non-JSON body: status 0, so the caller records the row.
+        return 0, {"message": f"{type(err).__name__}: {err}"}
 
 
 def resolve(api: str, ticker: str) -> dict | None:
@@ -163,7 +166,7 @@ def run_one(api: str, request: dict) -> tuple[dict | None, float, int]:
     req["options"] = {**(req.get("options") or {}), **OPTIONS}
     t = time.monotonic()
     status, body = call(api, "POST", "/run", req, timeout=RUN_TIMEOUT)
-    return body if isinstance(body, dict) else None, round(time.monotonic() - t, 1), status
+    return body if status and isinstance(body, dict) else None, round(time.monotonic() - t, 1), status
 
 
 def record(
@@ -258,7 +261,7 @@ def main(argv: list[str]) -> int:
                 "selection": "fixed forecast question",
                 "http": status,
                 "seconds": secs,
-                "outcome": (result or {}).get("end_state"),
+                "outcome": (result or {}).get("end_state") or "error",
                 "in_scope": ((result or {}).get("scope") or {}).get("in_scope"),
                 "scope_reasons": [
                     r.get("type") for r in ((result or {}).get("scope") or {}).get("reasons") or []
