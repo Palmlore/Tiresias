@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Understand" fill="currentColor" color="#9B968C">
+  <title>Understand</title>
+  <path fill-rule="evenodd" fill="currentColor" d="M18,54a36,36 0 1,0 72,0a36,36 0 1,0 -72,0zM30,54a24,24 0 1,0 48,0a24,24 0 1,0 -48,0z"/>
+  <rect x="76" y="70" width="18" height="48" rx="9" transform="rotate(-45 85 94)"/>
+</svg>

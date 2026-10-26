@@ -57,3 +57,5 @@ def test_build_context_includes_needed_files_and_excludes_secrets():
     assert _in_context("services/agent/src/tiresias_agent/app.py")
     for secret in (".env", "logs/trace-x.jsonl", ".git/config", ".claude/worktrees/x/.env"):
         assert not _in_context(secret), secret
+    assert not _in_context("assets/brand/logo-1024.png")
+    assert not _in_context("assets/characters/tiresias.svg")

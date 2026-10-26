@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 520" width="600" height="520" role="img" aria-label="A why-tree: one accepted cause drilled to its evidence, two pruned">
+  <title>A why-tree: one accepted cause drilled to its evidence, two pruned</title>
+  <path d="M300,94 V147 H110 V200" fill="none" stroke="#9B968C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 12" opacity="0.55"/>
+  <path d="M300,94 V147 H300 V200" fill="none" stroke="#D4A054" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M300,94 V147 H490 V200" fill="none" stroke="#9B968C" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="10 12" opacity="0.55"/>
+  <path d="M300,260 V312 H300 V364" fill="none" stroke="#D4A054" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <path fill-rule="evenodd" fill="#EDE6D9" d="M266,60a34,34 0 1,0 68,0a34,34 0 1,0 -68,0zM278,60a22,22 0 1,0 44,0a22,22 0 1,0 -44,0z"/>
+  <circle cx="300" cy="60" r="12" fill="#D4A054" opacity="1"/>
+  <path fill-rule="evenodd" fill="#9B968C" opacity="0.6" d="M84,230a26,26 0 1,0 52,0a26,26 0 1,0 -52,0zM92,230a18,18 0 1,0 36,0a18,18 0 1,0 -36,0z"/>
+  <line x1="101" y1="221" x2="119" y2="239" stroke="#9B968C" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <line x1="101" y1="239" x2="119" y2="221" stroke="#9B968C" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="300" cy="230" r="30" fill="#D4A054" opacity="1"/>
+  <path fill-rule="evenodd" fill="#9B968C" opacity="0.6" d="M464,230a26,26 0 1,0 52,0a26,26 0 1,0 -52,0zM472,230a18,18 0 1,0 36,0a18,18 0 1,0 -36,0z"/>
+  <line x1="481" y1="221" x2="499" y2="239" stroke="#9B968C" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <line x1="481" y1="239" x2="499" y2="221" stroke="#9B968C" stroke-width="4" stroke-linecap="round" opacity="0.6"/>
+  <rect x="210" y="364" width="180" height="112" rx="12" fill="#242A36" stroke="#D4A054" stroke-width="4" opacity="1"/>
+  <rect x="228" y="388" width="44" height="10" rx="5" fill="#7EB6C9" opacity="0.9"/>
+  <rect x="284" y="388" width="88" height="10" rx="5" fill="#EDE6D9" opacity="0.55"/>
+  <rect x="228" y="418" width="44" height="10" rx="5" fill="#7EB6C9" opacity="0.9"/>
+  <rect x="284" y="418" width="88" height="10" rx="5" fill="#EDE6D9" opacity="0.55"/>
+  <rect x="228" y="448" width="44" height="10" rx="5" fill="#7EB6C9" opacity="0.9"/>
+  <rect x="284" y="448" width="88" height="10" rx="5" fill="#EDE6D9" opacity="0.55"/>
+</svg>

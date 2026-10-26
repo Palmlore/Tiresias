@@ -26,7 +26,8 @@ Open the rest only when the task needs them:
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
 | `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
-| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack) |
+| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack), `render_brand.py`, `render_art.py`, `verify_brand_assets.py` |
+| `assets/` | Submission brand, characters, illustrations, icons and deck ([assets/README.md](assets/README.md)). Not in the agent image. |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |
@@ -72,6 +73,9 @@ curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d '{"que
 python3 scripts/verify_audit.py [--python services/agent/.venv/bin/python] [--with-cognition]   # re-run docs/measurements/verifier-audit-2026-10-24 (no uv, no network)
 # Hosted demo (sample mode, Cloud Run; needs gcloud and GCP_PROJECT in .env): idempotent build + deploy, prints the URL
 ./deploy/gcp/deploy.sh [PROJECT_ID] [REGION]
+python3 scripts/verify_brand_assets.py   # palette, logo, characters, illustrations, icons (stdlib)
+# rebuild committed brand SVGs/PNGs from the geometry (optional; PNGs need Pillow)
+cd services/agent && uv run --with pillow python ../../scripts/render_brand.py && uv run python ../../scripts/render_art.py
 # Zetaris (local, outside this repo)
 cd ~/Repos/hackathon2026/zetaris/zetaris-platform && ./verify.sh   # UI localhost:3000, REST :8888
 python3 scripts/zetaris_probe.py     # latency and registration probe (reads .env)
