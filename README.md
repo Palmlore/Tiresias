@@ -14,6 +14,7 @@
 | **Track** | Reasoning Architecture |
 | **Team** | Palmlore (solo) |
 | **Status** | 🚧 **Build window open until 27 Oct 2026.** Each section says what works today; nothing is marked working that you can't run. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
+| **Video** | **[youtu.be/ySNhg5ttZGk](https://youtu.be/ySNhg5ttZGk)** (3:41, unlisted): for now a walkthrough of the submission deck; the product demo (a live run through Zetaris and Nightshift) replaces it before the deadline. |
 | **Try it online** | **[tiresias.palmlore.com](https://tiresias.palmlore.com)**: a demo-grade hosted copy of the web UI, sample mode only (cached SEC data, rules only), on deliberately small resources to keep its cost bounded: it can be slow or busy. Run it locally for live mode and full performance. It currently runs the 25 Oct build; the 26 Oct story view and decision prompts reach it at the next redeploy. |
 | **Licence** | Apache-2.0 |
 
