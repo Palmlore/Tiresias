@@ -18,10 +18,87 @@
     <div class="top-status">
       <span id="mode-badge" class="badge" title="Server mode">…</span>
       <span id="memory-badge" class="badge muted" hidden></span>
+      <div class="view-switch" role="group" aria-label="View">
+        <button type="button" data-view="story" aria-pressed="true">Story</button>
+        <button type="button" data-view="debug" aria-pressed="false">Debug view</button>
+      </div>
+      <details class="cog">
+        <summary aria-label="Run settings" title="Run settings">⚙</summary>
+        <div class="cog-menu">
+          <label class="field"><span>Decisions</span>
+            <select id="hitl">
+              <option value="auto" selected>Automatic: Tiresias follows its recommendation</option>
+              <option value="interactive">Pause at each decision (you answer before its deadline)</option>
+            </select></label>
+          <label class="field"><span>Memory</span>
+            <select id="memory">
+              <option value="warm">Warm: recall and store lessons</option>
+              <option value="cold">Cold: no memory</option>
+            </select></label>
+          <label class="field"><span>Depth</span>
+            <select id="depth">
+              <option value="quick">Quick: rules only</option>
+              <option value="thorough">Thorough: + Nemotron second opinion</option>
+              <option value="deep">Deep: every model lane</option>
+            </select>
+            <small id="depth-note" class="note"></small></label>
+          <label class="field" id="sample-field" hidden><span>Data</span>
+            <select id="sample">
+              <option value="live">Live: every read through Zetaris</option>
+              <option value="sample">Sample: the offline SEC slice</option>
+            </select></label>
+        </div>
+      </details>
     </div>
   </header>
 
-  <main class="layout">
+  <!-- Story view (default): story.js -->
+  <main id="story" class="story" aria-label="Investigation">
+    <section class="s-ask" aria-label="Ask">
+      <p class="s-lead">Ask why a reported figure changed. Try one:</p>
+      <div id="s-examples" class="s-examples"></div>
+      <label class="s-search"><span class="sr">Company</span>
+        <input id="s-q" type="search" placeholder="Or search a company (ticker or name)…" autocomplete="off"></label>
+      <div id="s-companies" class="s-companies"></div>
+      <div id="s-suggestions" class="s-suggestions" aria-live="polite"></div>
+    </section>
+
+    <section id="s-empty" class="s-empty">
+      <img src="empty-investigation.svg" alt="" width="420">
+      <p class="note">Tiresias proposes causes, the Sphinx tests each one against the filings, and the why-tree keeps only what the rows support.</p>
+    </section>
+
+    <section id="s-run" hidden>
+      <p id="s-question" class="question"></p>
+      <ol id="s-steps" class="s-steps" aria-label="Progress"></ol>
+      <div id="s-result" class="s-result" hidden></div>
+      <div class="s-panes">
+        <div class="s-tree-pane" aria-label="Why-tree"><h3>Why-tree</h3><div id="s-tree"></div></div>
+        <details id="s-convo" class="s-convo" open>
+          <summary>Show how we got here</summary>
+          <ol id="s-turns" class="s-turns" aria-live="polite"></ol>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <aside id="s-console" class="s-console" hidden aria-label="Console">
+    <div class="s-console-bar">
+      <button id="s-console-toggle" type="button" class="linkish" aria-expanded="false">Console</button>
+      <div class="tabs" role="group" aria-label="Console tabs">
+        <button type="button" data-tab="trace">Trace</button>
+        <button type="button" data-tab="exchange">Exchange</button>
+        <button type="button" data-tab="evidence">Evidence</button>
+        <button type="button" data-tab="memory">Memory</button>
+      </div>
+      <label class="toggle"><input id="s-trace-all" type="checkbox"> every line</label>
+      <button id="s-download" type="button" class="btn small ghost">Download trace (JSONL)</button>
+    </div>
+    <div id="s-console-body" class="s-console-body"></div>
+  </aside>
+
+  <!-- Debug view: the full page (app.js) -->
+  <main class="layout" hidden>
     <!-- 1. Ask -->
     <section class="panel ask" aria-labelledby="ask-h">
       <h2 id="ask-h"><img src="you.svg" alt="" class="who-icon"> Ask</h2>
@@ -60,26 +137,6 @@
         </form>
       </details>
 
-      <details class="settings">
-        <summary>Run settings</summary>
-        <label class="field"><span>Human gates</span>
-          <select id="hitl">
-            <option value="interactive">I decide at each gate</option>
-            <option value="auto">Auto (the agent's proposal)</option>
-          </select></label>
-        <label class="field"><span>Memory</span>
-          <select id="memory">
-            <option value="warm">Warm: recall and store lessons</option>
-            <option value="cold">Cold: no memory</option>
-          </select></label>
-        <label class="field"><span>Depth</span>
-          <select id="depth">
-            <option value="quick">Quick: rules only</option>
-            <option value="thorough">Thorough: + critic second opinion</option>
-            <option value="deep">Deep: every model lane</option>
-          </select>
-          <small id="depth-note" class="note"></small></label>
-      </details>
     </section>
 
     <!-- 2. Investigation -->
@@ -131,5 +188,6 @@
   </footer>
 
   <script src="app.js"></script>
+  <script src="story.js"></script>
 </body>
 </html>
