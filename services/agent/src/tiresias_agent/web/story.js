@@ -210,7 +210,7 @@ function storyReduce(s, l) {
     case "gate/answered":
     case "gate/expired": {
       const g = s.gates.get(l.gate_id);
-      if (g) g.outcome = { choice: l.choice || l.proposal, by: l.action === "answered" ? "you" : "timeout" };
+      if (g) g.outcome = { choice: l.choice || l.proposal, by: l.action === "answered" ? answeredBy(l.note) : "timeout" };
       break;
     }
     case "gate/decide": {
@@ -284,6 +284,7 @@ function storyFinish(s, result) {
 // option ids stay the API's own (sent back as the choice); only their labels are worded here.
 const GATE_WORDS = {
   critic_escalation: {
+    ask: "Should we look for the missing data?",
     task: "Its size cannot be measured with the data loaded. Look for the missing data, or drop this cause?",
     options: {
       frontier: ["Look for the missing data", "Tiresias hands it to Loop B to find the filings that hold the figure"],
@@ -291,6 +292,7 @@ const GATE_WORDS = {
     },
   },
   source: {
+    ask: "Should we load these filings as a new source?",
     task: "The figure is in another registrant's filings. Load them as a new source?",
     options: {
       register: ["Load these filings", "one new source is registered (in Zetaris when live) and the cause is re-tested"],
@@ -298,6 +300,7 @@ const GATE_WORDS = {
     },
   },
   memory: {
+    ask: "Should we remember this path for similar questions?",
     task: "Keep the path that worked as a lesson for similar questions?",
     options: {
       store: ["Remember this path", "a generic lesson (no company or figure) is stored in H-MEM"],
@@ -305,6 +308,7 @@ const GATE_WORDS = {
     },
   },
   dissent: {
+    ask: "Should the rules' verdict stand over Nemotron's?",
     task: "Nemotron disagrees with the rules' verdict. Which one stands?",
     options: {
       "keep-rule": ["Keep the rules' verdict", "the rule verdict stands; the model's view stays in the trace"],
@@ -344,6 +348,74 @@ const AUTO_WORDS = {
 function autoDecision(t) {
   const w = (AUTO_WORDS[t.gate] || {})[t.choice];
   return w || t.choice;
+}
+
+// ---- prompt gates: in "Pause at each decision" mode the Sphinx asks on the user's behalf and
+// proceeds with the recommendation after PROMPT_SECONDS unless the user takes over. The UI answers
+// through POST /runs/{id}/gates/{gate_id}; the API records every POST as decided_by "human", so
+// the note says which kind of answer it was, and the page reads it back (answeredBy).
+const PROMPT_SECONDS = 5;
+const NOTE_AUTO = `proceeded automatically after ${PROMPT_SECONDS} s (UI)`;
+const NOTE_PROCEED = "proceed (UI)";
+
+function answeredBy(note) {
+  if (note === NOTE_AUTO) return "auto";
+  if (note === NOTE_PROCEED) return "proceed";
+  return "you";
+}
+
+function sphinxAsks(line) {
+  const w = GATE_WORDS[line.gate];
+  return (w && w.ask) || line.question || "Proceed with the recommendation?";
+}
+
+// One countdown per waiting gate. deps: { post(gateId, body) -> Promise, setTimer(fn, ms) -> id,
+// clearTimer(id), onChange() }. States: counting -> posting -> answered | conflict | error, or
+// counting -> takeover (the STAR card; the user answers before the server's own deadline).
+function promptGate(line, deps) {
+  const p = { gate_id: line.gate_id, choice: line.proposal, state: "counting", left: PROMPT_SECONDS, message: "" };
+  let timer = null;
+  const tick = () => {
+    if (p.state !== "counting") return;
+    p.left -= 1;
+    if (p.left <= 0) { send(NOTE_AUTO); return; }
+    deps.onChange();
+    timer = deps.setTimer(tick, 1000);
+  };
+  const send = (note) => {
+    if (p.state !== "counting") return;
+    if (timer !== null) deps.clearTimer(timer);
+    timer = null;
+    p.state = "posting";
+    deps.onChange();
+    return Promise.resolve(deps.post(p.gate_id, { choice: p.choice, note })).then(() => {
+      p.state = "answered";
+      deps.onChange();
+    }, (e) => {
+      const msg = String((e && e.message) || e);
+      // 409: the gate was already answered or expired; the trace line says what applied
+      p.state = /^Gate(AlreadyAnswered|Expired)\b/.test(msg) ? "conflict" : "error";
+      p.message = msg;
+      deps.onChange();
+    });
+  };
+  p.proceed = () => send(NOTE_PROCEED);
+  p.takeOver = () => {
+    if (p.state !== "counting") return;
+    if (timer !== null) deps.clearTimer(timer);
+    timer = null;
+    p.state = "takeover";
+    deps.onChange();
+  };
+  p.cancel = () => { if (timer !== null) deps.clearTimer(timer); timer = null; if (p.state === "counting") p.state = "cancelled"; };
+  timer = deps.setTimer(tick, 1000);
+  return p;
+}
+
+// The waiting gates that still need a prompt (none in auto mode: the API only sends gate/waiting
+// lines for interactive runs).
+function gatesToPrompt(s, prompts) {
+  return [...s.gates.values()].filter((g) => !g.outcome && !g.closed && !prompts.has(g.line.gate_id)).map((g) => g.line);
 }
 
 function dataText(d) {
@@ -389,12 +461,15 @@ const EXAMPLES = [
 ];
 
 const story = { s: null, req: null, runId: null, result: null, lines: [], selected: null, hover: null,
-  open: new Set(), scrolled: new Set(), raf: 0, view: "story", consoleTab: "trace", consoleFilter: null };
+  open: new Set(), scrolled: new Set(), raf: 0, view: "story", consoleTab: "trace", consoleFilter: null,
+  prompts: new Map() };
 
 const S = (id) => document.getElementById(id);
 const sEl = (...a) => el(...a); // app.js's el(): textContent only
 
 function storyStart(req) {
+  for (const p of story.prompts.values()) p.cancel();
+  story.prompts = new Map();
   story.s = storyInit(req);
   story.req = req;
   story.runId = null;
@@ -420,6 +495,15 @@ function storyLine(line) {
   if (!story.s) return;
   story.lines.push(line);
   storyReduce(story.s, line);
+  for (const g of gatesToPrompt(story.s, story.prompts)) {
+    story.prompts.set(g.gate_id, promptGate(g, {
+      post: (gateId, body) => api(`/runs/${encodeURIComponent(story.runId)}/gates/${encodeURIComponent(gateId)}`,
+        { method: "POST", body: JSON.stringify(body) }),
+      setTimer: (fn, ms) => setTimeout(fn, ms),
+      clearTimer: (id) => clearTimeout(id),
+      onChange: scheduleRender,
+    }));
+  }
   scheduleRender();
 }
 
@@ -591,7 +675,10 @@ function avatar(who) {
 }
 
 function turnItem(s, t) {
-  const who = t.who === "decision" ? "decision" : t.who;
+  const pr = t.kind === "star" ? story.prompts.get(t.gate_id) : null;
+  const g0 = t.kind === "star" ? s.gates.get(t.gate_id) : null;
+  const asking = pr && pr.state !== "takeover" && !(g0 && (g0.outcome || g0.closed));
+  const who = asking ? "sphinx" : t.who === "decision" ? "decision" : t.who;
   const body = [sEl("span", { class: "who", text: WHO[who].name })];
   if (t.kind === "propose") {
     body.push(sEl("p", { text: t.items.length > 1 ? `Why? ${t.items.length} possible causes to test:` : "Why? One cause to test:" }));
@@ -631,12 +718,14 @@ function starItem(s, t) {
   if (!g) return null;
   const c = starCard(g.line);
   const done = g.outcome || g.closed;
+  const pr = story.prompts.get(t.gate_id);
+  if (!done && pr && pr.state !== "takeover") return sphinxPrompt(g.line, c, pr);
   const box = sEl("div", { class: `star${done ? " done" : ""}`, "data-gate": t.gate_id },
     sEl("dl", { class: "star-dl" },
       sEl("dt", { text: "Situation" }), sEl("dd", {}, c.situation, c.facts.length ? sEl("span", { class: "note", text: ` (${c.facts.join(" · ")})` }) : null),
       sEl("dt", { text: "Task" }), sEl("dd", { text: c.task }),
       sEl("dt", { text: "Action" }), sEl("dd", {}, done
-        ? sEl("span", { text: g.outcome ? `${g.outcome.by === "you" ? "You chose" : "No answer in time; the recommendation applied"}: ${(c.actions.find((x) => x.id === g.outcome.choice) || { label: g.outcome.choice }).label}` : "decided" })
+        ? sEl("span", { text: g.outcome ? `${OUTCOME_WORDS[g.outcome.by] || "Decided"}: ${(c.actions.find((x) => x.id === g.outcome.choice) || { label: g.outcome.choice }).label}` : "decided" })
         : sEl("div", { class: "star-actions" }, c.actions.map((x) => sEl("button", {
           type: "button", class: `btn small${x.recommended ? "" : " alt"}`,
           onclick: (ev) => answerGate(t.gate_id, x.id, ev.currentTarget) },
@@ -644,6 +733,36 @@ function starItem(s, t) {
       sEl("dt", { text: "Result" }), sEl("dd", {}, sEl("ul", { class: "results" }, c.actions.map((x) => sEl("li", {}, sEl("b", { text: `${x.label}: ` }), x.result))))),
     !done && c.deadline ? sEl("p", { class: "note countdown", "data-deadline": c.deadline, text: countdownText(c.deadline) }) : null);
   return box;
+}
+
+const OUTCOME_WORDS = {
+  you: "You chose",
+  proceed: "You proceeded with the recommendation",
+  auto: `Proceeded automatically after ${PROMPT_SECONDS} s`,
+  timeout: "No answer in time; the recommendation applied",
+};
+
+// The Sphinx asks on the user's behalf: the question, the recommendation, a 5 s countdown,
+// Proceed (now) and Take over (the STAR card).
+function sphinxPrompt(line, c, pr) {
+  const rec = c.actions.find((x) => x.recommended) || { label: line.proposal, result: "" };
+  const busy = pr.state !== "counting";
+  return sEl("div", { class: "sphinx-ask", "data-gate": line.gate_id },
+    sEl("p", { class: "ask-q" }, sEl("span", { class: "on-behalf", text: "On your behalf: " }), sphinxAsks(line)),
+    sEl("p", { class: "note" }, `Recommended: ${rec.label}`, rec.result ? ` (${rec.result}).` : "."),
+    sEl("div", { class: "star-actions" },
+      sEl("button", { type: "button", class: "btn small", disabled: busy || null, onclick: () => pr.proceed() },
+        sEl("span", { text: "Proceed" }), sEl("small", { class: "choice-id", text: line.proposal })),
+      sEl("button", { type: "button", class: "btn small alt", disabled: busy || null, onclick: () => { pr.takeOver(); scheduleRender(); } }, "Take over")),
+    sEl("p", { class: "note countdown-prompt", text: promptText(pr) }));
+}
+
+function promptText(pr) {
+  if (pr.state === "counting") return `Proceeding in ${pr.left} s…`;
+  if (pr.state === "posting") return "Proceeding…";
+  if (pr.state === "conflict") return `Already decided: ${pr.message.replace(/^Gate\w+: /, "")}`;
+  if (pr.state === "error") return `Could not answer: ${pr.message}`;
+  return "";
 }
 
 function countdownText(deadline) {

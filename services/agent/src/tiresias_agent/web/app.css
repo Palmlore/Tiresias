@@ -332,6 +332,11 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .choice-id { font: 10.5px var(--mono); opacity: .75; }
 .results { margin: 0; padding-left: 16px; }
 .countdown { margin: 8px 0 0; }
+/* the Sphinx asks on the user's behalf, then proceeds after 5 s unless the user takes over */
+.sphinx-ask { border: 1px solid var(--celeste); border-radius: 8px; padding: 10px 12px; }
+.sphinx-ask .ask-q { margin: 0 0 4px; font-weight: 600; }
+.sphinx-ask .on-behalf { color: var(--celeste); font-weight: 400; }
+.sphinx-ask .countdown-prompt { margin: 8px 0 0; color: var(--celeste); }
 
 /* console drawer */
 .s-console { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--ink-2);
