@@ -83,6 +83,15 @@ def driver(node: Node) -> str:
 
 def event_text(node: Node) -> str:
     m = node.measurement
+    if m and len(m.events) > 1:
+        # Item 2.01 covers acquisitions and disposals alike: when several filings match, the
+        # filings alone do not say which one is the event, so name them all (B-30: JNJ's window
+        # held an acquisition and the separation).
+        listed = "; ".join(
+            f"{e.form} items {e.items}, filed {e.filing_date}"
+            for e in sorted(m.events, key=lambda e: e.filing_date)
+        )
+        return f"one of {len(m.events)} filings in the window: {listed}"
     if m and m.events:
         e = m.events[-1]
         return f"{e.form} items {e.items}, filed {e.filing_date}"
