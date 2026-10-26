@@ -133,3 +133,38 @@ The counterfactual equals the original figure because the disposed revenue match
 | MRK | actionable | 100% / 0% | 33.7 | the measurement names the disposed-group revenue fact; the cited filing is unchanged |
 
 Still open, deferred: the action keeps the generic "keep the residual open until the disposed business's Revenues is reconciled" even when the parent's own fact already measures it with a 0% residual (BACKLOG B-33).
+
+## Correctness audit (independent)
+
+Added 2026-10-26, after the results above; nothing above this section was changed. Script: [`scripts/audit_sweep.py`](../../scripts/audit_sweep.py); output, one line per company: [`coverage-sweep-2026-10-26-audit.jsonl`](coverage-sweep-2026-10-26-audit.jsonl).
+
+**What is independent.** The audit reads SEC EDGAR directly (companyfacts, submissions and the text of each cited 8-K), not through Tiresias, Zetaris or a model. For every company the sweep answered it re-derives (a) the parent's original and restated figures from the two 10-Ks, (b) that the counterparty is the business separated from the parent (its own Form 10 or S-1, and the parent's 8-K item 2.01 naming it), (c) the counterparty's own figure for the same period, (d) the add-back and residual, and (e) whether every filing the action cites describes that separation. **What is not.** The claims checked (figures, periods, cited filings) were copied from the sweep traces into the script by the same team; the audit uses XBRL facts, not the printed income statements; "is the separated business" rests on the parent's 8-K item 2.01 text naming it.
+
+### Answered companies
+
+| Company | (a) parent figures | (b) counterparty | (c) its own figure | (d) add-back, residual | (e) cited filings | Verdict |
+|---|---|---|---|---|---|---|
+| IBM FY2019 | $77,147M → $57,714M, `Revenues`, 10-Ks 0001558370-21-001489 / -22-001584 | Kyndryl: Form 10 2021-09-28; IBM's 8-K 2021-11-04 item 2.01 names it | $20,279M (10-K 2022-03-10) | gap −$846M, residual −4.35% (within 5%) | the separation | correct |
+| BBWI "FY2020" | $12,914M → $5,405M for the year ended 2020-02-01 | Victoria's Secret: Form 10 2021-06-21; 8-K 2021-08-03 item 2.01 | $7,509M | gap $0, residual 0.0% | the separation | correct, with a caveat: SEC files the period as CY2019 (the company's fiscal 2019); the sweep labels it by its end date (B-32) |
+| FTV FY2023 | $6,065.3M → $3,913.9M | Ralliant: Form 10 2025-05-05; 8-K 2025-06-30 item 2.01 | $2,155.7M | gap −$4.3M, residual −0.2% | the separation | correct |
+| DD FY2024 | $12,386M → $6,719M | Qnity: Form 10 2025-04-24; 8-K 2025-11-03 item 2.01 | $4,335M | gap $1,332M, residual 23.5% (outside 5%, as the run says) | the separation | correct, with a caveat: a partial answer; what the other $1.33B is was not identified by the run or by this audit |
+| JNJ "FY2022" | $93,775M → $78,740M for the year ended 2022-01-02 | Kenvue: S-1 2023-01-04 (IPO before the exchange offer); 8-K 2023-08-25 item 2.01 | not used (Loop A); J&J's own `DisposalGroupIncludingDiscontinuedOperationRevenue` $15,035M; Kenvue's own $15,054M (+0.13%) corroborates it | gap $0, residual 0.0% | **one of two cited filings is not the separation**: the 8-K of 2022-12-22 (item 2.01) is J&J's tender-offer acquisition of Abiomed | correct figures, misleading action: SEC files the period as CY2021 (B-32); the action does not name Kenvue and offers the Abiomed acquisition as a candidate disposal (B-34) |
+| MRK FY2019 | $46,840M → $39,121M | Organon: Form 10 2021-03-17; 8-K 2021-06-03 item 2.01 | not used (Loop A); Merck's own disposal-group fact $7,719M; Organon's own $7,777M (+0.75%) | gap $0, residual 0.0% | the separation | correct, with a caveat: the action does not name Organon |
+
+**Verdicts (6 answered): correct 2 (IBM, FTV), correct with a caveat 4 (BBWI, DD, JNJ, MRK), wrong 0.** No figure, period, counterparty or add-back was wrong. The one misleading output is JNJ's action, which lists an acquisition filing as one of two possible disposals.
+
+### Evidence-frontier companies: a correct stop or a miss?
+
+| Company | Separation in the window | Data in XBRL? | Assessment |
+|---|---|---|---|
+| DHR FY2022 | Veralto (Form 10 registrant). Danaher filed **no 8-K item 2.01** between the two 10-Ks | Veralto's own FY2022 figure $4,870M; added back, gap −$42M (0.13% of the original) | **missed answer**: the data was there; Loop A looks for item 2.01 and found none (B-36) |
+| RTX FY2018 | Carrier and Otis, one 8-K 2020-04-08 item 2.01 | Carrier $18,914M + Otis $12,915M; gap −$29M | **missed answer**: two counterparties, and Loop B reconciles one; the scout registered nVent instead and the critic rejected it (B-31, B-36) |
+| PFE FY2023 | none; Viatris (2020) is outside the window | n/a | **the question is not a restatement**: $50.91B is `RevenueFromContractWithCustomerExcludingAssessedTax` and $59.55B is `Revenues`; the original 10-K reports `Revenues` of $58,496M for the same year. The stop is right; the suggestion should not exist (B-35) |
+| IP FY2023 | the only 8-K item 2.01 in the window (2026-01-23) is the sale of the cellulose fibers business to funds affiliated with American Industrial Partners | the buyer is not an SEC registrant | **correct stop**: there is no counterparty in structured filings |
+| BDX FY2021 | Embecta (Form 10 registrant). BD filed **no 8-K item 2.01** in the window | Embecta's own FY2021 (to 2021-09-30) $1,165.3M; gap −$48.3M | **missed answer**, as for DHR (B-36) |
+
+So of the 5 stops, 1 is a correct "no evidence in structured filings", 1 rests on a spurious question, and 3 are answers the data supported but the pipeline did not reach. None asserted a wrong cause.
+
+### What this changes in the headline
+
+The sweep's answers held up against SEC data: of 6 answered companies, none was wrong, and 4 carry the caveats above. Its weakness is recall, not correctness: 3 of 12 spin-off parents had a reconcilable answer in XBRL that the agent did not find, because the separation was not filed under item 2.01 or had two counterparties.
