@@ -352,8 +352,8 @@ function autoDecision(t) {
 
 // ---- prompt gates: in "Pause at each decision" mode the Sphinx asks on the user's behalf and
 // proceeds with the recommendation after PROMPT_SECONDS unless the user takes over. The UI answers
-// through POST /runs/{id}/gates/{gate_id}; the API records every POST as decided_by "human", so
-// the note says which kind of answer it was, and the page reads it back (answeredBy).
+// through POST /runs/{id}/gates/{gate_id}; the countdown's answer carries auto: true, so the API
+// records it as decided_by "ui-auto", never "human"; the note says which kind it was (answeredBy).
 const PROMPT_SECONDS = 5;
 const NOTE_AUTO = `proceeded automatically after ${PROMPT_SECONDS} s (UI)`;
 const NOTE_PROCEED = "proceed (UI)";
@@ -388,7 +388,8 @@ function promptGate(line, deps) {
     timer = null;
     p.state = "posting";
     deps.onChange();
-    return Promise.resolve(deps.post(p.gate_id, { choice: p.choice, note })).then(() => {
+    const body = note === NOTE_AUTO ? { choice: p.choice, note, auto: true } : { choice: p.choice, note };
+    return Promise.resolve(deps.post(p.gate_id, body)).then(() => {
       p.state = "answered";
       deps.onChange();
     }, (e) => {

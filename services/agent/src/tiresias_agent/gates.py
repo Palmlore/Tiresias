@@ -342,7 +342,9 @@ class GateChannel:
             self._cond.wait_for(lambda: pending.status != "waiting", timeout=wait)
             if pending.status != "waiting":
                 choice = pending.options[pending.choice] if pending.choice else None
-                return Answer(choice=choice, note=pending.note, gate_id=gate_id)
+                return Answer(
+                    choice=choice, note=pending.note, gate_id=gate_id, decided_by=pending.decided_by
+                )
             pending.status, pending.decided_by = "expired", "timeout"
             pending.answered_at = _iso(datetime.now(UTC))
             self.tracer.emit(
@@ -359,9 +361,13 @@ class GateChannel:
             )
             return Answer(choice=None, gate_id=gate_id, decided_by="timeout")
 
-    def answer(self, gate_id: str, choice: str, note: str | None = None) -> dict[str, Any]:
-        """Answer a waiting gate (from the API thread). Raises GateNotFound, GateClosed
-        (answered or expired) or InvalidChoice; returns the answered gate."""
+    def answer(
+        self, gate_id: str, choice: str, note: str | None = None, *, auto: bool = False
+    ) -> dict[str, Any]:
+        """Answer a waiting gate (from the API thread). ``auto``: a UI applied the recommendation
+        after its countdown, recorded as decided_by "ui-auto" (only the proposal may be applied so).
+        Raises GateNotFound, GateClosed (answered or expired) or InvalidChoice; returns the
+        answered gate."""
         with self._cond:
             pending = self._gates.get(gate_id)
             if pending is None:
@@ -373,9 +379,14 @@ class GateChannel:
                 raise InvalidChoice(
                     f"choice must be one of {list(shown['options'])}, got {scrub(choice)!r}"
                 )
+            if auto and choice != shown["proposal"]:
+                raise InvalidChoice(
+                    f"auto may only apply the proposal {shown['proposal']!r}, got {scrub(choice)!r}"
+                )
             note = scrub(note, limit=MAX_NOTE) if note else None
+            by = "ui-auto" if auto else "human"
             pending.status, pending.choice, pending.note = "answered", choice, note
-            pending.decided_by, pending.answered_at = "human", _iso(datetime.now(UTC))
+            pending.decided_by, pending.answered_at = by, _iso(datetime.now(UTC))
             self.tracer.emit(
                 agent=AGENT,
                 action="answered",
@@ -383,11 +394,12 @@ class GateChannel:
                 gate=shown["gate"],
                 gate_mode="interactive",
                 gate_id=gate_id,
-                decided_by="human",
+                decided_by=by,
                 choice=choice,
                 note=note,
                 proposal=shown["proposal"],
-                output_summary=f"{choice} (answered over the API)",
+                output_summary=f"{choice} (answered over the API"
+                + (", applied automatically by the UI)" if auto else ")"),
             )
             self._cond.notify_all()
             return pending.public()

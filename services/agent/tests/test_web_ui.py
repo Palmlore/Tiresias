@@ -496,7 +496,11 @@ def test_prompt_proceeds_automatically_after_five_seconds():
     assert got["posts"] == [
         {
             "gateId": "g1",
-            "body": {"choice": "frontier", "note": "proceeded automatically after 5 s (UI)"},
+            "body": {
+                "choice": "frontier",
+                "note": "proceeded automatically after 5 s (UI)",
+                "auto": True,
+            },
         }
     ]
     assert "automatically" in got["posts"][0]["body"]["note"]

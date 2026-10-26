@@ -493,11 +493,13 @@ class GateAnswer(BaseModel):
 
     choice: str = Field(min_length=1, max_length=64)
     note: str | None = Field(default=None, max_length=500)
+    auto: bool = False  # a UI applied the recommendation after its countdown, not a person
 
 
 class GateWaiting(BaseModel):
     """One interactive gate of a run (gates.PendingGate.public): the ``gate``/``waiting`` trace
-    line's fields, then its outcome once answered (decided_by human) or expired (timeout)."""
+    line's fields, then its outcome once answered (decided_by human, or ui-auto for a UI's
+    countdown) or expired (timeout)."""
 
     gate_id: str
     gate: GateName
@@ -515,7 +517,7 @@ class GateWaiting(BaseModel):
     timeout_seconds: float
     choice: str | None = None
     note: str | None = None
-    decided_by: Literal["human", "timeout"] | None = None
+    decided_by: Literal["human", "ui-auto", "timeout"] | None = None
     answered_at: str | None = None
 
 

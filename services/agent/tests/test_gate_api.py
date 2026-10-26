@@ -139,6 +139,35 @@ def test_interactive_run_waits_and_the_answer_resumes_it(client, tmp_path):
     assert order.index(("answered", "g1")) < order.index(("decide", "g1"))
 
 
+def test_a_ui_countdown_answer_is_recorded_as_ui_auto_not_human(client, tmp_path):
+    # The UI's 5 s prompt applies the recommendation with auto: true; no line may say "human".
+    rid = _start(client, run_id="gate-auto")
+    first = _waiting(client, rid, "critic_escalation")
+    note = "proceeded automatically after 5 s (UI)"
+    wrong = next(o for o in first["options"] if o != first["proposal"])
+    refused = client.post(
+        f"/runs/{rid}/gates/g1", json={"choice": wrong, "note": note, "auto": True}
+    )
+    _error(refused, 422, "ValidationError")  # auto may only apply the proposal
+    body = {"choice": first["proposal"], "note": note, "auto": True}
+    answered = client.post(f"/runs/{rid}/gates/g1", json=body)
+    assert answered.status_code == 200, answered.text
+    assert GateWaiting.model_validate(answered.json()).decided_by == "ui-auto"
+    source = _waiting(client, rid, "source")
+    assert _answer(client, rid, source["gate_id"], "register").status_code == 200
+    assert _finish(rid).end_state == "actionable"
+    lines = _lines(tmp_path, rid)
+    by_gate = {
+        (e["action"], e["gate_id"]): e for e in lines if e["agent"] == "gate" and e.get("gate_id")
+    }
+    assert by_gate[("answered", "g1")]["decided_by"] == "ui-auto"
+    assert by_gate[("decide", "g1")]["decided_by"] == "ui-auto"
+    assert by_gate[("decide", "g1")]["note"] == note
+    assert by_gate[("decide", "g2")]["decided_by"] == "human"
+    listed = GateList.model_validate(client.get(f"/runs/{rid}/gates").json())
+    assert [(g.gate_id, g.decided_by) for g in listed.gates] == [("g1", "ui-auto"), ("g2", "human")]
+
+
 def test_deny_at_the_source_gate_keeps_the_frontier(client):
     rid = _start(client)
     _answer(client, rid, _waiting(client, rid, "critic_escalation")["gate_id"], "frontier")
