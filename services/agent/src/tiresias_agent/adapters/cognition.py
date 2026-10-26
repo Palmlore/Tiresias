@@ -3,6 +3,8 @@
 Memory is optional for a run (AGENTS.md rule 8): when cognition is down, recall returns no
 lessons with ``available=False`` and remember/feedback report nothing stored. Purge is the
 exception: a purge that did not happen raises, so it can never be reported as done.
+Each endpoint's one trace line also records what went over the wire on its last attempt
+(``exchange_fields``: endpoint, method, service_host, http_status, request_bytes, response_bytes).
 """
 
 from __future__ import annotations
@@ -181,6 +183,21 @@ class LedgerEntry:
         )
 
 
+def exchange_fields(request: httpx.Request, response: httpx.Response | None) -> dict[str, Any]:
+    """What went over the wire on one attempt, for its trace line: the path only (no query
+    string), the method, host:port (never userinfo), the HTTP status (None when no reply came
+    back) and the bytes sent and received."""
+    url = request.url
+    return {
+        "endpoint": url.path,
+        "method": request.method,
+        "service_host": f"{url.host}:{url.port}" if url.port else url.host,
+        "http_status": response.status_code if response is not None else None,
+        "request_bytes": len(request.content),
+        "response_bytes": len(response.content) if response is not None else None,
+    }
+
+
 def _short(text: str) -> str:
     return text if len(text) <= SUMMARY_MAX else text[: SUMMARY_MAX - 1] + "…"
 
@@ -207,6 +224,7 @@ class CognitionClient:
             timeout=self.config.timeout_s,
             transport=transport,
         )
+        self._exchange: dict[str, Any] = {}  # the last attempt of the current call
 
     def close(self) -> None:
         self._http.close()
@@ -231,10 +249,13 @@ class CognitionClient:
         headers = {"X-Run-Id": self.run_id}
         attempts = 1 + (self.config.retries if idempotent else 0)
         for attempt in range(attempts):
+            request = self._http.build_request(
+                method, path, json=json, params=params, headers=headers
+            )
+            self._exchange = exchange_fields(request, None)  # replaced when a reply arrives
             try:
-                response = self._http.request(
-                    method, path, json=json, params=params, headers=headers
-                )
+                response = self._http.send(request)
+                self._exchange = exchange_fields(request, response)
                 break
             except httpx.ConnectError as exc:
                 if attempt + 1 < attempts:
@@ -259,8 +280,13 @@ class CognitionClient:
 
     def _emit(self, action: str, started: float, status: str = "success", **fields: Any) -> None:
         duration_ms = round((time.perf_counter() - started) * 1000)
+        exchange, self._exchange = self._exchange, {}
         self.tracer.emit(
-            agent=AGENT, action=action, status=status, duration_ms=duration_ms, **fields
+            agent=AGENT,
+            action=action,
+            status=status,
+            duration_ms=duration_ms,
+            **{**exchange, **fields},
         )
 
     # -- endpoints ---------------------------------------------------------------------------

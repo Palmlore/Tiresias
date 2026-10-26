@@ -86,7 +86,9 @@ These are the planned defaults, tunable through environment variables:
 
 Every action is one JSONL line in `logs/trace-<run_id>.jsonl` and is also printed to stdout. Both services write to the shared `logs/` volume and propagate `X-Run-Id`. Planned fields:
 
-`timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, requested_model, routed_model, provider, receipt_id, latency_ms, proposed_by, retry_count, status, outcome, duration_ms`
+`timestamp, run_id, parent_run_id, node_id, agent, action, input_summary, output_summary, target_agent, sql, rows, share_explained, label, confidence, gate, gate_mode, decided_by, memory_ids, model, lane, requested_model, routed_model, provider, receipt_id, latency_ms, proposed_by, retry_count, status, outcome, duration_ms, endpoint, method, service_host, http_status, request_bytes, response_bytes`
+
+Data exchange: the one line a sponsor adapter writes per HTTP call (Zetaris `zetaris_adapter` statements, Nightshift model calls, cognition `memory_client` requests) also records what went over the wire on its last attempt: `endpoint` (the URL path, never a query string), `method`, `service_host` (`host:port`, never userinfo), `http_status` (`null` when no reply came back, e.g. a connection error), `request_bytes` and `response_bytes` (`null` without a reply). Headers are never logged, so the API key and Runtime token cannot appear. A line for a call that was not sent (sample mode, Zetaris marked down, Nightshift not configured) has none of these fields; they are never invented.
 
 Gates: every decision is one `gate`/`decide` line (`gate`, `gate_mode`, `decided_by`: `policy:<gate>`, `script`, `human` or `timeout`; interactive lines add `choice`, `note`, `gate_id`). An interactive gate is first a `gate`/`waiting` line (`gate_id`, `options`, `proposal`, `context`, `deadline`, `timeout_seconds`), then `gate`/`answered` or `gate`/`expired`.
 

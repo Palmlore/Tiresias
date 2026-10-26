@@ -5,7 +5,9 @@ from Nightshift 1.2.4, a model id listed by ``GET /v1/models`` (honoured; an id 
 is refused, not re-routed). Nightshift 1.2.1 ignored explicit ids and routed the same lane to
 different Nemotron models on 2026-10-24. Either way the model that actually answered is read from
 the response's receipt (``meterless.routed_model``, ``winning_route.provider``; ``None`` when the
-receipt does not say), and every call's trace line records ``routed_model`` and ``receipt_id``.
+receipt does not say), and every call's trace line records ``routed_model`` and ``receipt_id``, plus what went over the wire on its
+last attempt (``endpoint``, ``method``, ``service_host``, ``http_status``, ``request_bytes``,
+``response_bytes``; absent when nothing was sent).
 ``chat_json`` asks for ``response_format: json_object`` (Nemotron 3 Ultra otherwise writes its
 reasoning before the JSON). When Nightshift is offline the client raises ``ModelUnavailable`` so the
 orchestrator can fall back to the rule-based path (ADR-0007).
@@ -222,6 +224,21 @@ def receipt_id_from(receipt: dict[str, Any]) -> str | None:
     )
 
 
+def exchange_fields(request: httpx.Request, response: httpx.Response | None) -> dict[str, Any]:
+    """What went over the wire on one attempt, for its trace line: the path only, the method,
+    host:port (never userinfo), the HTTP status (None when no reply came back) and the bytes sent
+    and received. Headers (the Runtime token) are never included."""
+    url = request.url
+    return {
+        "endpoint": url.path,
+        "method": request.method,
+        "service_host": f"{url.host}:{url.port}" if url.port else url.host,
+        "http_status": response.status_code if response is not None else None,
+        "request_bytes": len(request.content),
+        "response_bytes": len(response.content) if response is not None else None,
+    }
+
+
 def _summary(text: str) -> str:
     text = " ".join(text.split())
     return text if len(text) <= _SUMMARY_CHARS else text[: _SUMMARY_CHARS - 1] + "…"
@@ -273,6 +290,9 @@ class NightshiftClient:
         self.config = config or NightshiftConfig.from_env()
         self.tracer: Tracer = tracer or _NoopTracer()
         self._transport = transport
+        self._exchange: dict[
+            str, Any
+        ] = {}  # the last attempt of the current call (exchange_fields)
 
     def __repr__(self) -> str:
         return f"NightshiftClient(base_url={self.config.base_url!r}, app={self.config.app!r})"
@@ -316,6 +336,7 @@ class NightshiftClient:
         }
         start = time.monotonic()
         retries = 0
+        self._exchange = {}  # stays empty when nothing is sent (not configured)
         try:
             if not self.config.configured:
                 raise ModelUnavailable("nightshift not configured", recoverable=False)
@@ -339,6 +360,7 @@ class NightshiftClient:
                 duration_ms=elapsed,
                 latency_ms=elapsed,
                 output_summary=_summary(self._safe(f"{type(exc).__name__}: {exc}")),
+                **self._exchange,
                 **trace,
             )
             raise
@@ -354,6 +376,7 @@ class NightshiftClient:
             latency_ms=reply.duration_ms,
             usage_total=reply.usage.get("total_tokens"),
             output_summary=_summary(self._safe(reply.text)),
+            **self._exchange,
             **trace,
         )
         return reply
@@ -398,8 +421,11 @@ class NightshiftClient:
         last: ModelUnavailable | None = None
         with httpx.Client(timeout=self.config.timeout_seconds, transport=self._transport) as http:
             for attempt in range(MAX_ATTEMPTS):
+                request = http.build_request("POST", url, json=payload, headers=headers)
+                self._exchange = exchange_fields(request, None)  # replaced when a reply arrives
                 try:
-                    response = http.post(url, json=payload, headers=headers)
+                    response = http.send(request)
+                    self._exchange = exchange_fields(request, response)
                 except httpx.TimeoutException:
                     # No retry: a timeout already spent the full model budget (180 s by default).
                     raise ModelUnavailable(
