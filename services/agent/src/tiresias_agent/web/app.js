@@ -190,7 +190,7 @@ async function startRun(request) {
     showResultError(e.message);
     return;
   }
-  const run = { id: started.run_id, lines: [], gates: new Map(), source: null, finished: false };
+  const run = { id: started.run_id, lines: [], gates: new Map(), models: new Map(), source: null, finished: false };
   state.run = run;
   const wait = started.depth && started.depth.expected_wait;
   $("run-meta").textContent = `run ${run.id}` +
@@ -276,6 +276,7 @@ function onTrace(run, line) {
   $("event-count").textContent = `(${run.lines.length} lines)`;
   countCast(line);
   renderCast();
+  if (line.routed_model) run.models.set(line.routed_model, (run.models.get(line.routed_model) || 0) + 1);
   if (line.agent === "gate") onGateLine(run, line);
   const showAll = $("show-all").checked;
   const isNoise = NOISY.has(line.agent) || line.action === "heartbeat";
@@ -383,7 +384,7 @@ async function finishRun(run) {
     return;
   }
   if (rec.error && !rec.result) { showResultError(`${rec.error.type}: ${rec.error.message}`); return; }
-  renderResult(rec.result);
+  renderResult(rec.result, run.models);
 }
 
 function showResultError(message) {
@@ -394,7 +395,17 @@ function showResultError(message) {
 
 // ---- result, why-tree, evidence, memory ----------------------------------------------------
 
-function renderResult(r) {
+// The models Nightshift says served this run: one chip from the routed_model of its trace lines,
+// never from the request (the receipt is the evidence; ADR-0010).
+function modelChip(models) {
+  if (!models || !models.size) return null;
+  const parts = [...models].map(([id, n]) => `${id.replace(/^nvidia\//, "")}${n > 1 ? ` ×${n}` : ""}`);
+  const chip = badge(`Nightshift · ${parts.join(", ")}`, "model");
+  chip.title = "Routed model per Nightshift's receipt: " + [...models.keys()].join(", ");
+  return chip;
+}
+
+function renderResult(r, models) {
   const box = $("result");
   box.hidden = false;
   const cls = r.scope ? "scope" : r.end_state === "evidence-frontier" ? "frontier" : "";
@@ -402,6 +413,7 @@ function renderResult(r) {
   const card = el("div", { class: `result ${cls}` },
     el("h4", {}, badge(r.end_state || r.status, endStateClass(r.end_state)),
       r.sample_mode ? badge("sample data", "sample") : badge("live", "live"),
+      modelChip(models),
       r.action_source === "model" ? badge("wording by model", "muted") : null),
     e ? el("div", { class: "effect" },
       el("span", { text: `${e.entity} ${e.metric}` }),
