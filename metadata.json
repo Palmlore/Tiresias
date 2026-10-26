@@ -25,7 +25,7 @@
   "sponsors": {
     "zetaris": {
       "status": "working",
-      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Each Zetaris call is a trace line (SQL, outcome, rows, duration, retries); a live run from a fresh Zetaris is committed in logs/samples/. The judge's default quickstart is sample mode, which runs the same logic on cached rows.",
+      "how": "The evidence layer: every claim is SQL through Zetaris plus the rows it returned. In live mode every read goes through Zetaris, discovery included: the agent resolves the asked company through a Zetaris SEC tickers table, registers an unknown company's filings at runtime, and in Loop B registers the discovered spun-off entity's filings as a Lightning REST table behind a source gate, then reconciles the restatement. Each Zetaris call is a trace line (SQL, outcome, rows, duration, retries, and the HTTP exchange: endpoint, method, host, status, request and response bytes); a live run from a fresh Zetaris is committed in logs/samples/. The judge's default quickstart is sample mode, which runs the same logic on cached rows.",
       "interface": "rest",
       "deployment": "local-docker",
       "data_sources": [
@@ -47,7 +47,9 @@
         "docs/measurements/live-any-company.md: live runs through local Zetaris on 2026-10-23 (three examples plus IBM, J&J, 3M, ExxonMobil, Hilton, Caterpillar, Crane NXT), cold and warm, timed from each run's phase trace lines",
         "docs/measurements/zetaris-local.md: local bundle latencies (REST table registration 0.6–2.0 s, cached queries)",
         "services/agent/tests/test_any_company.py: no agent module outside the sponsor adapters makes HTTP calls; live discovery and registration run as Zetaris SQL (mocked endpoint)",
-        "services/agent/tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views"
+        "services/agent/tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views",
+        "docs/measurements/coverage-sweep-2026-10-26.md and its .jsonl: a pre-registered live sweep on 2026-10-26 of 12 spin-off parents plus 3 controls through local Zetaris, no fallback to the sample; an independent audit against SEC EDGAR (coverage-sweep-2026-10-26-audit.jsonl) found the 6 answers correct, 4 with caveats, none wrong",
+        "services/agent/tests/test_exchange_trace.py: each Zetaris, Nightshift and cognition call's trace line records endpoint, method, service_host, http_status and request/response bytes; calls never sent carry none; secrets never appear"
       ],
       "decisions": [
         "docs/decisions/ADR-0003-zetaris-evidence-layer.md"
@@ -55,7 +57,7 @@
     },
     "meterless": {
       "status": "working",
-      "how": "Nightshift is the model provider for every model call: three lanes (extra hypotheses, a second opinion for the critic, action wording), where the model proposes and the rules and data decide (ADR-0010), chosen per question by investigation depth, quick by default (ADR-0011). A live run from a fresh state at depth deep is committed with every Nightshift call traced (lane, routed_model, provider, receipt id). Caveats (docs/sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not): it is one run; sample mode, the judges' default, and depth quick make no model call; in that run the hypothesis lane made no call and one of four replies was unusable and rejected. H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) is the agent's investigation memory in every warm run, sample mode included: entity-free lessons stored behind a memory gate, recalled to reorder the hypothesiser, judged by the critic (helpful / not helpful / wrong feedback), and purgeable through POST /memory/purge (ADR-0005). scripts/memory_demo.py shows cold → warm → misapplied lesson rejected → purge → cold, and runs in CI.",
+      "how": "Nightshift is the model provider for every model call: three lanes (extra hypotheses, a second opinion for the critic, action wording), where the model proposes and the rules and data decide (ADR-0010), chosen per question by investigation depth, quick by default (ADR-0011). A live run from a fresh state at depth deep is committed with every Nightshift call traced (lane, routed_model, provider, receipt id). Every reply is requested as JSON (response_format json_object), and each call's trace line also records the HTTP exchange (endpoint, status, bytes). On Nightshift 1.2.4 a setup can pin the lanes to model ids (METERLESS_MODEL_FAST / METERLESS_MODEL_DEEP). Caveats (docs/sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not): it is one run; sample mode, the judges' default, and depth quick make no model call; in that run the hypothesis lane made no call and one of four replies was unusable and rejected. H-MEM (the Meterless reference engine, vendored unmodified, behind the cognition REST service, conformance 13/13) is the agent's investigation memory in every warm run, sample mode included: entity-free lessons stored behind a memory gate, recalled to reorder the hypothesiser, judged by the critic (helpful / not helpful / wrong feedback), and purgeable through POST /memory/purge (ADR-0005). scripts/memory_demo.py shows cold → warm → misapplied lesson rejected → purge → cold, and runs in CI.",
       "engines": [
         "H-MEM"
       ],
@@ -76,7 +78,9 @@
         "services/agent/tests/test_model_lanes.py and tests/test_depth.py: lanes validated, the rules decide, sample mode makes no model call, Nightshift outages degrade to the rules",
         "2026-10-24 live run of case 01 at depth deep (trace not committed; timings only, README Models): 4 Nightshift calls",
         "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition",
-        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: a live run at depth deep, 4 Nightshift calls, each traced with lane, routed_model, provider and receipt id"
+        "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: a live run at depth deep, 4 Nightshift calls, each traced with lane, routed_model, provider and receipt id",
+        "services/agent/tests/test_nightshift.py::test_chat_json_asks_for_json_mode_by_default: every structured reply is requested as JSON (without it Nemotron 3 Ultra's replies were rejected as prose)",
+        "services/agent/tests/test_exchange_trace.py: the Nightshift and cognition exchange fields (endpoint, http_status, bytes) on each call's trace line, no secret"
       ],
       "decisions": [
         "docs/decisions/ADR-0002-split-services-rest.md",
@@ -108,7 +112,8 @@
       "evidence": [
         "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: 4 calls served by nvidia/nemotron-3-ultra-550b-a55b (1) and nvidia/nemotron-3.5-super-vl-120b-a12b (3), routed_model and receipt id on each trace line",
         "2026-10-24 live run of case 01 at depth deep (trace not committed): critic second opinions and wording served by Nemotron",
-        "services/agent/tests/test_model_lanes.py::test_every_model_call_writes_one_line_with_routing_and_no_secret"
+        "services/agent/tests/test_model_lanes.py::test_every_model_call_writes_one_line_with_routing_and_no_secret",
+        "2026-10-26 on Nightshift 1.2.4 with the lanes pinned (traces not committed): 8/8 calls to nvidia/nemotron-3-ultra-550b-a55b in 1.3–3.2 s and 8/8 to nvidia/nemotron-3.5-lightning-30b-a3b in 11–46 s; a live run of case 04 at depth thorough used 3 of 3 Ultra second opinions in 23.5 s"
       ],
       "decisions": [
         "docs/decisions/ADR-0010-model-lanes.md",
