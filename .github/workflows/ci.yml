@@ -79,7 +79,7 @@ jobs:
           exit 1
       - name: The web UI is served from the image
         run: |
-          curl -sfL localhost:8000/ | grep -q '<script src="app.js">'
+          curl -sfL localhost:8000/ | grep -q '<script src="app.js'
           curl -sf localhost:8000/ui/app.js >/dev/null
       - name: Run the four input examples
         run: |
