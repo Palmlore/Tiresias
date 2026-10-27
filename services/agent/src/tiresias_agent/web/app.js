@@ -381,7 +381,7 @@ function renderCast() {
   const c = castCounts;
   $("cast-tiresias").textContent = plural(c.tiresias, "step");
   $("cast-sphinx").textContent = plural(c.sphinx, "verdict");
-  $("cast-you").textContent = plural(c.you, "gate decision") + (c.you ? ` (${c.human} by you)` : "");
+  $("cast-you").textContent = plural(c.you, "gate decision") + (c.you ? ` (${c.human} by me)` : "");
   $("cast-data").textContent = plural(c.data, "SQL call") + (c.sample ? ` · ${plural(c.sample, "sample read")}` : "");
 }
 
@@ -449,19 +449,37 @@ function onGateLine(run, line) {
     run.gates.set(line.gate_id, card);
     $("gate-slot").append(card);
   } else if ((line.action === "answered" || line.action === "expired") && run.gates.has(line.gate_id)) {
-    closeGate(run.gates.get(line.gate_id), line.action === "answered"
-      ? `You chose “${line.choice}”.` : `No answer in time: the proposal “${line.proposal}” was applied.`);
+    closeGate(run.gates.get(line.gate_id), decisionNote(line));
   }
+}
+
+// "I chose" only when I pressed a button after taking the gate over. The proposal is the Sphinx's
+// recommendation: the countdown and a missed deadline apply it without a choice of mine.
+function decisionNote(line) {
+  const choice = line.choice || line.proposal;
+  const quoted = `“${choice}”`;
+  const sphinx = Boolean(choice && line.proposal && choice === line.proposal);
+  if (line.action === "expired" || line.decided_by === "timeout") {
+    return { text: `I didn't answer. The Sphinx's recommendation, ${quoted}, stood.`, mine: false };
+  }
+  if (line.decided_by === "ui-auto" || line.note === "proceeded automatically after 5 s (UI)") {
+    return { text: `The Sphinx recommended ${quoted}. I didn't choose; that stood.`, mine: false };
+  }
+  if (line.note === "proceed (UI)") {
+    return { text: `I accepted the Sphinx's recommendation: ${quoted}.`, mine: true };
+  }
+  if (sphinx) return { text: `I chose ${quoted}, the Sphinx's recommendation.`, mine: true };
+  return { text: `I chose ${quoted}.`, mine: true };
 }
 
 function gateCard(run, line) {
   const ctx = line.context || {};
   const ctxRows = Object.entries(ctx).filter(([, v]) => v !== null && v !== undefined && typeof v !== "object");
   const card = el("div", { class: "gate", role: "group", "aria-label": `${line.gate} gate` },
-    el("h4", {}, el("img", { src: "you.svg", alt: "", class: "who-icon" }), `Your call · ${line.gate.replace("_", " ")} gate`),
+    el("h4", {}, el("img", { src: "you.svg", alt: "", class: "who-icon" }), `My decision · ${line.gate.replace("_", " ")} gate`),
     el("p", { text: line.question }),
     ctxRows.length ? el("dl", { class: "kv" }, ctxRows.flatMap(([k, v]) => [el("dt", { text: k }), el("dd", { text: String(v) })])) : null,
-    el("p", { class: "note", text: `The agent proposes “${line.proposal}”. If you don't answer by ${line.deadline ? new Date(line.deadline).toLocaleTimeString() : "the deadline"}, the proposal is applied.` }));
+    el("p", { class: "note", text: `The agent proposes “${line.proposal}”. If I don't answer by ${line.deadline ? new Date(line.deadline).toLocaleTimeString() : "the deadline"}, the proposal is applied.` }));
   const opts = el("div", { class: "options" }, (line.options || []).map((opt) =>
     el("button", {
       type: "button",
@@ -481,12 +499,19 @@ function gateCard(run, line) {
   return card;
 }
 
-function closeGate(card, text) {
+function closeGate(card, note) {
   card.classList.add("done");
   for (const b of card.querySelectorAll("button")) b.disabled = true;
   card.querySelector(".options")?.remove();
   for (const x of card.querySelectorAll("dl, p.note")) x.remove();
-  card.append(el("p", { class: "note", text }));
+  if (!note.mine) {
+    const heading = card.querySelector("h4");
+    const label = [...(heading ? heading.childNodes : [])].find((n) => n.nodeType === Node.TEXT_NODE);
+    if (label) label.textContent = label.textContent.replace("My decision", "Sphinx's recommendation");
+    const mark = heading && heading.querySelector("img");
+    if (mark) mark.src = "sphinx.svg";
+  }
+  card.append(el("p", { class: "note", text: note.text }));
 }
 
 async function finishRun(run) {

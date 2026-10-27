@@ -387,8 +387,9 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .star-dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 0; font-size: 13.5px; }
 .star-dl dt { color: var(--stone); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; padding-top: 2px; }
 .star-dl dd { margin: 0; overflow-wrap: anywhere; }
-.star-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.star-actions .btn { display: inline-flex; flex-direction: column; align-items: flex-start; }
+.star-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+.star-actions .btn { display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 100%; text-align: center; padding: 10px 16px; font-size: 15px; }
 .star-actions .btn.alt { background: transparent; color: var(--parchment); border-color: var(--parchment); }
 .choice-id { font: 10.5px var(--mono); opacity: .75; }
 .results { margin: 0; padding-left: 16px; }

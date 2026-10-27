@@ -381,18 +381,22 @@ function answeredBy(note) {
 }
 
 const OUTCOME_WORDS = {
-  you: "You chose",
-  proceed: "You proceeded with the recommendation",
-  auto: `Proceeded automatically after ${PROMPT_SECONDS} s`,
-  timeout: "No answer in time; the recommendation applied",
-  budget: "Paused until the run budget ran out; nothing was applied on your behalf",
+  budget: "Paused until the run budget ran out; nothing was applied on my behalf",
 };
 
+// A choice I did not make is the Sphinx's recommendation. "I chose" is only a button I pressed
+// after taking the gate over. Proceed accepts that recommendation; the countdown applies it.
 function outcomeText(outcome, c) {
   if (!outcome) return "decided";
-  const words = OUTCOME_WORDS[outcome.by] || "Decided";
-  if (outcome.choice === null) return words;
-  return `${words}: ${(c.actions.find((x) => x.id === outcome.choice) || { label: outcome.choice }).label}`;
+  if (outcome.choice === null) return OUTCOME_WORDS[outcome.by] || "Decided";
+  const action = c.actions.find((x) => x.id === outcome.choice) || { label: outcome.choice, recommended: false };
+  const label = `“${action.label}”`;
+  if (outcome.by === "auto") return `The Sphinx recommended ${label}. I didn't choose; that stood.`;
+  if (outcome.by === "timeout") return `I didn't answer. The Sphinx's recommendation, ${label}, stood.`;
+  if (outcome.by === "proceed") return `I accepted the Sphinx's recommendation: ${label}.`;
+  if (outcome.by === "you" && action.recommended) return `I chose ${label}, the Sphinx's recommendation.`;
+  if (outcome.by === "you") return `I chose ${label}.`;
+  return `${OUTCOME_WORDS[outcome.by] || "Decided"}: ${action.label}`;
 }
 
 function sphinxAsks(line) {
@@ -534,6 +538,7 @@ function storyStart(req) {
   story.lines = [];
   story.selected = null;
   story.open = new Set();
+  story.earlierOpen = false;
   story.scrolled = new Set();
   S("s-empty").hidden = true;
   S("s-run").hidden = false;
@@ -616,7 +621,7 @@ function renderNow(s) {
   box.hidden = false;
   const card = starItem(s, t);
   box.replaceChildren(
-    sEl("p", { class: "s-now-h", text: "Your call" }),
+    sEl("p", { class: "s-now-h", text: "My decision" }),
     card);
 }
 
@@ -767,7 +772,8 @@ function renderTurns(s) {
   if (story.error) extra.push(sEl("li", { class: "msg error" }, sEl("div", { class: "bubble", text: `The run did not finish: ${story.error}` })));
   const list = pending && spoken.length
     ? [sEl("li", { class: "fold-wrap" },
-        sEl("details", { class: "earlier" },
+        sEl("details", { class: "earlier", open: story.earlierOpen ? true : null,
+          ontoggle: (ev) => { story.earlierOpen = ev.currentTarget.open; } },
           sEl("summary", { text: "What was said so far" }),
           sEl("ol", { class: "s-turns nested" }, spoken))), ...extra]
     : [...spoken, ...extra];
@@ -809,7 +815,9 @@ function turnItem(s, t, opts = {}) {
   const pr = t.kind === "star" ? story.prompts.get(t.gate_id) : null;
   const g0 = t.kind === "star" ? s.gates.get(t.gate_id) : null;
   const asking = pr && pr.state !== "takeover" && !(g0 && (g0.outcome || g0.closed));
-  const who = asking ? "sphinx" : t.who === "decision" ? "decision" : t.who;
+  // A default I never touched stays in the Sphinx's mouth. Accepting it, or picking, is mine.
+  const sphinxStood = g0 && g0.outcome && (g0.outcome.by === "auto" || g0.outcome.by === "timeout");
+  const who = asking || sphinxStood ? "sphinx" : t.who === "decision" ? "decision" : t.who;
   if (t.kind === "star" && opts.docked) return null;
   const body = [sEl("span", { class: "who", text: WHO[who].name })];
   const fold = [];
@@ -851,7 +859,7 @@ function turnItem(s, t, opts = {}) {
   const foldLabel = who === "sphinx" ? "The riddle" : "What I hear";
   body.push(cotFold(foldLabel, fold));
   const step = t.step || "understand";
-  return sEl("li", { class: `msg ${t.who} k-${t.kind}${story.focusStep === step ? " step-hl" : ""}`,
+  return sEl("li", { class: `msg ${who} k-${t.kind}${story.focusStep === step ? " step-hl" : ""}`,
     "data-step": step, "data-node": t.node_ids.join(" ") || null,
     onmouseenter: () => t.node_ids[0] && setHover(t.node_ids[0]), onmouseleave: () => setHover(null) },
   avatar(who), sEl("div", { class: "bubble" }, body));
@@ -876,7 +884,7 @@ function starItem(s, t) {
           onclick: (ev) => answerGate(t.gate_id, x.id, ev.currentTarget) },
         sEl("span", { text: x.label + (x.recommended ? " (recommended)" : "") }), sEl("small", { class: "choice-id", text: x.id }))))),
       sEl("dt", { text: "Result" }), sEl("dd", {}, sEl("ul", { class: "results" }, c.actions.map((x) => sEl("li", {}, sEl("b", { text: `${x.label}: ` }), x.result))))),
-    !done && held ? sEl("p", { class: "note paused", text: "Paused · your call. Nothing proceeds until you choose; the recommended option is highlighted." }) : null,
+    !done && held ? sEl("p", { class: "note paused", text: "Paused · my decision. Nothing proceeds until I choose; the recommended option is highlighted." }) : null,
     !done && !held && c.deadline ? sEl("p", { class: "note countdown", "data-deadline": c.deadline, text: countdownText(c.deadline) }) : null);
   return box;
 }
@@ -889,7 +897,7 @@ function sphinxPrompt(line, c, pr) {
   const words = GATE_WORDS[line.gate] || {};
   return sEl("div", { class: "sphinx-ask", "data-gate": line.gate_id },
     sEl("p", { class: "riddle", text: "I keep the road. Answer, and pass." }),
-    sEl("p", { class: "ask-q" }, sEl("span", { class: "on-behalf", text: "On your behalf: " }), sphinxAsks(line)),
+    sEl("p", { class: "ask-q" }, sEl("span", { class: "on-behalf", text: "On my behalf: " }), sphinxAsks(line)),
     sEl("p", { class: "note" }, `Recommended: ${rec.label}`, rec.result ? ` (${rec.result}).` : "."),
     words.cost ? sEl("p", { class: "note cost", text: words.cost }) : null,
     sEl("div", { class: "star-actions" },
