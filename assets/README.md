@@ -16,7 +16,7 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `illustrations/empty-investigation.svg` | The question node alone (parchment ring, bronze core), for the UI's Investigation panel before a run: no cast, no branches, no text | SVG 640×360, transparent |
 | `illustrations/why-tree.svg` | The why-tree motif: one accepted cause drilled to its evidence rows, two pruned | SVG 600×520, transparent |
 | `icons/phase-{understand,recall,drill,source,reconcile}.svg` | Icons for a run-progress stepper (resolve + scope + frame → memory recall → Loop A → Loop B source → reconcile) | SVG 128×128, `currentColor` (default stone) |
-| `diagrams/architecture.svg` | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
+| `diagrams/architecture.svg` **[TBC]** | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
 | `screenshots/NN-<what>.png` **[TBC]** (needs the UI and the final runs) | Real captures of the UI, terminal and trace, numbered in demo order | PNG, ≥ 1600 px wide, ≤ 1 MB each |
 | `deck/tiresias-deck.pdf` | The slide deck, as submitted. Draft it now; slide 7 (product visuals) is **[TBC]**, and the sponsor-status wording is re-checked at freeze | PDF, 16:9, fonts embedded, ≤ 20 MB |
 | `deck/source/` | Deck source (Marp Markdown, HTML or the tool's native file) so the PDF can be rebuilt | text where possible |
@@ -35,7 +35,7 @@ Keep the whole folder under about 30 MB; no Git LFS. The agent image never inclu
 ## Rules for every asset
 
 1. **Real numbers only.** Every figure on a slide, screenshot or image comes from a real run of this code (a committed file under `output_examples/` or `logs/samples/`, or a trace from that day's run), and the inventory says which. Known-good figures today: GE's 2022 revenue as reported in three 10-Ks, $76.6B → $58.1B → $29.1B (`data/sample/`); the GE HealthCare reconciliation, $18,455M vs $18,341M, residual $114M or 0.6 % ([docs/measurements/zetaris-local.md](../docs/measurements/zetaris-local.md), test `test_restatements_continue_into_loop_b_and_reconcile`).
-2. **No overclaiming.** A slide may show a feature as working only if the README and `metadata.json` say it works. Memory, Nightshift models and the UI are shown as "planned" or left out until they ship. [docs/CHECKLIST.md](../docs/CHECKLIST.md) is the reference.
+2. **No overclaiming.** A slide may show a feature as working only if the README and `metadata.json` say it works. Memory, Nightshift models and the UI all ship (working); anything not built is shown as planned or left out. [docs/CHECKLIST.md](../docs/CHECKLIST.md) is the reference.
 3. **No secrets, no personal data.** Masked values only (`ZETARIS_API_KEY=***`); no email addresses, tokens or hostnames from `.env` in a screenshot.
 4. **No third-party logos or likenesses** unless the owner's brand guidelines allow it: name GE, Zetaris, Meterless and NVIDIA in text. No depiction of a real person. Classical artwork only if it is in the public domain, with its source recorded.
 5. **AI-generated assets are disclosed**: record the tool and model in the inventory, and add a line to [docs/ai-usage.md](../docs/ai-usage.md).
@@ -50,13 +50,13 @@ Keep the whole folder under about 30 MB; no Git LFS. The agent image never inclu
 
 ## Deck: the eight required points (SR §3.2)
 
-One slide or more per point, in this order, about 10–12 slides in total:
+One slide or more per point, in this order, the deck runs to about 23 slides with the component breakdown:
 
 1. The problem and target users (financial analysts; GE's restated revenue as the hook)
 2. The solution (an evidence-backed "5 Whys": ask why, get a why-tree where every link is SQL plus rows)
 3. The agent workflow or architecture (Loop A drill-down, Loop B source discovery, critic, human gates; `diagrams/architecture.svg`)
 4. The technical stack (Python/FastAPI agent, TypeScript H-MEM service, Zetaris Lightning SQL, Docker)
-5. How Zetaris and Meterless were used (status wording **[TBC]** at feature freeze, 26 Oct; from [docs/sponsor-technology.md](../docs/sponsor-technology.md), at the status it states)
+5. How Zetaris and Meterless were used (status wording from [docs/sponsor-technology.md](../docs/sponsor-technology.md), at the status it states)
 6. What was unique about the sponsor tech use (registering a new Zetaris source while the agent runs; the counterfactual test on the returned rows)
 7. Product visuals (`screenshots/`) **[TBC]**: leave a placeholder slide; never mock up a UI as if it were real
 8. Future enhancements (from [BACKLOG.md](../BACKLOG.md) and the open CHECKLIST items)

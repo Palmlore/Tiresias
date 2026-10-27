@@ -1,6 +1,6 @@
 # Judging criteria → evidence in this repository
 
-This maps each scored criterion and each required component of the Open Agent Hackathon 2026 to where the evidence lives. Status values are `planned`, `in progress` and `done`; each one is updated when its evidence exists, not before. Updated 2026-10-26.
+This maps each scored criterion and each required component of the Open Agent Hackathon 2026 to where the evidence lives. Status values are `planned`, `in progress` and `done`; each one is updated when its evidence exists, not before. Updated 2026-10-27.
 
 ## Scored criteria (100 points)
 
@@ -10,14 +10,14 @@ This maps each scored criterion and each required component of the Open Agent Ha
 | **Technical** | 20 | Implementation, reliability, architecture | [architecture.md](architecture.md), [decisions/](decisions/), `services/`, tests in CI (`.github/workflows/ci.yml`), the Docker Compose file, timeouts and fallbacks, JSONL traces with the HTTP exchange of every sponsor call | done |
 | **Innovation** | 15 | An original approach | [causal-criteria.md](causal-criteria.md): critic rubric (intervention test, breakdown vs causal), asker-relative stopping, Loop B discovery of new evidence, memory that stores lessons rather than answers | done |
 | **Demo** | 15 | Clear demo of function and value | [demo-plan.md](demo-plan.md), `input_examples/`, `output_examples/`, `logs/samples/`, the web UI and the hosted demo (README); the video is not recorded yet | in progress |
-| **Product & UX** | 10 | Intuitive and usable for its users | The web UI's story view (a conversation beside a why-tree that grows and prunes live, decision prompts with Take over) and its Debug view; asker profiles; a readable report with labelled links ([problem-and-users.md](problem-and-users.md)); branching after a run is not built | in progress |
+| **Product & UX** | 10 | Intuitive and usable for its users | The web UI's story view (a conversation beside a why-tree that grows and prunes live, decision prompts with Take over) and its Truth view; asker profiles; a readable report with labelled links ([problem-and-users.md](problem-and-users.md)); branching after a run is not built | in progress |
 | **Sponsor Tech** | 10 | Effective use of sponsor tech | [sponsor-technology.md](sponsor-technology.md), [`metadata.json`](../metadata.json) | done |
 
 ## Required submission components
 
 | Component | Where | Status |
 |---|---|---|
-| Demo video (1–4 min) | Link goes in README and `metadata.json` (`submission.demo_video`) | planned |
+| Demo video (1–4 min) | Link goes in README and `metadata.json` (`submission.demo_video`); a deck walkthrough is linked as a placeholder until the product demo is uploaded | in progress |
 | Slide deck (8 points) | `assets/deck/` (a PDF, linked in `metadata.json` `submission.slide_deck`; outline in [demo-plan.md](demo-plan.md) and [assets/README.md](../assets/README.md)); the draft deck exists outside the repo | in progress |
 | Public GitHub repo + README (setup, usage, dependencies) | This repository | in progress (final pass after the video and deck links) |
 | Sponsor technology explanation (Zetaris, Meterless, Cursor, NVIDIA, plus what was unique) | [sponsor-technology.md](sponsor-technology.md) | done |
@@ -31,7 +31,7 @@ This maps each scored criterion and each required component of the Open Agent Ha
 | Zetaris "Build with Zetaris" criteria (USL, sources and queries, data quality, reflection) | [zetaris-usl.md](zetaris-usl.md) maps each item: 4 sources with 3 queries each, the `tiresias_usl.sec_evidence` USL with its DDL, 5 queries showing it active and 5 DQ rules run live ([log](measurements/zetaris-usl-2026-10-27.jsonl)), and the three reflections. The agent does not read the USL (BACKLOG B-37, B-38) | done |
 | Meterless: ≥1 engine in a working feature, with test evidence | H-MEM in `services/cognition`; official conformance runner 13/13 (`npm run conformance`); the agent's memory in every warm run, shown by `scripts/memory_demo.py` in CI | done |
 | Meterless Nightshift as primary model provider | `adapters/nightshift.py` → Nightshift Runtime (OpenAI-compatible), the only model client; a fresh-state live trace with every call (caveats in [sponsor-technology.md](sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not)) | done |
-| ~~Developed in Cursor~~ (optional since 23 Oct) | Claude Code is the main coding agent; see [ai-usage.md](ai-usage.md#development-tools) | not required |
+| Developed in Cursor (optional since 23 Oct) | Claude Code is the main coding agent; Cursor made the brand assets (#42) and the Story UI polish (#58, #60); see [ai-usage.md](ai-usage.md#development-tools) | done |
 | No hardcoded outputs | Outputs are generated from inputs; `output_examples/` is never read at runtime; sample mode runs real logic on cached data (`tests/test_orchestrator.py::test_outputs_differ_across_cases`) | done |
 | Evidence of how the agent reached its output | JSONL traces in `logs/` (schema in [architecture.md](architecture.md#tracing)); real traces in `logs/samples/` | done |
 | No secrets committed | `.env.example` with placeholders only, `.gitignore`, [`scripts/check_secrets.sh`](../scripts/check_secrets.sh) in CI | done |
