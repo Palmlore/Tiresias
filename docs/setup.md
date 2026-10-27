@@ -61,6 +61,29 @@ Live mode reads SEC data through Zetaris (every read, discovery included) and, a
 - **Meterless Nightshift**: the desktop app with its Runtime in hotspot mode and NVIDIA (Nemotron) added as a provider in its Providers tab. The NVIDIA key stays in Nightshift, never in `.env`. Copy the Runtime URL and token from its Console.
 - `uv` and Python 3.11+ on the host (for `bootstrap`, and for running the agent on the host, below).
 
+### Endpoints: where Tiresias expects each service
+
+Every address is one line in `.env`; nothing in the code hardcodes a host. The defaults come from [.env.example](../.env.example).
+
+| Service | Variable | Default | Port |
+|---|---|---|---|
+| Zetaris REST | `ZETARIS_REST_URL` | `http://host.docker.internal:8888/api/v1.0` | 8888 (the bundle's REST API) |
+| Nightshift Runtime | `METERLESS_BASE_URL` | `http://host.docker.internal:8088/v1` | 8088 (as shown in the Nightshift Console; must end in `/v1`) |
+| Memory (cognition) | `COGNITION_URL` | `http://cognition:8100` (the compose service) | 8100 |
+| Agent API and UI | `AGENT_PORT` | `8000` | 8000 (8020 in the host example below) |
+
+**The host name depends on where the agent runs, not where the service runs:**
+
+- **Agent in Docker** (`docker compose`, `scripts/setup.sh`): `host.docker.internal` means your machine. Use it for a service on the same machine; `localhost` would be the container itself.
+- **Agent on the host** (`uv run python -m tiresias_agent.app`, below): use `localhost` for a service on the same machine, and `COGNITION_URL=http://localhost:8100`.
+- **Service on another machine or a VM**: use its IP or host name in both cases, e.g. `METERLESS_BASE_URL=http://<vm-ip>:8088/v1`. It must be reachable from where the agent runs. A Nightshift VM on a private virtual network is often reachable from the host but not from containers; then run the agent on the host.
+
+**To change one:**
+
+1. Edit the line in `.env` (host and port from your Zetaris bundle; the Runtime URL from the Nightshift Console).
+2. Check it: `./scripts/setup.sh --check-live` tests each address and says OK, unreachable, or wrong key or token. Checking from the host, it reads `host.docker.internal` as `localhost` and says so.
+3. Restart the agent (`docker compose up -d` again, or restart the `uv run` process): the URLs are read when it starts.
+
 ### Fill `.env`
 
 `cp .env.example .env` if you have not, then set (names and meanings from [.env.example](../.env.example)):
