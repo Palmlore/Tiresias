@@ -17,10 +17,10 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `illustrations/why-tree.svg` | The why-tree motif: one accepted cause drilled to its evidence rows, two pruned | SVG 600×520, transparent |
 | `icons/phase-{understand,recall,drill,source,reconcile}.svg` | Icons for a run-progress stepper (resolve + scope + frame → memory recall → Loop A → Loop B source → reconcile) | SVG 128×128, `currentColor` (default stone) |
 | `diagrams/architecture.svg` **[TBC]** | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
-| `screenshots/NN-<what>.png` **[TBC]** (needs the UI and the final runs) | Real captures of the UI, terminal and trace, numbered in demo order | PNG, ≥ 1600 px wide, ≤ 1 MB each |
+| `screenshots/NN-<what>.png` | Real captures of the UI, numbered in demo order (10 files, 27 Oct build) | PNG, ≥ 1600 px wide, ≤ 1 MB each |
 | `deck/tiresias-deck.pdf` | The slide deck, as submitted (22 slides, exported 27 Oct from the Slides artifact; slides are images with a text layer) | PDF, 16:9, fonts embedded, ≤ 20 MB |
 | `deck/source/` **[not committed]** | Deck source: the deck was built in a private claude.ai Slides artifact; the PDF is the submitted copy | text where possible |
-| `video/poster.png` **[TBC]** (needs the recorded video) | Video poster frame (may equal `brand/cover.png`) | 1920×1080 PNG |
+| `video/poster.png` | Video poster frame: the deck cover | 1920×1080 PNG |
 | `video/tiresias-demo.en.srt` **[TBC]** (needs the recorded video) | Captions for the demo video | SRT |
 
 Keep the whole folder under about 30 MB; no Git LFS. The agent image never includes `assets/` (the root `.dockerignore` is an allow-list).
@@ -80,3 +80,7 @@ Add one row per file when it lands.
 | `brand/cover.svg`, `brand/cover.png`, `brand/social.svg`, `brand/social.png` | [`scripts/render_art.py`](../scripts/render_art.py), 2026-10-26, Claude Code session (Claude Opus 5.5). Places the mark and the three character icons from `render_brand.py` unchanged, plus the why-tree motif; PNGs rendered from the SVGs with headless Chrome. | None (text: name, tagline, event and track only) | Apache-2.0 |
 | `illustrations/empty-investigation.svg`, `illustrations/why-tree.svg` | Same script, 2026-10-26. Original geometry. | None | Apache-2.0 |
 | `icons/phase-*.svg` (5) | Same script, 2026-10-26. Original geometry, fills only. | None | Apache-2.0 |
+| `screenshots/01`–`04`, `07`–`09` (question cards, the two decisions, the Sphinx conversation, the add-back evidence, the GE memory recall, Truth view) | Real runs on the hosted demo (tiresias.palmlore.com, sample mode, main `c8da16c`), 2026-10-27, captured with headless Chrome (Playwright) and resized to 1920 px | 3M FY2023 $32.68B → $24.61B, Solventum $8.20B, residual $126.0M (1.6%); GE FY2022 $76.56B → $58.10B, residual 0.6%: the same figures as `output_examples/04` and `01` | Apache-2.0 |
+| `screenshots/05`, `06` (the live answer with the "Nightshift · Nemotron 3 Ultra 550B" chip; the Exchange tab's Zetaris and H-MEM calls) | Frames of a recorded live run on the host (live mode, depth thorough, Zetaris local bundle, Nightshift Runtime), 2026-10-27 | 3M case 04 as above; 35 Zetaris SQL calls, one Nemotron call | Apache-2.0 |
+| `screenshots/10` (USL explorer) | Frame of [zetaris/usl/explorer.html](../zetaris/usl/explorer.html), generated from `docs/measurements/zetaris-usl-2026-10-27.jsonl` | Row counts 2 / 1,262 / 539, DQ results (12 and 245 invalid) from that log | Apache-2.0 |
+| `video/poster.png` | Page 1 of `deck/tiresias-deck.pdf`, rendered at 1920×1080 | None | Apache-2.0 |

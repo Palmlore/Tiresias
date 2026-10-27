@@ -78,6 +78,8 @@ Each result leads with the decision: `end_state` (`actionable`, `evidence-fronti
 
 ### Web UI
 
+Screenshots of the 27 Oct build, in demo order (the live answer with the Nemotron chip is 05): [assets/screenshots/](assets/screenshots/).
+
 Open **http://localhost:8000** once the stack is up (it redirects to `/ui/`). Story: drag the carousel and click one of the three example questions. Truth: search a company and click one of the questions Tiresias found in its filings:
 
 - **Story view (default)**: drag the carousel and click a question. A single progress bar fills Understand → Recall → Drill → Fetch → Answer; click a segment to wind back. Tiresias and the Sphinx speak in short lines from the Odyssey and Oedipus Rex (the seer who hears, then the riddle); expand "What I hear" / "The riddle" for the chain of thought. The analyst opens with "O wise one, I have a question to ask." A waiting decision pins under the bar with what Proceed will take, so you do not scroll to find it. The why-tree stays the scoreboard beside the conversation. Click a tree node for SQL in the cellar.
