@@ -18,8 +18,8 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `icons/phase-{understand,recall,drill,source,reconcile}.svg` | Icons for a run-progress stepper (resolve + scope + frame → memory recall → Loop A → Loop B source → reconcile) | SVG 128×128, `currentColor` (default stone) |
 | `diagrams/architecture.svg` **[TBC]** | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
 | `screenshots/NN-<what>.png` **[TBC]** (needs the UI and the final runs) | Real captures of the UI, terminal and trace, numbered in demo order | PNG, ≥ 1600 px wide, ≤ 1 MB each |
-| `deck/tiresias-deck.pdf` | The slide deck, as submitted. Draft it now; slide 7 (product visuals) is **[TBC]**, and the sponsor-status wording is re-checked at freeze | PDF, 16:9, fonts embedded, ≤ 20 MB |
-| `deck/source/` | Deck source (Marp Markdown, HTML or the tool's native file) so the PDF can be rebuilt | text where possible |
+| `deck/tiresias-deck.pdf` | The slide deck, as submitted (22 slides, exported 27 Oct from the Slides artifact; slides are images with a text layer) | PDF, 16:9, fonts embedded, ≤ 20 MB |
+| `deck/source/` **[not committed]** | Deck source: the deck was built in a private claude.ai Slides artifact; the PDF is the submitted copy | text where possible |
 | `video/poster.png` **[TBC]** (needs the recorded video) | Video poster frame (may equal `brand/cover.png`) | 1920×1080 PNG |
 | `video/tiresias-demo.en.srt` **[TBC]** (needs the recorded video) | Captions for the demo video | SRT |
 

@@ -109,10 +109,10 @@ Updated **2026-10-27 AEDT** (build day 6, after #31–#61). Work now lands throu
 - [ ] Uploaded; link opens in a private window; backup copy; link in README and `metadata.json` (DV §7–8)
 
 ## H. Slide deck: all 8 points required (SR §3.2; SF §3.6)
-- [ ] 1 Problem and users · 2 Solution · 3 Agent workflow and architecture · 4 Tech stack
-- [ ] 5 How Zetaris and Meterless were used · 6 What was unique about the sponsor tech use
-- [ ] 7 Product visuals · 8 Future enhancements
-- [ ] Consistent with the repo and demo; no claims the code doesn't support
+- [x] 1 Problem and users · 2 Solution · 3 Agent workflow and architecture · 4 Tech stack ([assets/deck/tiresias-deck.pdf](../assets/deck/tiresias-deck.pdf), slides 2–8)
+- [x] 5 How Zetaris and Meterless were used · 6 What was unique about the sponsor tech use (slides 9–12, the Zetaris USL on slide 10)
+- [x] 7 Product visuals · 8 Future enhancements (slides 13–16: screenshots of the 27 Oct UI; slide 21)
+- [~] Consistent with the repo and demo; no claims the code doesn't support (27 Oct refresh: UI screenshots, brand marks, Nightshift 1.2.4 wording, 660 tests, the USL slide; re-check after the video)
 
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
 - [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris (data layer), Meterless (the H-MEM engine, its feature and test; Nightshift as the AI provider and how the app connects) and NVIDIA, plus "what was unique" (SR §3.4, final rules; Cursor optional) (written 25 Oct; the fresh-state live trace with model calls is committed, and its caveats are listed there; 26 Oct: Nightshift 1.2.4 with pinned Nemotron ids, JSON mode, the HTTP exchange on every call's trace line, the sweep)
