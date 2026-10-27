@@ -78,7 +78,7 @@
         "services/cognition: `npm test` (remember, recall threshold, namespaces, gate reject, purge survives restart, REST)",
         "services/agent/tests/test_model_lanes.py and tests/test_depth.py: lanes validated, the rules decide, sample mode makes no model call, Nightshift outages degrade to the rules",
         "2026-10-24 live run of case 01 at depth deep (trace not committed; timings only, README Models): 4 Nightshift calls",
-        "services/agent/tests/test_memory.py (32 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition",
+        "services/agent/tests/test_memory.py (33 tests) and scripts/memory_demo.py in CI: warm 5 → 3 hops on a similar case, a misapplied lesson rejected by the critic, purge confirmed by cognition",
         "logs/samples/trace-run-20261024T233153Z-c3227e.jsonl: a live run at depth deep, 4 Nightshift calls, each traced with lane, routed_model, provider and receipt id",
         "services/agent/tests/test_nightshift.py::test_chat_json_asks_for_json_mode_by_default: every structured reply is requested as JSON (without it Nemotron 3 Ultra's replies were rejected as prose)",
         "services/agent/tests/test_exchange_trace.py: the Nightshift and cognition exchange fields (endpoint, http_status, bytes) on each call's trace line, no secret"

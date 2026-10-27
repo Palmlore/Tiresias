@@ -11,7 +11,7 @@ Open the rest only when the task needs them:
 - [docs/agents-reference.md](docs/agents-reference.md): every module's API (Building blocks), the run phases for a UI, external service details. **Read the row for a module before you change or reuse it.**
 - [BACKLOG.md](BACKLOG.md): open gaps with severity and review point.
 - [docs/CHECKLIST.md](docs/CHECKLIST.md) (event requirements; **tick items only when evidence exists**) and [docs/STATUS.md](docs/STATUS.md) (open questions): for status work.
-- [docs/architecture.md](docs/architecture.md), [docs/causal-criteria.md](docs/causal-criteria.md), [docs/decisions/](docs/decisions/) (ADR-0001..0009): the agreed design. Don't re-decide these without a new ADR.
+- [docs/architecture.md](docs/architecture.md), [docs/causal-criteria.md](docs/causal-criteria.md), [docs/decisions/](docs/decisions/) (ADR-0001..0011): the agreed design. Don't re-decide these without a new ADR.
 - [docs/RUBRIC.md](docs/RUBRIC.md): judging criteria → evidence in the repo.
 - Event reference pack (rules, sponsor guides, research notes): `../docs/` (outside this repo). Start with `../docs/MAP.md`.
 
@@ -27,7 +27,7 @@ Open the rest only when the task needs them:
 | `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
 | `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack), `render_brand.py`, `render_art.py`, `verify_brand_assets.py` |
-| `assets/` | Submission brand, characters, illustrations, icons and deck ([assets/README.md](assets/README.md)). Not in the agent image. |
+| `assets/` | Submission brand, characters, illustrations, icons and the deck PDF (to come) ([assets/README.md](assets/README.md)). Not in the agent image. |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |

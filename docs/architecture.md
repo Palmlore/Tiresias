@@ -71,11 +71,11 @@ Modes (`options.hitl_mode`, else `HITL_MODE`, default `auto`): `auto` follows th
 
 Warm (`options.memory`, default `MEMORY_MODE=warm`): after the framer, one recall whose query names only the kind of effect and the metric family. A recalled lesson is a path of generic steps (`rule=key>outcome`); the hypothesiser tests candidates with those steps first (node ids keep the rules' order). When the critic prunes a lesson's step, the lesson is rejected for the run and H-MEM gets `wrong` (same kind of question) or `not_helpful` (misapplied). When the step holds as recorded on the same kind of question, the level's other candidates are not tested (fewer hops; listed in `RunResult.memory.skipped`); if the run then reaches no cause, Loop A runs again testing everything. A run ending `actionable` or `branched` stores its path behind the memory gate, unless the same path is already stored. Cold: no memory call. Cognition down: one `degraded` line, the run goes on without memory.
 
-Judges run in `auto` mode. After a run, a user can **branch** from any node of the why-tree with a new question or another asker profile. The branch is a new run carrying `parent_run_id` and `parent_node_id`.
+Judges run in `auto` mode. After a run, a user will be able to **branch** from any node of the why-tree (planned: `/runs/{id}/branch` returns 501 today) with a new question or another asker profile. The branch is a new run carrying `parent_run_id` and `parent_node_id`.
 
 ## Budgets
 
-These are the planned defaults, tunable through environment variables:
+These are the defaults, tunable through environment variables:
 - depth ≤ 5 causal levels;
 - ≤ 3 branches per level;
 - ≤ 2 sources onboarded per run;
@@ -90,7 +90,7 @@ Every action is one JSONL line in `logs/trace-<run_id>.jsonl` and is also printe
 
 Data exchange: the one line a sponsor adapter writes per HTTP call (Zetaris `zetaris_adapter` statements, Nightshift model calls, cognition `memory_client` requests) also records what went over the wire on its last attempt: `endpoint` (the URL path, never a query string), `method`, `service_host` (`host:port`, never userinfo), `http_status` (`null` when no reply came back, e.g. a connection error), `request_bytes` and `response_bytes` (`null` without a reply). Headers are never logged, so the API key and Runtime token cannot appear. A line for a call that was not sent (sample mode, Zetaris marked down, Nightshift not configured) has none of these fields; they are never invented.
 
-Gates: every decision is one `gate`/`decide` line (`gate`, `gate_mode`, `decided_by`: `policy:<gate>`, `script`, `human` or `timeout`; interactive lines add `choice`, `note`, `gate_id`). An interactive gate is first a `gate`/`waiting` line (`gate_id`, `options`, `proposal`, `context`, `deadline`, `timeout_seconds`), then `gate`/`answered` or `gate`/`expired`.
+Gates: every decision is one `gate`/`decide` line (`gate`, `gate_mode`, `decided_by`: `policy:<gate>`, `script`, `human`, `ui-auto` (the UI applied the proposal after its countdown) or `timeout`; interactive lines add `choice`, `note`, `gate_id`). An interactive gate is first a `gate`/`waiting` line (`gate_id`, `options`, `proposal`, `context`, `deadline`, `timeout_seconds`), then `gate`/`answered` or `gate`/`expired`.
 
 `outcome` names a benign result under `status: success`: for example a registration step whose object already `exists`, or a concept view that is `absent`; such steps are never traced `error`.
 
