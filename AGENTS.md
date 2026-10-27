@@ -26,7 +26,7 @@ Open the rest only when the task needs them:
 | `zetaris/sql/` | Lightning SQL templates (one statement per file, `{{placeholders}}`) that register the showcase entities; see [zetaris/README.md](zetaris/README.md) |
 | `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
-| `scripts/` | `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack), `render_brand.py`, `render_art.py`, `verify_brand_assets.py` |
+| `scripts/` | `setup.sh` (one-command demo setup, `--check-live`), `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack), `render_brand.py`, `render_art.py`, `verify_brand_assets.py` |
 | `assets/` | Submission brand, characters, illustrations, icons and the deck PDF (to come) ([assets/README.md](assets/README.md)). Not in the agent image. |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
@@ -68,6 +68,8 @@ curl -s 'localhost:8000/entities/40545/suggestions?role=auditor&limit=6'   # Sug
 curl -s 'localhost:8000/entities?q=super%20micro&sample_mode=false'  # live: needs Zetaris + .env
 #   scope check: a what-if or a non-SEC company ends at evidence-frontier with RunResult.scope (reasons + alternatives)
 curl -s -X POST localhost:8000/run -H 'Content-Type: application/json' -d '{"question": "What will GE revenue be in FY2027?", "entity": {"ticker": "GE"}, "metric": "Revenues", "period": {"start": "2027-01-01", "end": "2027-12-31"}, "asker": {"role": "analyst"}}'
+./scripts/setup.sh                   # one-command demo: prerequisites, .env if absent, compose up -d, /health, example 04 (docs/setup.md)
+./scripts/setup.sh --check-live [--env-file PATH]   # live-mode readiness (Zetaris, Nightshift, SEC_USER_AGENT); starts nothing, prints no secrets
 # checks before every push
 ./scripts/check_secrets.sh && ./scripts/validate_metadata.sh
 python3 scripts/verify_audit.py [--python services/agent/.venv/bin/python] [--with-cognition]   # re-run docs/measurements/verifier-audit-2026-10-24 (no uv, no network)

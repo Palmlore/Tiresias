@@ -50,6 +50,8 @@ Before running anything we committed a list of 12 US companies that spun off a b
 
 **Works today: Loop A (the drill-down through registered sources) and Loop B (finding the missing entity in the SEC catalog, registering it behind a source gate and re-running the add-back test) in sample mode, offline, with no API keys** (`SAMPLE_MODE=true`, the default). It runs the real agent logic on a cached SEC slice ([data/sample/](data/sample/)); nothing is replayed. H-MEM memory works in sample mode too (the cognition service runs in the same `docker compose`; see Memory below). In live mode the agent also calls Nightshift models (see Models below). **A web UI** comes with it on http://localhost:8000 (see Web UI below); branching is still **planned**; [docs/CHECKLIST.md](docs/CHECKLIST.md) tracks it.
 
+**One command:** `./scripts/setup.sh` checks the prerequisites below, creates `.env` from `.env.example` if it is missing (never overwrites one), starts the stack in the background, waits for `/health`, runs example 04 and prints the UI URL. The manual steps follow; for live mode (Zetaris and Nightshift) see [docs/setup.md](docs/setup.md).
+
 Needs Docker Desktop (or Docker Engine) with **Compose v2.24 or later** (`docker compose version`), ports 8000 and 8100 free, and about 750 MB of disk for the two images. The first build also pulls the Python and Node base images, which can take a few minutes; later builds take seconds.
 
 ```bash
