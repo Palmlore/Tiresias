@@ -23,14 +23,14 @@
   <rect x="946.96" y="477.36" width="36.08" height="8.2" rx="4.1" fill="#7EB6C9" opacity="0.9"/>
   <rect x="992.88" y="477.36" width="72.16" height="8.2" rx="4.1" fill="#EDE6D9" opacity="0.55"/>
 <g transform="translate(96 110) scale(0.859375)">
-  <rect x="28" y="14" width="14" height="100" rx="7" ry="7" fill="#D4A054"/>
   <defs>
-    <mask id="veil-logo" maskUnits="userSpaceOnUse">
-      <rect x="0" y="0" width="128" height="128" fill="white"/>
-      <rect x="50" y="51.0" width="72" height="14" fill="black"/>
+    <mask id="eye-cover" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="128" height="128" fill="black"/>
+      <ellipse cx="64" cy="58" rx="56" ry="36" fill="white"/>
+      <circle cx="64" cy="100" r="26" fill="black"/>
     </mask>
   </defs>
-  <circle cx="86" cy="58" r="36" fill="#D4A054" mask="url(#veil-logo)"/>
+  <rect x="0" y="0" width="128" height="128" fill="#EDE6D9" mask="url(#eye-cover)"/>
 </g>
   <text x="96" y="330" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="110" font-weight="700" fill="#D4A054" text-anchor="start" letter-spacing="-1">Tiresias</text>
   <text x="100" y="400" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="#F4EFE4" text-anchor="start">Ask why. Get the evidence.</text>

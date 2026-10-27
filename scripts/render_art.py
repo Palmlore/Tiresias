@@ -201,7 +201,7 @@ def cast_row(x: float, y: float, size: float, gap: float, labels: bool, label_si
     """Tiresias, the Sphinx and You side by side, each with its role (as in the UI cast strip)."""
     cast = [
         (render_brand.tiresias_svg(), "Tiresias proposes", BRONZE),
-        (render_brand.sphinx_svg(), "The Sphinx tests", CELESTE),
+        (render_brand.sphinx_svg(), "The Sphinx tests", BRONZE),
         (render_brand.you_svg(), "You decide", PARCHMENT),
     ]
     out = []

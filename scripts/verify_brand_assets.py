@@ -125,11 +125,11 @@ def main() -> None:
             raise SystemExit(f"{path.name}: larger than 1 MB")
 
     logo = (ROOT / "assets/brand/logo.svg").read_text()
-    if PALETTE["bronze"] not in logo:
-        raise SystemExit("logo.svg does not use bronze")
+    if PALETTE["parchment"] not in logo:
+        raise SystemExit("logo.svg does not use parchment")
     sphinx = (ROOT / "assets/characters/sphinx.svg").read_text()
-    if PALETTE["celeste"] not in sphinx:
-        raise SystemExit("sphinx.svg does not use celeste")
+    if PALETTE["bronze"] not in sphinx:
+        raise SystemExit("sphinx.svg does not use bronze")
     you = (ROOT / "assets/characters/you.svg").read_text()
     if PALETTE["parchment"] not in you:
         raise SystemExit("you.svg does not use parchment")

@@ -124,7 +124,7 @@ details > summary { cursor: pointer; color: var(--parchment); margin: 12px 0 8px
 .cast-item b { font-weight: 600; }
 .cast-item span { color: var(--stone); }
 .cast-item.tiresias b { color: var(--bronze); }
-.cast-item.sphinx b { color: var(--celeste); }
+.cast-item.sphinx b { color: var(--bronze); }
 .cast-item.you b { color: var(--parchment); }
 .cast-item.data b { color: var(--text); }
 .data-mark { font: 600 10px var(--mono); border: 1px solid var(--stone); color: var(--stone); border-radius: 4px;
@@ -162,7 +162,7 @@ details > summary { cursor: pointer; color: var(--parchment); margin: 12px 0 8px
 .ev img { width: 18px; height: 18px; margin-top: 2px; }
 .ev .who { font-weight: 600; margin-right: 6px; }
 .ev.tiresias .who { color: var(--bronze); }
-.ev.sphinx .who { color: var(--celeste); }
+.ev.sphinx .who { color: var(--bronze); }
 .ev.you .who { color: var(--parchment); }
 .ev.system .who { color: var(--stone); }
 .ev .meta { color: var(--stone); font-size: 12px; margin-left: 6px; }
@@ -348,19 +348,19 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .msg.you .avatar, .msg.sphinx .avatar, .msg.decision .avatar { order: 1; }
 .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--ink-3); flex: none; }
 .msg.tiresias .avatar { outline: 2px solid var(--bronze); outline-offset: 2px; }
-.msg.sphinx .avatar { outline: 2px solid var(--celeste); outline-offset: 2px; }
+.msg.sphinx .avatar { outline: 2px solid var(--bronze); outline-offset: 2px; }
 .msg.you .avatar, .msg.decision .avatar { outline: 2px solid var(--parchment); outline-offset: 2px; }
 .bubble { flex: 0 1 auto; width: fit-content; max-width: min(34rem, calc(100% - 54px)); padding: 8px 12px; font-size: 14px; }
 .msg.tiresias .bubble { background: var(--ink); border: 1px solid var(--line); border-radius: 4px 14px 14px 14px; }
 .msg.you .bubble, .msg.decision .bubble { background: #2a2924; border: 1px solid #6e6758; border-radius: 14px 4px 14px 14px; }
-.msg.sphinx .bubble { background: #2c2418; border: 1px solid var(--celeste); border-radius: 14px 4px 14px 14px; }
+.msg.sphinx .bubble { background: #2c2418; border: 1px solid var(--bronze); border-radius: 14px 4px 14px 14px; }
 .bubble .who { display: block; font-size: 12px; font-weight: 600; margin-bottom: 2px; }
 .msg.you .who, .msg.decision .who { color: var(--parchment); }
 .invoke { font-style: italic; color: var(--parchment); }
 .msg.tiresias .who { color: var(--bronze); }
-.msg.sphinx .who { color: var(--celeste); }
+.msg.sphinx .who { color: var(--bronze); }
 .msg.k-answer .bubble { border-color: var(--bronze); }
-.riddle { font-style: italic; color: var(--celeste); }
+.riddle { font-style: italic; color: var(--bronze); }
 .cot { margin-top: 6px; font-size: 12.5px; }
 .cot > summary { cursor: pointer; color: var(--celeste); font-size: 12px; }
 .cot-body { margin: 6px 0 0; color: var(--stone); white-space: pre-wrap; }
@@ -394,10 +394,10 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .results { margin: 0; padding-left: 16px; }
 .countdown { margin: 8px 0 0; }
 /* the Sphinx asks on the user's behalf, then proceeds after 5 s unless the user takes over */
-.sphinx-ask { border: 1px solid var(--celeste); border-radius: 8px; padding: 10px 12px; }
+.sphinx-ask { border: 1px solid var(--bronze); border-radius: 8px; padding: 10px 12px; }
 .sphinx-ask .ask-q { margin: 0 0 4px; font-weight: 600; }
-.sphinx-ask .on-behalf { color: var(--celeste); font-weight: 400; }
-.sphinx-ask .countdown-prompt { margin: 8px 0 0; color: var(--celeste); }
+.sphinx-ask .on-behalf { color: var(--bronze); font-weight: 400; }
+.sphinx-ask .countdown-prompt { margin: 8px 0 0; color: var(--bronze); }
 
 /* console drawer */
 .s-console { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; background: var(--ink-2);
