@@ -49,7 +49,8 @@
         "services/agent/tests/test_any_company.py: no agent module outside the sponsor adapters makes HTTP calls; live discovery and registration run as Zetaris SQL (mocked endpoint)",
         "services/agent/tests/test_loop_b.py::test_onboarder_live_registers_one_statement_at_a_time_and_refreshes_views",
         "docs/measurements/coverage-sweep-2026-10-26.md and its .jsonl: a pre-registered live sweep on 2026-10-26 of 12 spin-off parents plus 3 controls through local Zetaris, no fallback to the sample; an independent audit against SEC EDGAR (coverage-sweep-2026-10-26-audit.jsonl) found the 6 answers correct, 4 with caveats, none wrong",
-        "services/agent/tests/test_exchange_trace.py: each Zetaris, Nightshift and cognition call's trace line records endpoint, method, service_host, http_status and request/response bytes; calls never sent carry none; secrets never appear"
+        "services/agent/tests/test_exchange_trace.py: each Zetaris, Nightshift and cognition call's trace line records endpoint, method, service_host, http_status and request/response bytes; calls never sent carry none; secrets never appear",
+        "docs/zetaris-usl.md, zetaris/usl/ and docs/measurements/zetaris-usl-2026-10-27.jsonl: a Zetaris Unified Semantic Layer (tiresias_usl.sec_evidence: company, filing, fact; 3 foreign keys, 1 custom data-quality rule) over case 04, built and queried live on 2026-10-27 with RUN DQ results; one statement over it reproduces the agent's $126M residual. The agent does not read the USL (BACKLOG B-37, B-38)"
       ],
       "decisions": [
         "docs/decisions/ADR-0003-zetaris-evidence-layer.md"
