@@ -10,8 +10,8 @@
 const STEPS = [
   { id: "understand", label: "Understand", icon: "phase-understand.svg" },
   { id: "recall", label: "Recall", icon: "phase-recall.svg" },
-  { id: "drill", label: "Drill down", icon: "phase-drill.svg" },
-  { id: "fetch", label: "Fetch missing data", icon: "phase-source.svg" },
+  { id: "drill", label: "Drill", hint: "Drill down", icon: "phase-drill.svg" },
+  { id: "fetch", label: "Fetch", hint: "Fetch missing data", icon: "phase-source.svg" },
   { id: "answer", label: "Answer", icon: "phase-reconcile.svg" },
 ];
 // orchestrator phase -> step (loop_a and loop_b are wrappers: frame and recall run inside loop_a)
@@ -631,8 +631,9 @@ function renderSteps(s) {
       sEl("button", { type: "button", class: "step-btn",
         "aria-current": status === "active" ? "step" : null,
         "aria-pressed": focus ? "true" : "false",
-        title: `Show ${st.label} in the conversation`,
+        title: `Show ${st.hint || st.label} in the conversation`,
         onclick: () => jumpToStep(st.id) },
+        sEl("span", { class: "step-icon", "aria-hidden": "true", style: `--icon: url("${st.icon}")` }),
         sEl("span", { class: "step-label", text: st.label })));
   }));
 }
@@ -687,7 +688,12 @@ function evidenceChip(n) {
 function renderTreePane(s) {
   const nodes = [...s.nodes.values()];
   const box = S("s-tree");
-  if (!nodes.length) { box.replaceChildren(sEl("p", { class: "note", text: "The why-tree grows here." })); return; }
+  if (!nodes.length) {
+    box.replaceChildren(
+      sEl("img", { class: "empty-tree", src: "empty-investigation.svg", alt: "" }),
+      sEl("p", { class: "note", text: "The why-tree grows here." }));
+    return;
+  }
   const kids = new Map();
   for (const n of nodes) {
     const k = n.parent_id && s.nodes.has(n.parent_id) ? n.parent_id : "";

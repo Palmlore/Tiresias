@@ -93,12 +93,13 @@ def sphinx_svg() -> str:
 
 
 def you_svg() -> str:
+    """A stone doorway and a parchment spark. No figure."""
     return _svg(
         _rect(18, 16, 12, 100, STONE, rx=3)
         + _rect(98, 16, 12, 100, STONE, rx=3)
         + _rect(18, 16, 92, 12, STONE, rx=3)
-        + _circle(64, 58, 16, PARCHMENT)
-        + _rect(48, 76, 32, 40, PARCHMENT, rx=8),
+        + _rect(18, 104, 92, 12, STONE, rx=3)
+        + _rect(60, 44, 8, 40, PARCHMENT, rx=4),
         "You",
     )
 
@@ -191,8 +192,8 @@ def render_png(kind: str, dest: Path, px: int) -> None:
         _draw_rect(draw, px, 18, 16, 12, 100, STONE, rx=3)
         _draw_rect(draw, px, 98, 16, 12, 100, STONE, rx=3)
         _draw_rect(draw, px, 18, 16, 92, 12, STONE, rx=3)
-        _draw_circle(draw, px, 64, 58, 16, PARCHMENT)
-        _draw_rect(draw, px, 48, 76, 32, 40, PARCHMENT, rx=8)
+        _draw_rect(draw, px, 18, 104, 92, 12, STONE, rx=3)
+        _draw_rect(draw, px, 60, 44, 8, 40, PARCHMENT, rx=4)
     else:
         raise ValueError(kind)
     dest.parent.mkdir(parents=True, exist_ok=True)

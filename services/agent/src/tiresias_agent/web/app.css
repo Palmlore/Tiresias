@@ -65,6 +65,7 @@ code, pre, .mono { font-family: var(--mono); font-size: 12.5px; }
 .who-icon { width: 22px; height: 22px; }
 .inline-icon { width: 16px; height: 16px; vertical-align: -3px; }
 .empty { color: var(--stone); }
+.empty-tree { display: block; width: 100%; max-height: 140px; object-fit: contain; margin: 0 auto 8px; }
 .note { color: var(--stone); font-size: 13px; }
 .demo-note { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 
@@ -276,8 +277,8 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
   font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--stone); background: transparent;
   border: 0; border-right: 1px solid var(--line); }
 .s-progress .step:last-child { border-right: 0; }
-.s-progress .step-btn { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer;
-  padding: 8px 6px; color: inherit; text-align: center; }
+.s-progress .step-btn { all: unset; box-sizing: border-box; display: flex; flex-direction: row; align-items: center;
+  justify-content: center; gap: 4px; width: 100%; cursor: pointer; padding: 8px 6px; color: inherit; text-align: center; }
 .s-progress .step-btn:focus-visible { outline: 2px solid var(--celeste); outline-offset: -2px; }
 .s-progress .step.done { background: #3d4a32; color: var(--parchment); }
 .s-progress .step.active { background: var(--bronze); color: var(--ink); }
@@ -285,6 +286,9 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .s-progress.complete .step.done { background: var(--sage); color: var(--ink); }
 .s-progress .step.focus { box-shadow: inset 0 0 0 2px var(--parchment); }
 .s-progress .step-label { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.step-icon { width: 12px; height: 12px; flex: none; background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat; }
 @keyframes pulse { 50% { opacity: .2; } }
 @media (prefers-reduced-motion: reduce) { .msg.typing .bubble { animation: none; } }
 
@@ -343,17 +347,20 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--ink-3); 
 .msg.you, .msg.sphinx, .msg.decision { justify-content: flex-end; }
 .msg.you .avatar, .msg.sphinx .avatar, .msg.decision .avatar { order: 1; }
 .avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; background: var(--ink-3); flex: none; }
+.msg.tiresias .avatar { outline: 2px solid var(--bronze); outline-offset: 2px; }
+.msg.sphinx .avatar { outline: 2px solid var(--celeste); outline-offset: 2px; }
+.msg.you .avatar, .msg.decision .avatar { outline: 2px solid var(--parchment); outline-offset: 2px; }
 .bubble { flex: 0 1 auto; width: fit-content; max-width: min(34rem, calc(100% - 54px)); padding: 8px 12px; font-size: 14px; }
 .msg.tiresias .bubble { background: var(--ink); border: 1px solid var(--line); border-radius: 4px 14px 14px 14px; }
 .msg.you .bubble, .msg.decision .bubble { background: #2a2924; border: 1px solid #6e6758; border-radius: 14px 4px 14px 14px; }
-.msg.sphinx .bubble { background: #2c2418; border: 1px solid #8a6a3a; border-radius: 14px 4px 14px 14px; }
+.msg.sphinx .bubble { background: #2c2418; border: 1px solid var(--celeste); border-radius: 14px 4px 14px 14px; }
 .bubble .who { display: block; font-size: 12px; font-weight: 600; margin-bottom: 2px; }
 .msg.you .who, .msg.decision .who { color: var(--parchment); }
 .invoke { font-style: italic; color: var(--parchment); }
 .msg.tiresias .who { color: var(--bronze); }
-.msg.sphinx .who { color: #e0c48a; }
+.msg.sphinx .who { color: var(--celeste); }
 .msg.k-answer .bubble { border-color: var(--bronze); }
-.riddle { font-style: italic; color: #e0c48a; }
+.riddle { font-style: italic; color: var(--celeste); }
 .cot { margin-top: 6px; font-size: 12.5px; }
 .cot > summary { cursor: pointer; color: var(--celeste); font-size: 12px; }
 .cot-body { margin: 6px 0 0; color: var(--stone); white-space: pre-wrap; }

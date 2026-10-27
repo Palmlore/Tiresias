@@ -13,7 +13,7 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `brand/cover.svg`, `brand/social.svg` | Sources of the two PNGs above (`scripts/render_art.py --png` renders them with headless Chrome) | SVG |
 | `characters/{tiresias,sphinx,you}.svg` | The three characters as 16–32 px marks (headers, inline, Truth view) | SVG (+ 512×512 PNG each), one colour family |
 | `characters/{tiresias,sphinx,you}-portrait.png` | Story-view avatars (circular, one product ring). Tiresias linen/ivory; Sphinx golden sandstone; You = cooler stone gate + spark | 512×512 PNG, transparent corners |
-| `illustrations/empty-investigation.svg` | The cast beside an empty why-tree, for the UI's Investigation panel before a run (no text) | SVG 640×360, transparent |
+| `illustrations/empty-investigation.svg` | The question node alone (parchment ring, bronze core), for the UI's Investigation panel before a run: no cast, no branches, no text | SVG 640×360, transparent |
 | `illustrations/why-tree.svg` | The why-tree motif: one accepted cause drilled to its evidence rows, two pruned | SVG 600×520, transparent |
 | `icons/phase-{understand,recall,drill,source,reconcile}.svg` | Icons for a run-progress stepper (resolve + scope + frame → memory recall → Loop A → Loop B source → reconcile) | SVG 128×128, `currentColor` (default stone) |
 | `diagrams/architecture.svg` | Loop A / Loop B architecture (redrawn from [docs/architecture.md](../docs/architecture.md)) | SVG + 1920×1080 PNG |
@@ -73,7 +73,7 @@ Add one row per file when it lands.
 | `brand/logo.svg`, `brand/logo-1024.png` | Geometry in [`scripts/render_brand.py`](../scripts/render_brand.py), 2026-10-23, written in the same Cursor agent session (Grok 4.6, medium). PNG rasterised with Pillow from the same shapes. No third-party artwork. | None (mark only: staff + veiled disc) | Apache-2.0 |
 | `characters/tiresias.svg`, `characters/tiresias.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Bronze, veiled eyes, staff. | None | Apache-2.0 |
 | `characters/sphinx.svg`, `characters/sphinx.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Celeste, ears and one wing. | None | Apache-2.0 |
-| `characters/you.svg`, `characters/you.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Parchment figure in a stone gate. | None | Apache-2.0 |
+| `characters/you.svg`, `characters/you.png` | Same renderer (`render_brand.py`), 2026-10-23, same Cursor agent session (Grok 4.6, medium). Stone gate and a parchment spark, no figure. | None | Apache-2.0 |
 | `characters/tiresias-portrait.png` | Cursor image session 2026-10-26 (`dir-tiresias-linen`); circular crop, no stretch. Linen/ivory robe, copper staff, veiled. Not a likeness of a real person. | None | Apache-2.0 |
 | `characters/sphinx-portrait.png` | Cursor image session 2026-10-26: the sphinx from `dir-lock-cast-and-tree` redrawn as a filled circle (`dir-sphinx-golden-round`). Golden sandstone brick — stone with a gold hue, to contrast linen Tiresias. One product ring. | None | Apache-2.0 |
 | `characters/you-portrait.png` | Same session (`dir-you-gate-spark-a`). Stone door + spark; no face. Circular crop. | None | Apache-2.0 |

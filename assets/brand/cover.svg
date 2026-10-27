@@ -22,6 +22,9 @@
   <rect x="1479.2" y="713.4" width="114.4" height="13" rx="6.5" fill="#EDE6D9" opacity="0.55"/>
   <rect x="1406.4" y="752.4" width="57.2" height="13" rx="6.5" fill="#7EB6C9" opacity="0.9"/>
   <rect x="1479.2" y="752.4" width="114.4" height="13" rx="6.5" fill="#EDE6D9" opacity="0.55"/>
+  <text x="1557.2" y="476.8" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#F4EFE4" text-anchor="start">accepted</text>
+  <text x="1312.8" y="406.6" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#F4EFE4" text-anchor="start">pruned</text>
+  <text x="1637.8" y="723.8" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="600" fill="#F4EFE4" text-anchor="start">rows</text>
 <g transform="translate(150 150) scale(1.17188)">
   <rect x="28" y="14" width="14" height="100" rx="7" ry="7" fill="#D4A054"/>
   <defs>
@@ -58,8 +61,8 @@
   <rect x="18" y="16" width="12" height="100" rx="3" ry="3" fill="#9B968C"/>
   <rect x="98" y="16" width="12" height="100" rx="3" ry="3" fill="#9B968C"/>
   <rect x="18" y="16" width="92" height="12" rx="3" ry="3" fill="#9B968C"/>
-  <circle cx="64" cy="58" r="16" fill="#EDE6D9"/>
-  <rect x="48" y="76" width="32" height="40" rx="8" ry="8" fill="#EDE6D9"/>
+  <rect x="18" y="104" width="92" height="12" rx="3" ry="3" fill="#9B968C"/>
+  <rect x="60" y="44" width="8" height="40" rx="4" ry="4" fill="#EDE6D9"/>
 </g>
   <text x="890" y="860.8" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="28" font-weight="600" fill="#EDE6D9" text-anchor="middle">You decide</text>
   <rect x="0" y="996" width="1920" height="84" fill="#1A1F29"/>
