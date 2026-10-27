@@ -78,7 +78,7 @@ Updated **2026-10-27 AEDT** (build day 6, after #31–#61). Work now lands throu
 - [x] Merged PRs' acceptance criteria re-run on `main` on demand (#20: `scripts/verify_audit.py`, 158 criteria from 16 PRs; findings B-22, B-23)
 - [x] Hosted demo (optional; not a requirement): the web UI in sample mode on Cloud Run, https://tiresias.palmlore.com (feat/cloud-run: `deploy/gcp/deploy.sh`, one instance with cognition as a sidecar, `PUBLIC_DEMO=true` refuses live mode and memory purge, `tests/test_public_demo.py`; A$50 budget alert on the project; redeployed 27 Oct from main `c8da16c` (Story view, decision prompts, `GATE_TIMEOUT_SECONDS=30` from #47, brand marks from #60); `POST /run` with example 04 returns `actionable`)
 - [ ] **Judge installation test on a clean macOS Tahoe VM** (Tart `macos-tahoe-base`, nothing preinstalled): a newcomer following only the README gets the system running. Rule: `submission/` is all a judge sees; assume no cache, no local setup.
-  - [ ] Every setup step is a script where possible (one command per step, idempotent, prints ✔/✖)
+  - [~] Every setup step is a script where possible (one command per step, idempotent, prints ✔/✖) (#63: `scripts/setup.sh` runs demo mode in one command, idempotent, never overwrites `.env`; `--check-live` prints OK / MISSING / FAIL per live dependency; [docs/setup.md](setup.md) has the endpoints table; still open: the clean Tahoe VM run)
   - [ ] Steps that can't be scripted (e.g. Nightshift install, access gate, NVIDIA key) have a screenshot and a one-line reason why they're manual
   - [ ] Local scaffolding used during the build is documented and removed before submitting
 
