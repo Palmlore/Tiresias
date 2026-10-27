@@ -116,7 +116,7 @@ Updated **2026-10-26 AEDT** (build day 5, after #31–#52). Work now lands throu
 
 ## I. Sponsor tech explanation and metadata (Sponsor Tech, 10 pts)
 - [~] [sponsor-technology.md](sponsor-technology.md) covers Zetaris (data layer), Meterless (the H-MEM engine, its feature and test; Nightshift as the AI provider and how the app connects) and NVIDIA, plus "what was unique" (SR §3.4, final rules; Cursor optional) (written 25 Oct; the fresh-state live trace with model calls is committed, and its caveats are listed there; 26 Oct: Nightshift 1.2.4 with pinned Nemotron ids, JSON mode, the HTTP exchange on every call's trace line, the sweep)
-- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris `working` (a fresh-state live trace with every call); Meterless and NVIDIA `working` on the same fresh-state trace, caveats in sponsor-technology.md; Cursor `planned`, the schema has no "optional")
+- [~] `metadata.json` valid against the community schema; statuses honest (SP; `scripts/validate_metadata.sh`) (valid; Zetaris `working` (a fresh-state live trace with every call); Meterless and NVIDIA `working` on the same fresh-state trace, caveats in sponsor-technology.md; Cursor `working`: brand assets (#42) and the Story UI polish (#58) are merged and run in the quickstart; the schema has no "optional")
 - [ ] Switch to the official metadata format if the organizers publish one (STATUS #1)
 
 ## J. Submission (HackOS)
