@@ -28,6 +28,7 @@ This maps each scored criterion and each required component of the Open Agent Ha
 | Requirement | How it's met | Status |
 |---|---|---|
 | Zetaris integrated and load-bearing | Every piece of evidence is a Zetaris SQL query in live mode (`adapters/zetaris.py`); a fresh-state live trace in `logs/samples/`; the live sweep | done |
+| Zetaris "Build with Zetaris" criteria (USL, sources and queries, data quality, reflection) | [zetaris-usl.md](zetaris-usl.md) maps each item: 4 sources with 3 queries each, the `tiresias_usl.sec_evidence` USL with its DDL, 5 queries showing it active and 5 DQ rules run live ([log](measurements/zetaris-usl-2026-10-27.jsonl)), and the three reflections. The agent does not read the USL (BACKLOG B-37, B-38) | done |
 | Meterless: ≥1 engine in a working feature, with test evidence | H-MEM in `services/cognition`; official conformance runner 13/13 (`npm run conformance`); the agent's memory in every warm run, shown by `scripts/memory_demo.py` in CI | done |
 | Meterless Nightshift as primary model provider | `adapters/nightshift.py` → Nightshift Runtime (OpenAI-compatible), the only model client; a fresh-state live trace with every call (caveats in [sponsor-technology.md](sponsor-technology.md#what-the-model-call-trace-shows-and-what-it-does-not)) | done |
 | ~~Developed in Cursor~~ (optional since 23 Oct) | Claude Code is the main coding agent; see [ai-usage.md](ai-usage.md#development-tools) | not required |

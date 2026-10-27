@@ -105,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
                 }
             except SourceError as err:
                 detail = err.detail or str(err)
-                exists = re.search(r"already exist", detail, re.I)
+                exists = re.search(r"already exist", detail, re.IGNORECASE)
                 failed += 0 if exists else 1
                 line |= {"status": "exists" if exists else "error", "error": detail[:600]}
             text = json.dumps(line, default=str)

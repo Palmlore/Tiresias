@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tiresias USL Explorer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column, diagrams and tables scroll inside their own frames. Brand tokens (assets/brand/palette.json), dark by design. */
+:root {
+  --ink: #12151c; --ink-2: #1a1f29; --ink-3: #242a36; --line: #313847;
+  --bronze: #d4a054; --celeste: #7eb6c9; --parchment: #ede6d9; --stone: #9b968c; --text: #f4efe4;
+  --ok: #8cc79a; --warn: #e3b25c; --bad: #e58a7c;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--ink); color: var(--text); font: 15px/1.55 var(--sans); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-block: 40px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 48px; }
+h1, h2, h3, h4 { text-wrap: balance; margin: 0; }
+h1 { font: 600 2.6rem/1.1 var(--mono); color: var(--bronze); letter-spacing: -0.01em; }
+h2 { font-size: 1.35rem; color: var(--parchment); }
+h3 { font-size: 1.02rem; color: var(--parchment); }
+section { display: grid; gap: 14px; min-width: 0; }
+section > p, .lede { max-width: 68ch; margin: 0; color: var(--stone); }
+.lede { color: var(--parchment); font-size: 1.05rem; }
+.top { display: grid; gap: 12px; }
+.eyebrow { margin: 0; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.75rem; color: var(--celeste); }
+.ns { margin: 0; }
+code, pre { font-family: var(--mono); font-size: 0.85em; }
+code { color: var(--celeste); overflow-wrap: anywhere; }
+.muted { color: var(--stone); } .small { font-size: 0.8rem; font-weight: 400; }
+.badges { display: flex; flex-wrap: wrap; gap: 8px; }
+.badge { border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; font-size: 0.8rem; color: var(--parchment); background: var(--ink-2); }
+.badge.ok { border-color: var(--ok); color: var(--ok); } .badge.warn { border-color: var(--warn); color: var(--warn); } .badge.bad { border-color: var(--bad); color: var(--bad); }
+.scroll { overflow-x: auto; min-width: 0; }
+.diagram { border: 1px solid var(--line); border-radius: 8px; background: var(--ink-2); padding: 12px; }
+.diagram svg { min-width: 860px; width: 100%; height: auto; display: block; }
+.node rect { stroke-width: 1.2; fill: var(--ink-3); stroke: var(--line); }
+.node.ext rect { stroke-dasharray: 4 3; stroke: var(--stone); fill: var(--ink); }
+.node.db rect { stroke: var(--celeste); }
+.node.q rect { stroke: var(--line); }
+.node.usl rect { stroke: var(--bronze); fill: #2a2418; }
+.node .t { fill: var(--text); font: 600 13px var(--sans); }
+.node .s { fill: var(--stone); font: 11px var(--mono); }
+.node .f { fill: var(--parchment); font: 11px var(--sans); }
+.node.usl .t { fill: var(--bronze); font-family: var(--mono); }
+.colh { fill: var(--stone); font: 600 10px var(--sans); letter-spacing: 0.1em; }
+.edge { fill: none; stroke: var(--stone); stroke-width: 1.2; }
+.fk { fill: none; stroke: var(--bronze); stroke-width: 1.2; stroke-dasharray: 5 4; }
+.ahp { fill: var(--stone); } .fhp { fill: var(--bronze); }
+.lab { fill: var(--stone); font: 10px var(--sans); text-anchor: middle; }
+.erd { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.entity { border: 1px solid var(--bronze); border-radius: 8px; background: var(--ink-2); min-width: 0; }
+.entity h4 { font: 600 0.95rem var(--mono); color: var(--bronze); padding: 10px 14px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 8px; }
+.entity ul { list-style: none; margin: 0; padding: 6px 0; }
+.entity li { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 4px 14px; font-size: 0.82rem; align-items: baseline; }
+.col { font-family: var(--mono); color: var(--text); } .typ { color: var(--stone); font-family: var(--mono); font-size: 0.76rem; }
+.key { margin-left: auto; font-size: 0.7rem; border-radius: 4px; padding: 0 6px; font-family: var(--mono); }
+.key.pk { color: var(--ink); background: var(--bronze); } .key.fk { color: var(--bronze); border: 1px solid var(--bronze); }
+table { border-collapse: collapse; width: 100%; font-size: 0.82rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--stone); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+td.num, th.num { text-align: right; } .okc { color: var(--ok); } .warnc { color: var(--warn); }
+.meter { display: inline-block; width: 120px; height: 6px; border-radius: 3px; background: var(--ink-3); overflow: hidden; vertical-align: middle; }
+.meter span { display: block; height: 100%; background: var(--ok); }
+.findings { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.finding { border-top: 2px solid var(--warn); background: var(--ink-2); padding: 14px 16px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+.finding p { margin: 0; color: var(--stone); font-size: 0.9rem; }
+.bars { width: 100%; max-width: 640px; height: auto; }
+.bar-t { fill: var(--ok); } .bar-u { fill: var(--warn); }
+.grid { stroke: var(--line); stroke-width: 1; } .ax { fill: var(--stone); font: 10px var(--sans); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; font-size: 0.8rem; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; } .sw.t { background: var(--ok); } .sw.u { background: var(--warn); }
+.recon { display: grid; gap: 0; max-width: 560px; font-variant-numeric: tabular-nums; }
+.fig { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.fig .lbl { color: var(--stone); } .fig .val { font-family: var(--mono); color: var(--text); }
+.fig.sum { border-bottom: 2px solid var(--parchment); } .fig.sum .val { color: var(--parchment); }
+.fig.res .val { color: var(--bronze); font-weight: 600; }
+.chain { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; max-width: 820px; }
+.chain li { position: relative; padding: 10px 0 10px 26px; border-left: 1px solid var(--line); margin-left: 6px; display: grid; gap: 2px; min-width: 0; }
+.chain li::before { content: ""; position: absolute; left: -6px; top: 14px; width: 11px; height: 11px; border-radius: 50%; background: var(--ink); border: 2px solid var(--bronze); }
+.chain .lbl { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; color: var(--stone); }
+.source { border-top: 1px solid var(--line); padding-top: 16px; }
+.source h3 { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.q { display: grid; gap: 6px; min-width: 0; }
+.q p { margin: 0; color: var(--parchment); font-size: 0.9rem; max-width: 80ch; }
+details summary { cursor: pointer; color: var(--celeste); font-size: 0.8rem; }
+details summary:focus-visible { outline: 2px solid var(--bronze); outline-offset: 2px; }
+pre { background: var(--ink-2); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; color: var(--parchment); }
+footer p { margin: 0; color: var(--stone); font-size: 0.8rem; max-width: 80ch; }
+@media (max-width: 520px) { h1 { font-size: 2rem; } }
+</style>
+
+</head>
+<body>
+<main class="wrap">
+<header class="top">
+  <p class="eyebrow">Zetaris Unified Semantic Layer · Tiresias</p>
+  <h1>sec_evidence</h1>
+  <p class="ns"><code>lightning.metastore.tiresias_usl.sec_evidence</code></p>
+  <div class="badges"><span class="badge ok">Activated</span><span class="badge ">3 tables</span><span class="badge ">3 foreign keys</span><span class="badge ">6 DQ rules</span><span class="badge warn">DQ: 257 invalid records</span></div>
+  <p class="lede">The evidence behind Tiresias's lead example, the 3M → Solventum spin-off, modelled once in Zetaris: three typed tables across both companies, with declared keys and data-quality rules that run on the live rows.</p>
+</header>
+
+<section>
+  <h2>Where the data comes from</h2>
+  <p>Two SEC APIs feed four Zetaris REST tables. Each USL table is one activation query over them. Dashed lines are the foreign keys.</p>
+  <div class="scroll diagram"><svg viewBox="0 0 1080 380" role="img" aria-label="Lineage from the SEC APIs through Zetaris REST tables and activation queries to the three USL tables"><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="ahp"/></marker><marker id="fh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" class="fhp"/></marker></defs><text x="40" y="16" class="colh">EXTERNAL SOURCE</text><text x="290" y="16" class="colh">LIGHTNING DATABASE</text><text x="540" y="16" class="colh">ACTIVATION QUERY</text><text x="790" y="16" class="colh">USL TABLE</text><path d="M220,117 C255.0,117 255.0,117 284,117" class="edge" marker-end="url(#ah)"/><text x="255.0" y="111.0" class="lab">HTTPS</text><path d="M220,327 C255.0,327 255.0,327 284,327" class="edge" marker-end="url(#ah)"/><text x="255.0" y="321.0" class="lab">HTTPS</text><path d="M470,117 C505.0,117 505.0,67 534,67" class="edge" marker-end="url(#ah)"/><path d="M470,117 C505.0,117 505.0,187 534,187" class="edge" marker-end="url(#ah)"/><path d="M470,327 C505.0,327 505.0,327 534,327" class="edge" marker-end="url(#ah)"/><path d="M720,67 C755.0,67 755.0,67 784,67" class="edge" marker-end="url(#ah)"/><text x="755.0" y="61.0" class="lab">writes</text><path d="M720,187 C755.0,187 755.0,187 784,187" class="edge" marker-end="url(#ah)"/><text x="755.0" y="181.0" class="lab">writes</text><path d="M720,327 C755.0,327 755.0,327 784,327" class="edge" marker-end="url(#ah)"/><text x="755.0" y="321.0" class="lab">writes</text><path d="M970,187 C1010,187 1010,67 976,67" class="fk" marker-end="url(#fh)"/><path d="M970,327 C1010,327 1010,197 976,197" class="fk" marker-end="url(#fh)"/><path d="M970,342 C1045,342 1045,82 976,82" class="fk" marker-end="url(#fh)"/><g class="node ext"><rect x="40" y="80" width="180" height="74" rx="6"/><text x="52" y="102" class="t">SEC submissions</text><text x="52" y="120" class="s">data.sec.gov/submissions</text><text x="52" y="140" class="f">2 requests · JSON</text></g><g class="node ext"><rect x="40" y="290" width="180" height="74" rx="6"/><text x="52" y="312" class="t">SEC company facts</text><text x="52" y="330" class="s">data.sec.gov/api/xbrl</text><text x="52" y="350" class="f">2 requests · JSON</text></g><g class="node db"><rect x="290" y="80" width="180" height="74" rx="6"/><text x="302" y="102" class="t">TIRESIAS_SEC</text><text x="302" y="120" class="s">mmm_ / solv_submissions_raw</text><text x="302" y="140" class="f">2 REST tables</text></g><g class="node db"><rect x="290" y="290" width="180" height="74" rx="6"/><text x="302" y="312" class="t">TIRESIAS_SEC</text><text x="302" y="330" class="s">mmm_ / solv_facts_raw</text><text x="302" y="350" class="f">2 REST tables</text></g><g class="node q"><rect x="540" y="30" width="180" height="74" rx="6"/><text x="552" y="52" class="t">ACTIVATE company</text><text x="552" y="70" class="s">UNION of 2 profiles</text><text x="552" y="90" class="f">1 query</text></g><g class="node q"><rect x="540" y="150" width="180" height="74" rx="6"/><text x="552" y="172" class="t">ACTIVATE filing</text><text x="552" y="190" class="s">posexplode, UNION of 2</text><text x="552" y="210" class="f">1 query</text></g><g class="node q"><rect x="540" y="290" width="180" height="74" rx="6"/><text x="552" y="312" class="t">ACTIVATE fact</text><text x="552" y="330" class="s">3 concept paths, UNION</text><text x="552" y="350" class="f">1 query</text></g><g class="node usl"><rect x="790" y="30" width="180" height="74" rx="6"/><text x="802" y="52" class="t">company</text><text x="802" y="70" class="s">USL table</text><text x="802" y="90" class="f">2 rows</text></g><g class="node usl"><rect x="790" y="150" width="180" height="74" rx="6"/><text x="802" y="172" class="t">filing</text><text x="802" y="190" class="s">USL table</text><text x="802" y="210" class="f">1262 rows</text></g><g class="node usl"><rect x="790" y="290" width="180" height="74" rx="6"/><text x="802" y="312" class="t">fact</text><text x="802" y="330" class="s">USL table</text><text x="802" y="350" class="f">539 rows</text></g></svg></div>
+</section>
+
+<section>
+  <h2>Entity relationships</h2>
+  <p>A company has many filings and many facts. A fact names the filing that reported it by accession number.</p>
+  <div class="erd"><div class="entity"><h4>company <span class="muted small">2 rows</span></h4><ul><li><span class="col">cik</span><span class="typ">bigint not null</span><span class="key pk">PK</span></li><li><span class="col">entity_name</span><span class="typ">varchar(200) not null</span></li><li><span class="col">sic</span><span class="typ">varchar(4)</span></li><li><span class="col">sic_description</span><span class="typ">varchar(200)</span></li><li><span class="col">fiscal_year_end</span><span class="typ">varchar(4)</span></li></ul></div><div class="entity"><h4>filing <span class="muted small">1262 rows</span></h4><ul><li><span class="col">accession_number</span><span class="typ">varchar(20) not null</span><span class="key pk">PK</span></li><li><span class="col">cik</span><span class="typ">bigint not null</span><span class="key fk">FK → company.cik</span></li><li><span class="col">form</span><span class="typ">varchar(20)</span></li><li><span class="col">filing_date</span><span class="typ">date</span></li><li><span class="col">report_date</span><span class="typ">date</span></li><li><span class="col">items</span><span class="typ">varchar(100)</span></li></ul></div><div class="entity"><h4>fact <span class="muted small">539 rows</span></h4><ul><li><span class="col">cik</span><span class="typ">bigint not null</span><span class="key fk">FK → company.cik</span></li><li><span class="col">concept</span><span class="typ">varchar(200) not null</span></li><li><span class="col">unit</span><span class="typ">varchar(10)</span></li><li><span class="col">val</span><span class="typ">double not null</span></li><li><span class="col">period_start</span><span class="typ">date</span></li><li><span class="col">period_end</span><span class="typ">date not null</span></li><li><span class="col">fy</span><span class="typ">int</span></li><li><span class="col">fp</span><span class="typ">varchar(4)</span></li><li><span class="col">form</span><span class="typ">varchar(20)</span></li><li><span class="col">filed</span><span class="typ">date</span></li><li><span class="col">accn</span><span class="typ">varchar(20) not null</span><span class="key fk">FK → filing.accession_number</span></li><li><span class="col">frame</span><span class="typ">varchar(20)</span></li></ul></div></div>
+</section>
+
+<section>
+  <h2>Data quality on the live rows</h2>
+  <p>The foreign keys generate their rules; <code>period_order</code> is ours (<code>period_start IS NULL OR period_end &gt;= period_start</code>).</p>
+  <div class="scroll"><table class="dq"><thead><tr><th>Rule</th><th>Type</th><th class="num">Total</th><th class="num">Valid</th><th class="num">Invalid</th><th>Valid share</th></tr></thead><tbody><tr><td><code>filing.accession_number</code></td><td>Primary Key Constraint</td><td class="num">1262</td><td class="num">1250</td><td class="num warnc">12</td><td><span class="meter"><span style="width:99.0%"></span></span></td></tr><tr><td><code>filing.cik</code></td><td>Foreign Key Constraint</td><td class="num">1262</td><td class="num">1262</td><td class="num okc">0</td><td><span class="meter"><span style="width:100.0%"></span></span></td></tr><tr><td><code>fact.period_order</code></td><td>Custom Data Quality</td><td class="num">539</td><td class="num">539</td><td class="num okc">0</td><td><span class="meter"><span style="width:100.0%"></span></span></td></tr><tr><td><code>fact.cik</code></td><td>Foreign Key Constraint</td><td class="num">539</td><td class="num">539</td><td class="num okc">0</td><td><span class="meter"><span style="width:100.0%"></span></span></td></tr><tr><td><code>fact.accn</code></td><td>Foreign Key Constraint</td><td class="num">539</td><td class="num">294</td><td class="num warnc">245</td><td><span class="meter"><span style="width:54.5%"></span></span></td></tr></tbody></table></div>
+  <div class="findings">
+    <div class="finding">
+      <h3>6 filings sit in both companies' histories</h3>
+      <p>They break the <code>filing</code> primary key (12 rows, one per company). They are 3M's ownership filings on its retained Solventum stake: a direct parent and spin-off link that Tiresias otherwise finds through full-text search.</p>
+      <div class="scroll"><table><thead><tr><th>accession_number</th><th>form</th><th>filing_date</th><th>companies</th></tr></thead><tbody><tr><td>0001127602-24-010008</td><td>3</td><td>2024-03-13</td><td>3M CO + Solventum Corp</td></tr><tr><td>0001127602-24-011167</td><td>4</td><td>2024-03-26</td><td>3M CO + Solventum Corp</td></tr><tr><td>0001127602-24-012249</td><td>4</td><td>2024-04-03</td><td>3M CO + Solventum Corp</td></tr><tr><td>0000066740-24-000106</td><td>SCHEDULE 13G</td><td>2024-11-14</td><td>3M CO + Solventum Corp</td></tr><tr><td>0000066740-25-000073</td><td>SCHEDULE 13G/A</td><td>2025-08-18</td><td>3M CO + Solventum Corp</td></tr><tr><td>0001104659-25-079865</td><td>4</td><td>2025-08-18</td><td>3M CO + Solventum Corp</td></tr></tbody></table></div>
+    </div>
+    <div class="finding">
+      <h3>Facts whose filing is outside SEC's recent list</h3>
+      <p>The <code>fact.accn</code> rule fails when a fact cites a filing missing from <code>filings.recent</code>, which holds only recent filings. Older facts cannot be traced to their filing from this source alone.</p>
+      <svg viewBox="0 0 842 200" class="bars" role="img" aria-label="3M revenue and net income facts per fiscal year, traced or untraced to a filing"><line x1="34" x2="842" y1="175.0" y2="175.0" class="grid"/><text x="28" y="179.0" class="ax" text-anchor="end">0</text><line x1="34" x2="842" y1="103.57142857142857" y2="103.57142857142857" class="grid"/><text x="28" y="107.57142857142857" class="ax" text-anchor="end">20</text><line x1="34" x2="842" y1="32.14285714285714" y2="32.14285714285714" class="grid"/><text x="28" y="36.14285714285714" class="ax" text-anchor="end">40</text><rect x="40" y="125.0" width="34" height="50.0" class="bar-u"><title>FY2009: 14 untraced</title></rect><rect x="40" y="125.0" width="34" height="0.0" class="bar-t"><title>FY2009: 0 traced</title></rect><text x="57.0" y="191" class="ax" text-anchor="middle">09</text><rect x="84" y="60.71428571428571" width="34" height="114.28571428571429" class="bar-u"><title>FY2010: 32 untraced</title></rect><rect x="84" y="60.71428571428571" width="34" height="0.0" class="bar-t"><title>FY2010: 0 traced</title></rect><text x="101.0" y="191" class="ax" text-anchor="middle">10</text><rect x="128" y="153.57142857142858" width="34" height="21.428571428571427" class="bar-u"><title>FY2011: 6 untraced</title></rect><rect x="128" y="153.57142857142858" width="34" height="0.0" class="bar-t"><title>FY2011: 0 traced</title></rect><text x="145.0" y="191" class="ax" text-anchor="middle">11</text><rect x="172" y="60.71428571428571" width="34" height="114.28571428571429" class="bar-u"><title>FY2012: 32 untraced</title></rect><rect x="172" y="60.71428571428571" width="34" height="0.0" class="bar-t"><title>FY2012: 0 traced</title></rect><text x="189.0" y="191" class="ax" text-anchor="middle">12</text><rect x="216" y="60.71428571428571" width="34" height="114.28571428571429" class="bar-u"><title>FY2013: 32 untraced</title></rect><rect x="216" y="60.71428571428571" width="34" height="0.0" class="bar-t"><title>FY2013: 0 traced</title></rect><text x="233.0" y="191" class="ax" text-anchor="middle">13</text><rect x="260" y="100.0" width="34" height="75.0" class="bar-u"><title>FY2014: 21 untraced</title></rect><rect x="260" y="100.0" width="34" height="0.0" class="bar-t"><title>FY2014: 0 traced</title></rect><text x="277.0" y="191" class="ax" text-anchor="middle">14</text><rect x="304" y="60.71428571428571" width="34" height="114.28571428571429" class="bar-u"><title>FY2015: 32 untraced</title></rect><rect x="304" y="60.71428571428571" width="34" height="0.0" class="bar-t"><title>FY2015: 0 traced</title></rect><text x="321.0" y="191" class="ax" text-anchor="middle">15</text><rect x="348" y="60.71428571428571" width="34" height="114.28571428571429" class="bar-u"><title>FY2016: 32 untraced</title></rect><rect x="348" y="60.71428571428571" width="34" height="0.0" class="bar-t"><title>FY2016: 0 traced</title></rect><text x="365.0" y="191" class="ax" text-anchor="middle">16</text><rect x="392" y="60.71428571428571" width="34" height="114.28571428571429" class="bar-u"><title>FY2017: 32 untraced</title></rect><rect x="392" y="60.71428571428571" width="34" height="0.0" class="bar-t"><title>FY2017: 0 traced</title></rect><text x="409.0" y="191" class="ax" text-anchor="middle">17</text><rect x="436" y="132.14285714285714" width="34" height="42.857142857142854" class="bar-u"><title>FY2018: 12 untraced</title></rect><rect x="436" y="53.57142857142857" width="34" height="78.57142857142857" class="bar-t"><title>FY2018: 22 traced</title></rect><text x="453.0" y="191" class="ax" text-anchor="middle">18</text><rect x="480" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2019: 0 untraced</title></rect><rect x="480" y="53.57142857142857" width="34" height="121.42857142857143" class="bar-t"><title>FY2019: 34 traced</title></rect><text x="497.0" y="191" class="ax" text-anchor="middle">19</text><rect x="524" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2020: 0 untraced</title></rect><rect x="524" y="53.57142857142857" width="34" height="121.42857142857143" class="bar-t"><title>FY2020: 34 traced</title></rect><text x="541.0" y="191" class="ax" text-anchor="middle">20</text><rect x="568" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2021: 0 untraced</title></rect><rect x="568" y="82.14285714285714" width="34" height="92.85714285714286" class="bar-t"><title>FY2021: 26 traced</title></rect><text x="585.0" y="191" class="ax" text-anchor="middle">21</text><rect x="612" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2022: 0 untraced</title></rect><rect x="612" y="82.14285714285714" width="34" height="92.85714285714286" class="bar-t"><title>FY2022: 26 traced</title></rect><text x="629.0" y="191" class="ax" text-anchor="middle">22</text><rect x="656" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2023: 0 untraced</title></rect><rect x="656" y="82.14285714285714" width="34" height="92.85714285714286" class="bar-t"><title>FY2023: 26 traced</title></rect><text x="673.0" y="191" class="ax" text-anchor="middle">23</text><rect x="700" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2024: 0 untraced</title></rect><rect x="700" y="25.0" width="34" height="150.0" class="bar-t"><title>FY2024: 42 traced</title></rect><text x="717.0" y="191" class="ax" text-anchor="middle">24</text><rect x="744" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2025: 0 untraced</title></rect><rect x="744" y="82.14285714285714" width="34" height="92.85714285714286" class="bar-t"><title>FY2025: 26 traced</title></rect><text x="761.0" y="191" class="ax" text-anchor="middle">25</text><rect x="788" y="175.0" width="34" height="0.0" class="bar-u"><title>FY2026: 0 untraced</title></rect><rect x="788" y="103.57142857142857" width="34" height="71.42857142857143" class="bar-t"><title>FY2026: 20 traced</title></rect><text x="805.0" y="191" class="ax" text-anchor="middle">26</text></svg>
+      <p class="legend"><span class="sw t"></span>traced to a filing <span class="sw u"></span>untraced · 3M facts per fiscal year</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>Case 04 in one query</h2>
+  <p>The reconciliation the agent computes from per-company views, written as one statement over the USL (<code>zetaris/usl/41_reconcile_2023.sql</code>).</p>
+  
+<div class="recon">
+  <div class="fig"><span class="lbl">3M FY2023, 10-K filed 2024-02-07</span><span class="val">$32.681B</span></div>
+  <div class="fig"><span class="lbl">3M FY2023 restated, 10-K filed 2025-02-05</span><span class="val">$24.610B</span></div>
+  <div class="fig"><span class="lbl">Solventum's own FY2023 revenue</span><span class="val">+ $8.197B</span></div>
+  <div class="fig sum"><span class="lbl">Add-back</span><span class="val">$32.807B</span></div>
+  <div class="fig res"><span class="lbl">Residual against the original</span><span class="val">$126.0M</span></div>
+</div>
+</section>
+
+<section>
+  <h2>One number, traced end to end</h2>
+  <p>Solventum's FY2023 revenue, from the SEC endpoint to the filing that reported it.</p>
+  
+<ol class="chain">
+  <li><span class="lbl">SEC source</span><code>https://data.sec.gov/api/xbrl/companyfacts/CIK0001964738.json</code></li>
+  <li><span class="lbl">Zetaris REST table</span><code>tiresias_sec.solv_facts_raw</code></li>
+  <li><span class="lbl">USL row</span><code>fact</code> · Solventum Corp · Revenues · 2023-01-01 to 2023-12-31 · <strong>$8.197B</strong></li>
+  <li><span class="lbl">Reported in</span>10-K filed 2025-02-28 · accession <code>0001964738-25-000019</code></li>
+</ol>
+</section>
+
+<section>
+  <h2>The sources, explored</h2>
+  <p>Three queries per source, run through Zetaris on the registered tables.</p>
+  <section class="source"><h3>SEC XBRL company facts <span class="muted small">catalog id <code>sec_companyfacts</code> · data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json</span></h3><div class="q"><p>SEC XBRL company facts (catalog id sec_companyfacts), through the per-concept view: 3M&#x27;s annual revenue for each fiscal year as each 10-K reported it. A restatement shows as two values for one year.</p><details><summary>SQL · 12 rows · 1825 ms</summary><pre>SELECT period_end, filed, form, val
+FROM tiresias.mmm_revenues
+WHERE fp = &#x27;FY&#x27; AND form = &#x27;10-K&#x27; AND period_end &gt;= &#x27;2021-01-01&#x27; AND datediff(period_end, period_start) &gt; 300
+ORDER BY period_end, filed</pre></details><div class="scroll"><table><thead><tr><th>period_end</th><th>filed</th><th>form</th><th>val</th></tr></thead><tbody><tr><td>2021-12-31</td><td>2022-02-09</td><td>10-K</td><td>$35.355B</td></tr><tr><td>2021-12-31</td><td>2023-02-08</td><td>10-K</td><td>$35.355B</td></tr><tr><td>2021-12-31</td><td>2024-02-07</td><td>10-K</td><td>$35.355B</td></tr><tr><td>2022-12-31</td><td>2023-02-08</td><td>10-K</td><td>$34.229B</td></tr><tr><td>2022-12-31</td><td>2024-02-07</td><td>10-K</td><td>$34.229B</td></tr><tr><td>2022-12-31</td><td>2025-02-05</td><td>10-K</td><td>$26.161B</td></tr></tbody></table></div><p class="muted small">First 6 of 12 rows.</p></div><div class="q"><p>Which fiscal years of 3M revenue were reported with more than one value across 10-Ks.</p><details><summary>SQL · 2 rows · 4655 ms</summary><pre>SELECT period_end, COUNT(DISTINCT val) AS distinct_values, MIN(val) AS low, MAX(val) AS high, COUNT(*) AS reports
+FROM tiresias.mmm_revenues
+WHERE fp = &#x27;FY&#x27; AND form = &#x27;10-K&#x27; AND datediff(period_end, period_start) &gt; 300
+GROUP BY period_end
+HAVING COUNT(DISTINCT val) &gt; 1
+ORDER BY period_end</pre></details><div class="scroll"><table><thead><tr><th>period_end</th><th>distinct_values</th><th>low</th><th>high</th><th>reports</th></tr></thead><tbody><tr><td>2022-12-31</td><td>2</td><td>$26.161B</td><td>$34.229B</td><td>3</td></tr><tr><td>2023-12-31</td><td>2</td><td>$24.610B</td><td>$32.681B</td><td>3</td></tr></tbody></table></div></div><div class="q"><p>3M&#x27;s revenue tagged as a disposal group. Only 2020 interim rows come back: the Solventum spin-off is not tagged with this concept, so the spun-off revenue has to come from Solventum&#x27;s own filings.</p><details><summary>SQL · 2 rows · 1736 ms</summary><pre>SELECT period_start, period_end, fp, form, filed, val
+FROM tiresias.mmm_disposal_revenue
+ORDER BY filed DESC, period_end DESC
+LIMIT 10</pre></details><div class="scroll"><table><thead><tr><th>period_start</th><th>period_end</th><th>fp</th><th>form</th><th>filed</th><th>val</th></tr></thead><tbody><tr><td>2020-01-01</td><td>2020-06-30</td><td>Q2</td><td>10-Q</td><td>2021-07-27</td><td>$38.0M</td></tr><tr><td>2020-01-01</td><td>2020-03-31</td><td>Q1</td><td>10-Q</td><td>2021-04-27</td><td>$25.0M</td></tr></tbody></table></div></div></section><section class="source"><h3>SEC submissions <span class="muted small">catalog id <code>sec_submissions</code> · data.sec.gov/submissions/CIK{cik}.json</span></h3><div class="q"><p>SEC submissions (catalog id sec_submissions): 3M&#x27;s recent filings by form.</p><details><summary>SQL · 12 rows · 2309 ms</summary><pre>SELECT form, COUNT(*) AS filings, MIN(filing_date) AS first, MAX(filing_date) AS last
+FROM tiresias.mmm_filings
+GROUP BY form
+ORDER BY filings DESC
+LIMIT 12</pre></details><div class="scroll"><table><thead><tr><th>form</th><th>filings</th><th>first</th><th>last</th></tr></thead><tbody><tr><td>4</td><td>496</td><td>2018-09-11</td><td>2026-10-09</td></tr><tr><td>8-K</td><td>140</td><td>2018-09-14</td><td>2026-10-20</td></tr><tr><td>4/A</td><td>84</td><td>2019-02-19</td><td>2026-02-18</td></tr><tr><td>144</td><td>43</td><td>2023-04-28</td><td>2026-08-05</td></tr><tr><td>3</td><td>35</td><td>2019-04-09</td><td>2026-10-09</td></tr><tr><td>425</td><td>31</td><td>2021-12-14</td><td>2022-09-06</td></tr></tbody></table></div><p class="muted small">First 6 of 12 rows.</p></div><div class="q"><p>8-Ks with item 2.01 (completion of an acquisition or disposition), the item a completed spin-off files.</p><details><summary>SQL · 2 rows · 874 ms</summary><pre>SELECT accession_number, filing_date, items, primary_document
+FROM tiresias.mmm_filings
+WHERE form = &#x27;8-K&#x27; AND items LIKE &#x27;%2.01%&#x27;
+ORDER BY filing_date DESC</pre></details><div class="scroll"><table><thead><tr><th>accession_number</th><th>filing_date</th><th>items</th><th>primary_document</th></tr></thead><tbody><tr><td>0000066740-24-000044</td><td>2024-04-04</td><td>2.01,9.01</td><td>mmm-20240401.htm</td></tr><tr><td>0001410578-19-001637</td><td>2019-10-11</td><td>2.01,7.01,9.01</td><td>tv530886_8k.htm</td></tr></tbody></table></div></div><div class="q"><p>The spun-off company&#x27;s profile and first filings, from its own submissions table.</p><details><summary>SQL · 1 rows · 382 ms</summary><pre>SELECT name, sic, `sicDescription` AS sic_description, to_json(tickers) AS tickers,
+       filings.recent.form[size(filings.recent.form) - 1] AS first_form,
+       filings.recent.filingDate[size(filings.recent.filingDate) - 1] AS first_filing_date
+FROM tiresias_sec.solv_submissions_raw</pre></details><div class="scroll"><table><thead><tr><th>name</th><th>sic</th><th>sic_description</th><th>tickers</th><th>first_form</th><th>first_filing_date</th></tr></thead><tbody><tr><td>Solventum Corp</td><td>3841</td><td>Surgical &amp; Medical Instruments &amp; Apparatus</td><td>[&quot;SOLV&quot;]</td><td>DRS</td><td>2023-02-14</td></tr></tbody></table></div></div></section><section class="source"><h3>SEC ticker map <span class="muted small">catalog id <code>sec_tickers</code> · www.sec.gov/files/company_tickers_exchange.json</span></h3><div class="q"><p>SEC ticker map (catalog id sec_tickers): listed companies by exchange.</p><details><summary>SQL · 6 rows · 353 ms</summary><pre>SELECT exchange, COUNT(*) AS tickers
+FROM tiresias.sec_tickers
+GROUP BY exchange
+ORDER BY tickers DESC</pre></details><div class="scroll"><table><thead><tr><th>exchange</th><th>tickers</th></tr></thead><tbody><tr><td>Nasdaq</td><td>4358</td></tr><tr><td>NYSE</td><td>3276</td></tr><tr><td>OTC</td><td>2570</td></tr><tr><td>—</td><td>165</td></tr><tr><td>CBOE</td><td>44</td></tr><tr><td>TXSE</td><td>12</td></tr></tbody></table></div></div><div class="q"><p>Resolving the case&#x27;s tickers to CIKs, as the entity resolver does.</p><details><summary>SQL · 2 rows · 185 ms</summary><pre>SELECT cik, name, ticker, exchange
+FROM tiresias.sec_tickers
+WHERE upper(ticker) IN (&#x27;MMM&#x27;, &#x27;SOLV&#x27;)</pre></details><div class="scroll"><table><thead><tr><th>cik</th><th>name</th><th>ticker</th><th>exchange</th></tr></thead><tbody><tr><td>66740</td><td>3M CO</td><td>MMM</td><td>NYSE</td></tr><tr><td>1964738</td><td>Solventum Corp</td><td>SOLV</td><td>NYSE</td></tr></tbody></table></div></div><div class="q"><p>Type-ahead by name: the entity directory&#x27;s live search.</p><details><summary>SQL · 2 rows · 201 ms</summary><pre>SELECT cik, name, ticker, exchange
+FROM tiresias.sec_tickers
+WHERE lower(name) LIKE &#x27;%solventum%&#x27; OR lower(name) LIKE &#x27;3m %&#x27;
+ORDER BY cik</pre></details><div class="scroll"><table><thead><tr><th>cik</th><th>name</th><th>ticker</th><th>exchange</th></tr></thead><tbody><tr><td>66740</td><td>3M CO</td><td>MMM</td><td>NYSE</td></tr><tr><td>1964738</td><td>Solventum Corp</td><td>SOLV</td><td>NYSE</td></tr></tbody></table></div></div></section><section class="source"><h3>EDGAR full-text search <span class="muted small">catalog id <code>sec_fulltext</code> · efts.sec.gov/LATEST/search-index</span></h3><div class="q"><p>EDGAR full-text search (catalog id sec_fulltext), registered by Loop B for case 04: the search for filings that name 3M as the parent of a spin-off. Total hits.</p><details><summary>SQL · 1 rows · 1519 ms</summary><pre>SELECT hits.total.value AS total FROM tiresias_sec.fts_d014334df6b92aed_raw</pre></details><div class="scroll"><table><thead><tr><th>total</th></tr></thead><tbody><tr><td>51</td></tr></tbody></table></div></div><div class="q"><p>Hits grouped by filer: the spun-off company stands out (same shape as zetaris/sql/41_fulltext_hits.sql).</p><details><summary>SQL · 5 rows · 633 ms</summary><pre>SELECT cik, first(h._source.display_names[i]) AS name, count(*) AS hits,
+       min(h._source.file_date) AS first_date, max(h._source.file_date) AS last_date
+FROM tiresias_sec.fts_d014334df6b92aed_raw
+LATERAL VIEW explode(hits.hits) AS h
+LATERAL VIEW posexplode(h._source.ciks) AS i, cik
+GROUP BY cik
+ORDER BY hits DESC, cik DESC
+LIMIT 5</pre></details><div class="scroll"><table><thead><tr><th>cik</th><th>name</th><th>hits</th><th>first_date</th><th>last_date</th></tr></thead><tbody><tr><td>0001964738</td><td>Solventum Corp  (SOLV)  (CIK 0001964738)</td><td>33</td><td>2024-02-20</td><td>2024-03-11</td></tr><tr><td>0001968915</td><td>PHINIA INC.  (PHIN)  (CIK 0001968915)</td><td>3</td><td>2023-05-18</td><td>2023-06-09</td></tr><tr><td>0001967680</td><td>Veralto Corp  (VLTO)  (CIK 0001967680)</td><td>3</td><td>2023-08-03</td><td>2023-08-31</td></tr><tr><td>0001646614</td><td>Silver Point Specialty Lending Fund  (CIK 0001646614)</td><td>3</td><td>2023-04-03</td><td>2023-06-01</td></tr><tr><td>0001988280</td><td>Manulife Private Credit Fund  (CIK 0001988280)</td><td>2</td><td>2023-08-04</td><td>2023-09-18</td></tr></tbody></table></div></div><div class="q"><p>Which forms the hits are: a Form 10 registration is the spin-off&#x27;s signature.</p><details><summary>SQL · 4 rows · 1404 ms</summary><pre>SELECT h._source.form AS form, COUNT(*) AS hits
+FROM tiresias_sec.fts_d014334df6b92aed_raw
+LATERAL VIEW explode(hits.hits) AS h
+GROUP BY h._source.form
+ORDER BY hits DESC</pre></details><div class="scroll"><table><thead><tr><th>form</th><th>hits</th></tr></thead><tbody><tr><td>10-12B/A</td><td>22</td></tr><tr><td>10-12B</td><td>20</td></tr><tr><td>10-12G/A</td><td>6</td></tr><tr><td>10-12G</td><td>3</td></tr></tbody></table></div></div></section>
+</section>
+
+<footer>
+  <p>Generated by <code>scripts/render_usl_explorer.py</code> from <code>docs/measurements/zetaris-usl-2026-10-27.jsonl</code>: 29 statements run live through Zetaris 2.4.3.1 by <code>scripts/zetaris_usl.py</code>, 79.2 s in total.</p>
+</footer>
+</main>
+</body>
+</html>
