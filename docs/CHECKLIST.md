@@ -101,12 +101,12 @@ Updated **2026-10-27 AEDT** (build day 6, after #31–#61). Work now lands throu
 - [x] `AGENTS.md` handover for coding agents
 
 ## G. Demo video (Demo, 15 pts): 1–4 min, target 2:30–3:30
-- [~] A link exists: a deck walkthrough uploaded unlisted on 27 Oct as a placeholder (https://youtu.be/ySNhg5ttZGk, 3:41), in README and `metadata.json`; it is not the product demo, so the items below stay open
+- [x] A link exists: the product demo, https://youtu.be/kTxGhLfjdzk (2:46, unlisted, uploaded 28 Oct), in README and `metadata.json` (it replaces the 27 Oct deck-walkthrough placeholder)
 - [ ] Storyboard final ([demo-plan.md](demo-plan.md)): problem, solution, agents, live run, sponsor tech in the trace, output and impact (DV §2–3)
-- [ ] Shows a real run, at least one collaboration moment (critic rejects or sends back), and Zetaris + Meterless doing real work (DV §4)
-- [~] Memory demo: cold vs warm step counts, plus the purge event (ADR-0005) (the script exists and runs in CI (#30); recording it is part of the video)
-- [ ] Clear audio, readable text, 1080p, no secrets on screen (DV §5, §10)
-- [ ] Uploaded; link opens in a private window; backup copy; link in README and `metadata.json` (DV §7–8)
+- [x] Shows a real run, at least one collaboration moment (critic rejects or sends back), and Zetaris + Meterless doing real work (DV §4) (a live 3M run: the Sphinx's escalation and the source gate answered in the UI, Zetaris registering the new filer mid-run, the Nemotron chip and Exchange lines, an H-MEM lesson recalled and supported on GE)
+- [~] Memory demo: cold vs warm step counts, plus the purge event (ADR-0005) (the script runs in CI (#30); the video shows the warm recall, 3 steps, and states the cold count, 5; the purge is not filmed)
+- [x] Clear audio, readable text, 1080p, no secrets on screen (DV §5, §10) (1080p, text-to-speech narration with English captions; no `.env`, key or token on screen)
+- [x] Uploaded; link opens in a private window; backup copy; link in README and `metadata.json` (DV §7–8) (unlisted; backup kept outside the repo)
 
 ## H. Slide deck: all 8 points required (SR §3.2; SF §3.6)
 - [x] 1 Problem and users · 2 Solution · 3 Agent workflow and architecture · 4 Tech stack ([assets/deck/tiresias-deck.pdf](../assets/deck/tiresias-deck.pdf), slides 2–8)

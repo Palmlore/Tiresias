@@ -17,7 +17,7 @@ This maps each scored criterion and each required component of the Open Agent Ha
 
 | Component | Where | Status |
 |---|---|---|
-| Demo video (1–4 min) | Link goes in README and `metadata.json` (`submission.demo_video`); a deck walkthrough is linked as a placeholder until the product demo is uploaded | in progress |
+| Demo video (1–4 min) | https://youtu.be/kTxGhLfjdzk (2:46), in README and `metadata.json` (`submission.demo_video`) | done |
 | Slide deck (8 points) | `assets/deck/` (a PDF, linked in `metadata.json` `submission.slide_deck`; outline in [demo-plan.md](demo-plan.md) and [assets/README.md](../assets/README.md)); committed 27 Oct, 22 slides | done |
 | Public GitHub repo + README (setup, usage, dependencies) | This repository | in progress (final pass after the video and deck links) |
 | Sponsor technology explanation (Zetaris, Meterless, Cursor, NVIDIA, plus what was unique) | [sponsor-technology.md](sponsor-technology.md) | done |
