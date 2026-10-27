@@ -1033,7 +1033,7 @@ function exchangeRow(l) {
 function renderExamples() {
   const box = S("s-examples");
   box.replaceChildren(...EXAMPLES.map((x) => sEl("button", { type: "button", class: "q-card",
-    onclick: () => { if (box.dataset.dragged === "1") return; startRun(x.request); } },
+    onclick: () => startRun(x.request) },
     sEl("div", { class: "q-head" }, sEl("b", { text: x.company }), sEl("span", { text: x.headline })),
     sEl("div", { class: "q-tiles" },
       qTile(x.left, ""), qTile(x.right, ""), qTile(x.why, "why")))));
@@ -1044,23 +1044,31 @@ function bindCarouselDrag(el) {
   let x0 = 0, scroll0 = 0, moved = 0, down = false;
   el.addEventListener("pointerdown", (e) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    down = true; moved = 0; x0 = e.clientX; scroll0 = el.scrollLeft;
-    el.dataset.dragged = "0";
-    el.setPointerCapture(e.pointerId);
+    down = true;
+    moved = 0;
+    x0 = e.clientX;
+    scroll0 = el.scrollLeft;
   });
   el.addEventListener("pointermove", (e) => {
     if (!down) return;
     const dx = e.clientX - x0;
-    moved = Math.max(moved, Math.abs(dx));
-    if (moved > 4) {
-      el.classList.add("dragging");
-      el.dataset.dragged = "1";
-      el.scrollLeft = scroll0 - dx;
-    }
+    if (Math.abs(dx) < 12) return;
+    moved = Math.abs(dx);
+    el.classList.add("dragging");
+    el.scrollLeft = scroll0 - dx;
   });
-  const stop = () => { down = false; el.classList.remove("dragging"); };
+  const stop = () => {
+    down = false;
+    el.classList.remove("dragging");
+  };
   el.addEventListener("pointerup", stop);
   el.addEventListener("pointercancel", stop);
+  el.addEventListener("click", (e) => {
+    if (moved < 12) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moved = 0;
+  }, true);
 }
 
 function qTile(t, cls) {
