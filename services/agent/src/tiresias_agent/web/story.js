@@ -1,8 +1,8 @@
-// Tiresias story view: the default page. A run reads as a conversation (You ask, Tiresias proposes,
-// the Sphinx tests, decisions are taken) beside a why-tree that grows and prunes, under a five-step
-// progress bar. Everything is reduced from the trace lines app.js streams (GET /runs/{id}/events)
+// Tiresias story view: the default page. A run reads as a conversation (Me (Analyst) asks, Tiresias
+// proposes, the Sphinx tests, decisions are taken) beside a why-tree that grows and prunes, under a
+// five-step progress bar you can click to wind back. Everything is reduced from the trace lines app.js streams (GET /runs/{id}/events)
 // and, at the end, from the RunResult (GET /runs/{id}); nothing is computed that the API did not
-// give. The page of app.js stays as the "Debug view". Text goes in with textContent only.
+// give. The page of app.js stays as Truth (the cellar). Text goes in with textContent only.
 "use strict";
 
 // ---- reducer: pure, one trace line at a time (tests run this section in Node) ---------------
@@ -32,6 +32,7 @@ function storyInit(request) {
     gates: new Map(), // gate_id -> STAR card source (gate waiting line) and its outcome
     pending: { calls: 0, rows: 0, sample: 0 }, // data-layer reads not yet attached to a turn
     modelNode: null, // node a model_call phase is about (model_review lines carry no node_id)
+    stepNow: "understand",
     lines: 0,
     end_state: null,
     finished: false,
@@ -43,6 +44,7 @@ function setStep(s, id, status) {
   const order = STEPS.map((x) => x.id);
   if (s.steps[id] === "done" && status === "active") return;
   s.steps[id] = status;
+  if (status === "active") s.stepNow = id;
   if (status === "active" || status === "done") {
     // every earlier step that started is done once a later one runs
     for (const earlier of order.slice(0, order.indexOf(id))) {
@@ -58,7 +60,7 @@ function takeData(s) {
 }
 
 function turn(s, who, kind, fields) {
-  const t = { id: `t${s.turns.length}`, who, kind, node_ids: [], data: takeData(s), ...fields };
+  const t = { id: `t${s.turns.length}`, who, kind, step: s.stepNow || "understand", node_ids: [], data: takeData(s), ...fields };
   s.turns.push(t);
   return t;
 }
@@ -296,6 +298,7 @@ const GATE_WORDS = {
   critic_escalation: {
     ask: "Should we look for the missing data?",
     task: "Its size cannot be measured with the data loaded. Look for the missing data, or drop this cause?",
+    cost: "Looking takes a few seconds in sample mode (Tiresias searches another company's filings). Dropping it rules this cause out now.",
     options: {
       frontier: ["Look for the missing data", "Tiresias hands it to Loop B to find the filings that hold the figure"],
       prune: ["Drop this cause", "the cause is ruled out and the others carry on"],
@@ -304,6 +307,7 @@ const GATE_WORDS = {
   source: {
     ask: "Should we load these filings as a new source?",
     task: "The figure is in another registrant's filings. Load them as a new source?",
+    cost: "Loading registers one new source, then re-tests the cause (seconds in sample mode). Denying stops at the evidence frontier.",
     options: {
       register: ["Load these filings", "one new source is registered (in Zetaris when live) and the cause is re-tested"],
       deny: ["Don't load them", "the answer stops at the evidence frontier and says where to look"],
@@ -312,6 +316,7 @@ const GATE_WORDS = {
   memory: {
     ask: "Should we remember this path for similar questions?",
     task: "Keep the path that worked as a lesson for similar questions?",
+    cost: "Remembering stores a generic lesson (no company or figure) in H-MEM. Instant. Discarding stores nothing.",
     options: {
       store: ["Remember this path", "a generic lesson (no company or figure) is stored in H-MEM"],
       discard: ["Don't remember it", "nothing is stored"],
@@ -320,6 +325,7 @@ const GATE_WORDS = {
   dissent: {
     ask: "Should the rules' verdict stand over Nemotron's?",
     task: "Nemotron disagrees with the rules' verdict. Which one stands?",
+    cost: "Either choice is instant: the rules' verdict stands, or the link is pruned.",
     options: {
       "keep-rule": ["Keep the rules' verdict", "the rule verdict stands; the model's view stays in the trace"],
       prune: ["Follow Nemotron: prune", "the link is ruled out"],
@@ -466,7 +472,11 @@ function dataText(d) {
 
 const EXAMPLES = [
   {
-    label: "3M · FY2023 revenue: $32.68B → $24.61B. Why?",
+    company: "3M",
+    headline: "FY2023 revenue",
+    left: { when: "February 2024", caption: "10-K said 2023 was", value: "$32.68B" },
+    right: { when: "February 2025", caption: "10-K said 2023 was", value: "$24.61B" },
+    why: { when: "Same year", value: "−$8.07B", ask: "Why?" },
     request: {
       question: "Why did 3M's reported 2023 revenue fall between its 2024 and 2025 annual reports?",
       entity: { ticker: "MMM" }, metric: "Revenues", period: { start: "2023-01-01", end: "2023-12-31" },
@@ -476,7 +486,11 @@ const EXAMPLES = [
     },
   },
   {
-    label: "GE · FY2022 revenue fell between two 10-Ks. Why?",
+    company: "GE",
+    headline: "FY2022 revenue",
+    left: { when: "February 2023", caption: "10-K said 2022 was", value: "$76.56B" },
+    right: { when: "February 2024", caption: "10-K said 2022 was", value: "$58.10B" },
+    why: { when: "Same year", value: "−$18.45B", ask: "Why?" },
     request: {
       question: "Why did GE's reported 2022 revenue fall between its 2023 and 2024 annual reports?",
       entity: { ticker: "GE", cik: "0000040545" }, metric: "Revenues", period: { start: "2022-01-01", end: "2022-12-31" },
@@ -486,7 +500,11 @@ const EXAMPLES = [
     },
   },
   {
-    label: "GE · a $22B net loss in 2018. Why?",
+    company: "GE",
+    headline: "FY2018 net income",
+    left: { when: "FY2017", caption: "Net income was", value: "−$8.48B" },
+    right: { when: "FY2018", caption: "Net income was", value: "−$22.36B" },
+    why: { when: "Year on year", value: "−$13.87B", ask: "Why?" },
     request: {
       question: "Why did GE report a net loss of about $22 billion in 2018?",
       entity: { ticker: "GE", cik: "0000040545" }, metric: "NetIncomeLoss", period: { start: "2018-01-01", end: "2018-12-31" },
@@ -499,7 +517,7 @@ const EXAMPLES = [
 
 const story = { s: null, req: null, runId: null, result: null, lines: [], selected: null, hover: null,
   open: new Set(), scrolled: new Set(), raf: 0, view: "story", consoleTab: "trace", consoleFilter: null,
-  prompts: new Map() };
+  prompts: new Map(), focusStep: null };
 
 const S = (id) => document.getElementById(id);
 const sEl = (...a) => el(...a); // app.js's el(): textContent only
@@ -521,6 +539,8 @@ function storyStart(req) {
   S("s-run").hidden = false;
   S("s-result").hidden = true;
   S("s-console").hidden = false;
+  S("story").classList.add("has-run");
+  story.focusStep = null;
   scheduleRender();
 }
 
@@ -570,43 +590,84 @@ function scheduleRender() {
 function renderStory() {
   const s = story.s;
   if (!s) return;
-  S("s-question").textContent = s.question;
-  S("s-run").classList.toggle("finished", s.finished); // the tree takes the width, the story goes below
+  S("s-run").classList.toggle("finished", s.finished);
   renderSteps(s);
+  renderNow(s);
   renderTreePane(s);
   renderTurns(s);
   renderResultTop(s);
   renderConsole();
-  // bring a decision that waits for the user into view, once
-  for (const card of document.querySelectorAll("#story .star:not(.done)[data-gate]")) {
-    if (story.scrolled.has(card.dataset.gate)) continue;
-    story.scrolled.add(card.dataset.gate);
-    card.scrollIntoView({ block: "center", behavior: "smooth" });
+}
+
+function pendingGateTurn(s) {
+  for (const t of s.turns) {
+    if (t.kind !== "star") continue;
+    const g = s.gates.get(t.gate_id);
+    if (g && (g.outcome || g.closed)) continue;
+    return t;
   }
+  return null;
+}
+
+function renderNow(s) {
+  const box = S("s-now");
+  const t = pendingGateTurn(s);
+  if (!t) { box.hidden = true; box.replaceChildren(); return; }
+  box.hidden = false;
+  const card = starItem(s, t);
+  box.replaceChildren(
+    sEl("p", { class: "s-now-h", text: "Your call" }),
+    card);
 }
 
 function renderSteps(s) {
-  S("s-steps").replaceChildren(...STEPS.map((st) => {
+  const bar = S("s-steps");
+  const allDone = STEPS.every((st) => s.steps[st.id] === "done" || s.steps[st.id] === "skipped");
+  bar.classList.toggle("complete", Boolean(s.finished || allDone));
+  bar.replaceChildren(...STEPS.map((st) => {
     const status = s.steps[st.id];
-    return sEl("li", { class: `step ${status}`, "aria-current": status === "active" ? "step" : null },
-      sEl("img", { src: st.icon, alt: "", width: "20", height: "20" }),
-      sEl("span", { class: "step-label", text: st.label }),
-      sEl("span", { class: "step-state", text: status === "pending" ? "" : status }));
+    const focus = story.focusStep === st.id;
+    return sEl("li", { class: `step ${status}${focus ? " focus" : ""}` },
+      sEl("button", { type: "button", class: "step-btn",
+        "aria-current": status === "active" ? "step" : null,
+        "aria-pressed": focus ? "true" : "false",
+        title: `Show ${st.label} in the conversation`,
+        onclick: () => jumpToStep(st.id) },
+        sEl("span", { class: "step-label", text: st.label })));
   }));
+}
+
+function jumpToStep(id) {
+  if (!story.s) return;
+  story.focusStep = id;
+  scheduleRender();
+  requestAnimationFrame(() => {
+    const hit = document.querySelector(`#s-turns .msg[data-step="${id}"]`);
+    if (hit) hit.scrollIntoView({ block: "center", behavior: "smooth" });
+  });
 }
 
 const STATUS_WORD = { root: "the change", accepted: "accepted", pruned: "ruled out", frontier: "needs more data",
   escalated: "can't size it yet", testing: "testing…", proposed: "proposed", untested: "not tested" };
 
+const TREE_MARK = { root: "the change", accepted: "kept", pruned: "ruled out", frontier: "unknown",
+  escalated: "can't size", testing: "testing", proposed: "proposed", untested: "ruled out" };
+
+function briefClaim(n) {
+  const raw = String(n.claim || n.node_id).replace(/\s+/g, " ").trim();
+  if (n.status === "root") return "The reported change";
+  if (raw.length <= 88) return raw;
+  return raw.slice(0, 85).replace(/\s+\S*$/, "") + "…";
+}
+
 function chipsFor(n) {
-  const chips = [badge(STATUS_WORD[n.status] || n.status, n.status === "accepted" || n.status === "root" ? "ok"
-    : n.status === "pruned" || n.status === "untested" ? "muted" : "warn")];
-  if (n.share_explained !== null && n.share_explained !== undefined) chips.push(badge(`explains ${pct(n.share_explained)}`));
-  if (n.opinion && n.opinion.routed_model) {
-    chips.push(badge(n.opinion.unusable ? `${shortModel(n.opinion.routed_model)}: reply unusable`
-      : `${shortModel(n.opinion.routed_model)}: ${n.opinion.agrees ? "agrees" : "disagrees"}`, n.opinion.agrees === false ? "warn" : "model-op"));
+  if (n.status === "root") {
+    return n.share_explained !== null && n.share_explained !== undefined ? pct(n.share_explained) : "";
   }
-  return chips;
+  const mark = TREE_MARK[n.status] || n.status;
+  const bits = [mark];
+  if (n.share_explained !== null && n.share_explained !== undefined) bits.push(pct(n.share_explained));
+  return bits.join(" · ");
 }
 
 const shortModel = (id) => `Nemotron ${(id || "").replace(/^nvidia\/nemotron-/, "").replace(/-a\d+b$/, "").replace(/-/g, " ")}`;
@@ -635,20 +696,7 @@ function renderTreePane(s) {
   }
   const onPath = new Set(acceptedPath(nodes.map((n) => ({ node_id: n.node_id, parent_id: n.parent_id,
     verdict: n.status === "accepted" ? "accepted" : n.status }))));
-  const build = (pid) => {
-    const list = kids.get(pid) || [];
-    const live = list.filter((n) => n.status !== "pruned" && n.status !== "untested");
-    const out = list.filter((n) => n.status === "pruned" || n.status === "untested");
-    const items = live.map((n) => nodeItem(n, onPath, build));
-    if (out.length) {
-      const key = `out-${pid || "root"}`;
-      const open = story.open.has(key);
-      items.push(sEl("li", { class: "ruled" },
-        sEl("button", { type: "button", class: "linkish", onclick: () => toggleOpen(key) }, `${out.length} ruled out ${open ? "▾" : "▸"}`),
-        open ? sEl("ol", {}, out.map((n) => nodeItem(n, onPath, build))) : null));
-    }
-    return items;
-  };
+  const build = (pid) => (kids.get(pid) || []).map((n) => nodeItem(n, onPath, build));
   box.replaceChildren(sEl("ol", { class: "s-tree" }, build("")));
 }
 
@@ -662,8 +710,8 @@ function nodeItem(n, onPath, build) {
       onmouseenter: () => setHover(n.node_id), onmouseleave: () => setHover(null),
       onclick: () => selectStoryNode(n.node_id),
       onkeydown: (e) => { if (e.key === "Enter") selectStoryNode(n.node_id); } },
-    sEl("div", { class: "claim", text: n.claim || n.node_id }),
-    sEl("div", { class: "chips" }, present(chipsFor(n), evidenceChip(n)))),
+      sEl("div", { class: "claim", text: briefClaim(n) }),
+      sEl("div", { class: "mark", text: chipsFor(n) })),
     openEv ? sEl("div", { class: "ev-inline" }, (n.evidence || []).map((e) => evidenceItem(e))) : null,
     sub.length ? sEl("ol", {}, sub) : null);
 }
@@ -690,40 +738,83 @@ function selectStoryNode(id) {
 }
 
 const WHO = {
-  you: { name: "You", icon: "you.svg" },
-  tiresias: { name: "Tiresias", icon: "tiresias.svg" },
-  sphinx: { name: "The Sphinx", icon: "sphinx.svg" },
-  decision: { name: "Decision", icon: "you.svg" },
+  you: { name: "Me (Analyst)", icon: "you-portrait.png" },
+  tiresias: { name: "Tiresias", icon: "tiresias-portrait.png" },
+  sphinx: { name: "The Sphinx (Critic)", icon: "sphinx-portrait.png" },
+  decision: { name: "Me (Analyst)", icon: "you-portrait.png" },
 };
 
 function renderTurns(s) {
-  const list = [sEl("li", { class: "msg you" }, avatar("you"), sEl("div", { class: "bubble" },
-    sEl("span", { class: "who", text: "You" }), sEl("p", { text: s.question })))];
-  for (const t of s.turns) list.push(turnItem(s, t));
-  if (!s.finished) list.push(sEl("li", { class: "msg typing" }, avatar("tiresias"), sEl("div", { class: "bubble", text: "…" })));
-  if (story.error) list.push(sEl("li", { class: "msg error" }, sEl("div", { class: "bubble", text: `The run did not finish: ${story.error}` })));
+  const pending = pendingGateTurn(s);
+  const spoken = [sEl("li", { class: `msg you${story.focusStep === "understand" ? " step-hl" : ""}`, "data-step": "understand" },
+    avatar("you"), sEl("div", { class: "bubble" },
+    sEl("span", { class: "who", text: WHO.you.name }),
+    sEl("p", { class: "invoke", text: "O wise one, I have a question to ask." }),
+    sEl("p", { text: s.question })))];
+  for (const t of s.turns) {
+    const item = turnItem(s, t, { docked: Boolean(pending && t.id === pending.id) });
+    if (item) spoken.push(item);
+  }
+  const extra = [];
+  if (!s.finished) extra.push(sEl("li", { class: "msg tiresias typing", "data-step": s.stepNow || "answer" },
+    avatar("tiresias"), sEl("div", { class: "bubble", text: "…" })));
+  if (story.error) extra.push(sEl("li", { class: "msg error" }, sEl("div", { class: "bubble", text: `The run did not finish: ${story.error}` })));
+  const list = pending && spoken.length
+    ? [sEl("li", { class: "fold-wrap" },
+        sEl("details", { class: "earlier" },
+          sEl("summary", { text: "What was said so far" }),
+          sEl("ol", { class: "s-turns nested" }, spoken))), ...extra]
+    : [...spoken, ...extra];
   const ol = S("s-turns");
   const atBottom = ol.scrollHeight - ol.scrollTop - ol.clientHeight < 60;
   ol.replaceChildren(...list);
-  if (atBottom && !s.finished) ol.scrollTop = ol.scrollHeight;
-  S("s-convo").open = !s.finished || story.open.has("convo");
+  if (atBottom && !s.finished && !pending) ol.scrollTop = ol.scrollHeight;
 }
 
 function avatar(who) {
-  return sEl("img", { class: "avatar", src: WHO[who].icon, alt: "" });
+  return sEl("img", { class: "avatar", src: WHO[who].icon, alt: WHO[who].name });
 }
 
-function turnItem(s, t) {
+const SEER = {
+  recall: "The other shades crowd in. Some of them still know the road.",
+  need: "This house has no more to tell. You must take another voyage.",
+  found: "A shade names itself, drawn by the blood.",
+  registered: "The gate is opened. We may go in.",
+  lesson: "Take this to heart, and keep it.",
+  scope: "I have no hearing for what is not of this city, nor for what has not yet been.",
+};
+
+function sphinxRiddle(items) {
+  const kinds = new Set((items || []).map((x) => x.verdict));
+  if (kinds.has("escalated") || kinds.has("frontier")) return "The riddle is still unpaid. I have not heard the number.";
+  if (kinds.has("accepted") && kinds.has("pruned")) return "One of you has named it. The rest I throw to the rocks.";
+  if (kinds.has("accepted")) return "Thebes may breathe. That answer holds.";
+  if (kinds.has("pruned")) return "Wrong. The cliff takes them.";
+  return "I sit the road and try each name.";
+}
+
+function cotFold(label, children) {
+  const bits = (Array.isArray(children) ? children : [children]).filter(Boolean);
+  if (!bits.length) return null;
+  return sEl("details", { class: "cot" }, sEl("summary", { text: label }), bits);
+}
+
+function turnItem(s, t, opts = {}) {
   const pr = t.kind === "star" ? story.prompts.get(t.gate_id) : null;
   const g0 = t.kind === "star" ? s.gates.get(t.gate_id) : null;
   const asking = pr && pr.state !== "takeover" && !(g0 && (g0.outcome || g0.closed));
   const who = asking ? "sphinx" : t.who === "decision" ? "decision" : t.who;
+  if (t.kind === "star" && opts.docked) return null;
   const body = [sEl("span", { class: "who", text: WHO[who].name })];
+  const fold = [];
   if (t.kind === "propose") {
-    body.push(sEl("p", { text: t.items.length > 1 ? `Why? ${t.items.length} possible causes to test:` : "Why? One cause to test:" }));
+    body.push(sEl("p", { text: t.items.length > 1
+      ? `I hear ${t.items.length} roads out of the dark:`
+      : "I hear one road out of the dark:" }));
     body.push(sEl("ol", { class: "causes" }, t.items.map((x) => sEl("li", { text: x.text }))));
   } else if (t.kind === "verdicts") {
-    body.push(sEl("ul", { class: "verdicts" }, t.items.map((x) => {
+    body.push(sEl("p", { class: "riddle", text: sphinxRiddle(t.items) }));
+    fold.push(sEl("ul", { class: "verdicts" }, t.items.map((x) => {
       const n = s.nodes.get(x.node_id) || {};
       const op = n.opinion && n.opinion.routed_model && !n.opinion.unusable
         ? sEl("div", { class: "opinion-line", text: `${shortModel(n.opinion.routed_model)} (via Nightshift): ${n.opinion.agrees ? "agrees" : "disagrees"}` }) : null;
@@ -733,21 +824,29 @@ function turnItem(s, t) {
   } else if (t.kind === "star") {
     body.push(starItem(s, t));
   } else if (t.kind === "auto") {
-    const key = `why-${t.id}`;
-    body.push(sEl("p", {}, `Tiresias decided (${t.decided_by.startsWith("policy") ? "policy" : t.decided_by || "policy"}): ${autoDecision(t)} `,
-      sEl("button", { type: "button", class: "linkish", onclick: () => toggleOpen(key) }, story.open.has(key) ? "why ▾" : "why ▸")));
-    if (story.open.has(key)) body.push(sEl("p", { class: "note", text: t.text }));
+    body.push(sEl("p", { text: `The recommendation stood: ${autoDecision(t)}` }));
+    if (t.text) fold.push(sEl("p", { class: "note", text: t.text }));
   } else if (t.kind === "answer") {
+    body.push(sEl("p", { text: "So I have spoken. Carry this back." }));
     body.push(sEl("p", { class: "answer-text", text: t.reworded || t.text.replace(/^[a-z-]+: /, "") }));
+  } else if (t.kind === "frame") {
+    body.push(sEl("p", { text: "Two tellings of the same year. I drink, and I hear the split." }));
+    body.push(sEl("p", { text: t.text || "" }));
+  } else if (SEER[t.kind]) {
+    body.push(sEl("p", { text: SEER[t.kind] }));
+    if (t.text) fold.push(sEl("p", { class: "cot-body", text: t.text }));
   } else {
-    const lead = { frame: "", recall: "From memory: ", need: "", found: "Found it: ", registered: "", lesson: "Lesson stored: ", scope: "Out of scope: " }[t.kind] || "";
-    body.push(sEl("p", { text: lead + (t.text || "") }));
+    body.push(sEl("p", { text: t.text || "" }));
   }
   if (t.data) {
-    body.push(sEl("button", { type: "button", class: "data-line", onclick: () => { story.consoleTab = "exchange"; openConsole(true); scheduleRender(); } },
+    fold.push(sEl("button", { type: "button", class: "data-line", onclick: () => { story.consoleTab = "exchange"; openConsole(true); scheduleRender(); } },
       `${dataText(t.data)} ▸`));
   }
-  return sEl("li", { class: `msg ${t.who} k-${t.kind}`, "data-node": t.node_ids.join(" ") || null,
+  const foldLabel = who === "sphinx" ? "The riddle" : "What I hear";
+  body.push(cotFold(foldLabel, fold));
+  const step = t.step || "understand";
+  return sEl("li", { class: `msg ${t.who} k-${t.kind}${story.focusStep === step ? " step-hl" : ""}`,
+    "data-step": step, "data-node": t.node_ids.join(" ") || null,
     onmouseenter: () => t.node_ids[0] && setHover(t.node_ids[0]), onmouseleave: () => setHover(null) },
   avatar(who), sEl("div", { class: "bubble" }, body));
 }
@@ -781,9 +880,12 @@ function starItem(s, t) {
 function sphinxPrompt(line, c, pr) {
   const rec = c.actions.find((x) => x.recommended) || { label: line.proposal, result: "" };
   const busy = pr.state !== "counting";
+  const words = GATE_WORDS[line.gate] || {};
   return sEl("div", { class: "sphinx-ask", "data-gate": line.gate_id },
+    sEl("p", { class: "riddle", text: "I keep the road. Answer, and pass." }),
     sEl("p", { class: "ask-q" }, sEl("span", { class: "on-behalf", text: "On your behalf: " }), sphinxAsks(line)),
     sEl("p", { class: "note" }, `Recommended: ${rec.label}`, rec.result ? ` (${rec.result}).` : "."),
+    words.cost ? sEl("p", { class: "note cost", text: words.cost }) : null,
     sEl("div", { class: "star-actions" },
       sEl("button", { type: "button", class: "btn small", disabled: busy || null, onclick: () => pr.proceed() },
         sEl("span", { text: "Proceed" }), sEl("small", { class: "choice-id", text: line.proposal })),
@@ -829,13 +931,18 @@ function renderResultTop(s) {
   box.replaceChildren(...present(
     sEl("div", { class: "s-verdict" }, badge(r.end_state || r.status, endStateClass(r.end_state)),
       r.sample_mode ? badge("sample data", "sample") : badge("live", "live"),
-      e ? sEl("span", { class: "effect-line", text: `${e.entity} ${e.metric}: ${money(e.baseline && e.baseline.value)} → ${money(e.target && e.target.value)} (${money(e.delta)})` }) : null),
-    r.action ? sEl("p", { class: "s-action", text: r.action }) : null,
+      e ? sEl("span", { class: "effect-line", text: `${e.entity} ${e.metric}: ${money(e.baseline && e.baseline.value)} → ${money(e.target && e.target.value)}` }) : null),
+    sEl("div", { class: "c-tiles" },
+      sEl("div", { class: "q-tile" },
+        sEl("span", { class: "q-when", text: "Share explained" }),
+        sEl("span", { class: "q-value", text: leaf && leaf.share_explained !== null && leaf.share_explained !== undefined ? pct(leaf.share_explained) : "–" })),
+      sEl("div", { class: "q-tile" },
+        sEl("span", { class: "q-when", text: "Residual" }),
+        sEl("span", { class: "q-value", text: r.residual !== null && r.residual !== undefined ? residualText(r.residual) : "–" })),
+      sEl("div", { class: "q-tile why" },
+        sEl("span", { class: "q-when", text: "Action" }),
+        sEl("span", { class: "q-value action", text: r.action || "–" }))),
     r.scope ? scopeCard(r.scope) : null,
-    r.scope ? null : sEl("div", { class: "s-numbers" },
-      number("Share explained", leaf && leaf.share_explained !== null && leaf.share_explained !== undefined ? pct(leaf.share_explained) : "–"),
-      number("Residual", r.residual !== null && r.residual !== undefined ? residualText(r.residual) : "–"),
-      number("New sources", r.stats ? String(r.stats.sources_onboarded) : "–")),
     proofStrip()));
 }
 
@@ -924,37 +1031,52 @@ function exchangeRow(l) {
 // ---- ask: example bubbles, search, suggestion cards --------------------------------------------
 
 function renderExamples() {
-  S("s-examples").replaceChildren(...EXAMPLES.map((x) => sEl("button", { type: "button", class: "bubble-btn",
-    onclick: () => startRun(x.request) }, x.label)));
+  const box = S("s-examples");
+  box.replaceChildren(...EXAMPLES.map((x) => sEl("button", { type: "button", class: "q-card",
+    onclick: () => startRun(x.request) },
+    sEl("div", { class: "q-head" }, sEl("b", { text: x.company }), sEl("span", { text: x.headline })),
+    sEl("div", { class: "q-tiles" },
+      qTile(x.left, ""), qTile(x.right, ""), qTile(x.why, "why")))));
+  bindCarouselDrag(box);
 }
 
-let sTimer = null;
-async function storySearch(q) {
-  const box = S("s-companies");
-  if (!q) { box.replaceChildren(); S("s-suggestions").replaceChildren(); return; }
-  try {
-    const body = await api(`/entities?limit=6&q=${encodeURIComponent(q)}`);
-    box.replaceChildren(...body.entities.map((e) => sEl("button", { type: "button", class: "chip-btn", onclick: () => storySuggest(e) },
-      `${e.ticker || ""} ${e.name}`.trim())));
-    if (!body.entities.length) box.replaceChildren(sEl("p", { class: "note", text: "No company found." }));
-  } catch (e) {
-    box.replaceChildren(sEl("p", { class: "note", text: e.message }));
-  }
+function bindCarouselDrag(el) {
+  let x0 = 0, scroll0 = 0, moved = 0, down = false;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    down = true;
+    moved = 0;
+    x0 = e.clientX;
+    scroll0 = el.scrollLeft;
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!down) return;
+    const dx = e.clientX - x0;
+    if (Math.abs(dx) < 12) return;
+    moved = Math.abs(dx);
+    el.classList.add("dragging");
+    el.scrollLeft = scroll0 - dx;
+  });
+  const stop = () => {
+    down = false;
+    el.classList.remove("dragging");
+  };
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
+  el.addEventListener("click", (e) => {
+    if (moved < 12) return;
+    e.preventDefault();
+    e.stopPropagation();
+    moved = 0;
+  }, true);
 }
 
-async function storySuggest(e) {
-  const box = S("s-suggestions");
-  box.replaceChildren(sEl("p", { class: "note", text: `Reading ${e.name}'s filings…` }));
-  try {
-    const body = await api(`/entities/${encodeURIComponent(e.cik)}/suggestions?role=${S("role").value}&limit=6`);
-    box.replaceChildren(...(body.suggestions.length ? body.suggestions.map((sg) => sEl("div", { class: "s-card" },
-      sEl("button", { type: "button", class: "s-card-btn", onclick: () => startRun(sg.request) },
-        sEl("span", { class: "kind", text: sg.kind }), sEl("span", { class: "q", text: sg.question }), sEl("span", { class: "go", text: "Investigate →" })),
-      sEl("details", {}, sEl("summary", { text: "why this question" }), sEl("ul", { class: "checks" }, (sg.checks || []).map((c) => sEl("li", { text: c }))))))
-      : [sEl("p", { class: "note", text: body.note || "No question found in this company's filings." })]));
-  } catch (err) {
-    box.replaceChildren(sEl("p", { class: "note", text: err.message }));
-  }
+function qTile(t, cls) {
+  return sEl("div", { class: `q-tile ${cls}` },
+    sEl("span", { class: "q-when", text: t.when }),
+    t.caption ? sEl("span", { class: "q-caption", text: t.caption }) : null,
+    sEl("span", { class: "q-value", text: t.value }),
+    t.ask ? sEl("span", { class: "q-ask", text: t.ask }) : null);
 }
 
 function setView(view) {
@@ -967,12 +1089,10 @@ function setView(view) {
 
 if (typeof document !== "undefined" && S("story")) {
   renderExamples();
-  S("s-q").addEventListener("input", (e) => { clearTimeout(sTimer); sTimer = setTimeout(() => storySearch(e.target.value.trim()), 250); });
   for (const b of document.querySelectorAll("[data-view]")) b.addEventListener("click", () => setView(b.dataset.view));
   for (const b of document.querySelectorAll("#s-console [data-tab]")) b.addEventListener("click", () => { story.consoleTab = b.dataset.tab; openConsole(true); scheduleRender(); });
   S("s-console-toggle").addEventListener("click", () => openConsole(!S("s-console").classList.contains("open")));
   S("s-trace-all").addEventListener("change", scheduleRender);
   S("s-download").addEventListener("click", () => S("download").click());
-  S("s-convo").addEventListener("toggle", () => { if (story.s && story.s.finished) { if (S("s-convo").open) story.open.add("convo"); else story.open.delete("convo"); } });
   setView("story");
 }
