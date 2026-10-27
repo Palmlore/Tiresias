@@ -91,8 +91,8 @@
       ]
     },
     "cursor": {
-      "status": "in-progress",
-      "how": "Optional since the organizers' 23 Oct 2026 update, and used: Cursor's agent (model Grok 4.6, medium) drew the brand assets on 23 Oct (palette, the Tiresias mark and the three character icons, with scripts/render_brand.py; merged in #42), and Cursor carries the web UI's visual polish on top of the story view (in progress, on its own branch). Claude Code built the agent, the services, the story view's logic and the docs. Not a dependency of the product or the build.",
+      "status": "working",
+      "how": "Optional since the organizers' 23 Oct 2026 update, and used: Cursor's agent (model Grok 4.6, medium) drew the brand assets on 23 Oct (palette, the Tiresias mark and the three character icons, with scripts/render_brand.py; merged in #42), and Cursor carried the web UI's visual polish on top of the story view (merged in #58: question carousel, round portraits, the seer and riddle conversation, decisions pinned under the progress bar). Claude Code built the agent, the services, the story view's logic and the docs. Not a dependency of the product or the build.",
       "surfaces": [
         "ide"
       ],
@@ -104,7 +104,11 @@
         "assets/brand/logo.svg",
         "assets/characters/",
         "scripts/render_brand.py",
-        "scripts/verify_brand_assets.py"
+        "scripts/verify_brand_assets.py",
+        "services/agent/src/tiresias_agent/web/story.js",
+        "services/agent/src/tiresias_agent/web/app.css",
+        "services/agent/src/tiresias_agent/web/index.html",
+        "assets/characters/tiresias-portrait.png"
       ],
       "evidence": [
         "docs/ai-usage.md#development-tools",

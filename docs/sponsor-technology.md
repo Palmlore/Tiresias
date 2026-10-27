@@ -62,7 +62,7 @@ An earlier live run of case 01 at depth `deep` (2026-10-24, 4 calls, timings in 
 
 Cursor became optional on 23 Oct 2026. The organizers' update to the Build section reads: "Cursor is now optional. You can use any AI coding tool you're comfortable with, such as Cursor, Claude Code, Windsurf or GitHub Copilot." Tiresias is built mainly with Claude Code; Cursor's agent (Grok 4.6, medium) drew the brand assets (palette, mark, three characters; `scripts/render_brand.py`) and carries the web UI's visual polish (see [ai-usage.md](ai-usage.md#development-tools)). The core Build requirement is unchanged: a Meterless engine (H-MEM here) in a working feature, shown with a passing test or a live demo.
 
-Status: **in-progress** in metadata.json, one step short of working: the assets are merged, the UI polish is not yet. Cursor stays optional and is not a Tiresias dependency
+Status: **working** in metadata.json: the assets (#42) and the Story view's polish (#58: question carousel, round portraits, the seer and riddle conversation, decisions pinned under the progress bar) are merged and run in the quickstart UI. Cursor stays optional and is not a Tiresias dependency
 
 ## What was unique
 
