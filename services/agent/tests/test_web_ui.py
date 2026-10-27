@@ -520,7 +520,10 @@ def test_prompt_proceeds_automatically_after_five_seconds():
     assert got["state"] == "answered" and got["timers"] == 0
     assert got["ask"] == "Should we look for the missing data?"
     assert got["by"] == "auto"
-    assert got["auto"] == "The Sphinx recommended “Look for the missing data”. I didn't choose; that stood."
+    assert (
+        got["auto"]
+        == "The Sphinx recommended “Look for the missing data”. I didn't choose; that stood."
+    )
     assert got["took"] == "I chose “Look for the missing data”, the Sphinx's recommendation."
     assert got["other"] == "I chose “Drop this cause”."
     truth = (WEB / "app.js").read_text()
