@@ -221,7 +221,7 @@ Found in: docs/sweep-correctness-audit  ·  Status: open  ·  Severity: judge-vi
 - Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Correctness audit, frontier table); audit JSONL `would_reconcile: true` for DHR, RTX, BDX.
 
 ## B-37: The agent does not cross-check its answer against the USL
-Found in: #<this PR>  ·  Status: open  ·  Severity: later
+Found in: #56  ·  Status: open  ·  Severity: later
 - Out of scope because: the USL PR adds a model and its checks next to the agent, with no runtime change on feature-freeze day. A cross-check means a new adapter call after Loop B's reconciliation, a trace line and a note on the evidence.
 - Safe to leave because: the USL reproduces the agent's case 04 residual ($126M) independently in `zetaris/usl/41_reconcile_2023.sql`, and the agent's own evidence is unchanged and traced.
 - Urgent if: a judge or sponsor asks for the agent itself to use the USL in a run.
@@ -229,7 +229,7 @@ Found in: #<this PR>  ·  Status: open  ·  Severity: later
 - Evidence: [docs/zetaris-usl.md](docs/zetaris-usl.md#future-work); the USL covers 3M and Solventum only (`zetaris/usl/20_activate_company.sql`).
 
 ## B-38: Loop B registers per-company views, not USL sources
-Found in: #<this PR>  ·  Status: open  ·  Severity: later
+Found in: #56  ·  Status: open  ·  Severity: later
 - Out of scope because: growing the USL during a run means re-activating `company`, `filing` and `fact` with one more `UNION ALL` branch per new company (USL activation takes no incremental source on 2.4.3.1), plus moving every agent read onto the USL tables. It is the long-table redesign deferred after the Zetaris memory triage.
 - Safe to leave because: the per-company views work in live mode for any SEC registrant (coverage sweep, 26 Oct), and the USL documents the target model.
 - Urgent if: the number of registered companies makes the per-company objects a memory or latency problem again (B-24).
