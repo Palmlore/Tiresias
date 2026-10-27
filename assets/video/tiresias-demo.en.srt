@@ -1,0 +1,178 @@
+1
+00:00:00,300 --> 00:00:05,703
+In early 2024, 3M reported its 2023
+revenue as 32.7 billion dollars.
+
+2
+00:00:05,703 --> 00:00:09,358
+A year later, the same year read 24.6
+billion.
+
+3
+00:00:09,358 --> 00:00:11,583
+Eight billion dollars, gone.
+
+4
+00:00:11,583 --> 00:00:17,780
+An analyst needs to know why, and the
+answer is scattered across many filings.
+
+5
+00:00:18,580 --> 00:00:19,850
+This is Tiresias.
+
+6
+00:00:19,850 --> 00:00:24,409
+It asks why, step by step, and backs each
+step with evidence.
+
+7
+00:00:24,409 --> 00:00:25,679
+This run is live:
+
+8
+00:00:25,679 --> 00:00:32,180
+every read goes through Zetaris, and
+NVIDIA Nemotron gives the critic a second
+opinion.
+
+9
+00:00:32,980 --> 00:00:33,898
+Three voices.
+
+10
+00:00:33,898 --> 00:00:37,500
+Tiresias proposes a cause and measures it
+with SQL.
+
+11
+00:00:37,500 --> 00:00:39,830
+The Sphinx, our critic, tests it:
+
+12
+00:00:39,830 --> 00:00:43,220
+is it a real cause, and do the numbers add
+back?
+
+13
+00:00:45,980 --> 00:00:47,153
+Here it hits a wall.
+
+14
+00:00:47,153 --> 00:00:51,025
+The drop points to a spin-off, but 3M's
+own data can't measure it.
+
+15
+00:00:51,025 --> 00:00:53,020
+So it asks before it goes looking.
+
+16
+00:00:53,820 --> 00:01:00,484
+Tiresias searches the filings and finds
+the new company the spin-off created, even
+though the names have nothing in common.
+
+17
+00:01:00,484 --> 00:01:04,060
+I approve, and Zetaris registers its data
+while the run continues.
+
+18
+00:01:08,020 --> 00:01:11,162
+The Sphinx adds that company's revenue
+back.
+
+19
+00:01:11,162 --> 00:01:17,302
+The gap left is 126 million, just 1.6
+percent of the change, so the cause is
+accepted.
+
+20
+00:01:17,302 --> 00:01:18,087
+The answer:
+
+21
+00:01:18,087 --> 00:01:20,800
+re-base 2023 on continuing operations.
+
+22
+00:01:20,800 --> 00:01:23,299
+The chips show what served the run:
+
+23
+00:01:23,299 --> 00:01:27,940
+Zetaris, Nemotron through Meterless
+Nightshift, and H-MEM memory.
+
+24
+00:01:28,753 --> 00:01:34,505
+That second opinion is a real model call,
+and the trace names the model that
+answered.
+
+25
+00:01:34,505 --> 00:01:37,314
+Models suggest; SQL and the critic decide.
+
+26
+00:01:38,120 --> 00:01:41,984
+Click any link to see the SQL and the rows
+behind it.
+
+27
+00:01:41,984 --> 00:01:43,880
+No claim without evidence.
+
+28
+00:01:46,320 --> 00:01:49,483
+What worked becomes a lesson in Meterless
+H-MEM:
+
+29
+00:01:49,483 --> 00:01:50,933
+a path, not an answer.
+
+30
+00:01:50,933 --> 00:01:56,600
+A similar question about GE recalls it,
+and the run takes three steps instead of
+five.
+
+31
+00:02:00,820 --> 00:02:01,970
+Switch to Truth:
+
+32
+00:02:01,970 --> 00:02:04,700
+the same run, with every step counted.
+
+33
+00:02:14,153 --> 00:02:20,763
+We also built a Zetaris semantic layer
+over the same SEC data, with keys and
+data-quality rules.
+
+34
+00:02:20,763 --> 00:02:26,754
+On its own, it reaches the same 126
+million, and it flags the facts we can't
+trace yet.
+
+35
+00:02:34,787 --> 00:02:39,119
+Every action is logged, so every answer
+can be audited.
+
+36
+00:02:39,119 --> 00:02:39,828
+Tiresias:
+
+37
+00:02:39,828 --> 00:02:41,876
+ask why, get the evidence.
+
+38
+00:02:41,876 --> 00:02:45,027
+Try it at tiresias dot palmlore dot com.

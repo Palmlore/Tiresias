@@ -27,7 +27,7 @@ Open the rest only when the task needs them:
 | `input_examples/` | 4 cases (inputs): three GE and 3M (04, the lead example) |
 | `output_examples/`, `logs/samples/` | Real outputs and traces from real runs only (never read at runtime) |
 | `scripts/` | `setup.sh` (one-command demo setup, `--check-live`), `check_secrets.sh`, `validate_metadata.sh`, `zetaris_probe.py`, `fetch_sample.py`, `perf_smoke.py` (live latency per phase), `verify_audit.py` (re-checks the verifier audit's recorded classes), `memory_demo.py` (H-MEM demo against a running stack), `render_brand.py`, `render_art.py`, `verify_brand_assets.py` |
-| `assets/` | Submission brand, characters, illustrations, icons and the deck PDF (to come) ([assets/README.md](assets/README.md)). Not in the agent image. |
+| `assets/` | Submission brand, characters, illustrations, icons, screenshots, the video poster and captions, and the deck PDF ([assets/README.md](assets/README.md)). Not in the agent image. |
 | `data/sample/` | Offline SEC slice for sample mode (GE, GEHC, GEV, and 3M/Solventum for example 04, with the one cached EDGAR full-text search `fts_<hash>.json` its scout reads), with `PROVENANCE.json` |
 | `BACKLOG.md` | Open gaps deferred out of a PR (severity, reason, bound, review point); closed ones as one line each |
 | `metadata.json` | Sponsor metadata (community schema 0.1). Keep statuses honest. |

@@ -13,7 +13,7 @@
 | **Event** | Open Agent Hackathon 2026 (GenAI Works), 22–27 October 2026 |
 | **Track** | Reasoning Architecture |
 | **Team** | Palmlore (solo) |
-| **Status** | 🚧 **Build window open until 27 Oct 2026.** Each section says what works today; nothing is marked working that you can't run. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
+| **Status** | ✅ **Submitted** to the Open Agent Hackathon 2026 (build window 22–27 Oct 2026). Each section says what works; nothing is marked working that you can't run. Progress: [docs/CHECKLIST.md](docs/CHECKLIST.md). |
 | **Video** | **[youtu.be/kTxGhLfjdzk](https://youtu.be/kTxGhLfjdzk)** (2:46, unlisted, English captions): a live run of the 3M case through Zetaris and Nightshift (Nemotron), the source gate, the answer and its evidence, an H-MEM lesson recalled for GE, the Truth view and the Zetaris USL. Narration is text-to-speech ([ai-usage.md](docs/ai-usage.md#video)). |
 | **Deck** | **[assets/deck/tiresias-deck.pdf](assets/deck/tiresias-deck.pdf)** (22 slides, PDF): problem and users, solution, architecture, stack, Zetaris and Meterless, what was unique, product screenshots, future work |
 | **Try it online** | **[tiresias.palmlore.com](https://tiresias.palmlore.com)**: a demo-grade hosted copy of the web UI, sample mode only (cached SEC data, rules only), on deliberately small resources to keep its cost bounded: it can be slow or busy. Run it locally for live mode and full performance. It runs the 27 Oct build (main `c8da16c`): the Story view, decision prompts and the final brand marks. |

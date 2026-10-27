@@ -21,7 +21,7 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `deck/tiresias-deck.pdf` | The slide deck, as submitted (22 slides, exported 27 Oct from the Slides artifact; slides are images with a text layer) | PDF, 16:9, fonts embedded, ≤ 20 MB |
 | `deck/source/` **[not committed]** | Deck source: the deck was built in a private claude.ai Slides artifact; the PDF is the submitted copy | text where possible |
 | `video/poster.png` | Video poster frame: the deck cover | 1920×1080 PNG |
-| `video/tiresias-demo.en.srt` **[TBC]** (needs the recorded video) | Captions for the demo video | SRT |
+| `video/tiresias-demo.en.srt` | English captions for the demo video (https://youtu.be/kTxGhLfjdzk), 38 cues timed to the narration | SRT |
 
 Keep the whole folder under about 30 MB; no Git LFS. The agent image never includes `assets/` (the root `.dockerignore` is an allow-list).
 
@@ -58,7 +58,7 @@ One slide or more per point, in this order, the deck runs to about 23 slides wit
 4. The technical stack (Python/FastAPI agent, TypeScript H-MEM service, Zetaris Lightning SQL, Docker)
 5. How Zetaris and Meterless were used (status wording from [docs/sponsor-technology.md](../docs/sponsor-technology.md), at the status it states)
 6. What was unique about the sponsor tech use (registering a new Zetaris source while the agent runs; the counterfactual test on the returned rows)
-7. Product visuals (`screenshots/`) **[TBC]**: leave a placeholder slide; never mock up a UI as if it were real
+7. Product visuals (`screenshots/`): real captures only; never mock up a UI as if it were real
 8. Future enhancements (from [BACKLOG.md](../BACKLOG.md) and the open CHECKLIST items)
 
 Plus a title slide (`brand/cover.png`) and a closing slide with the repo URL and track (*Reasoning Architecture*).
@@ -84,3 +84,4 @@ Add one row per file when it lands.
 | `screenshots/05`, `06` (the live answer with the "Nightshift · Nemotron 3 Ultra 550B" chip; the Exchange tab's Zetaris and H-MEM calls) | Frames of a recorded live run on the host (live mode, depth thorough, Zetaris local bundle, Nightshift Runtime), 2026-10-27 | 3M case 04 as above; 35 Zetaris SQL calls, one Nemotron call | Apache-2.0 |
 | `screenshots/10` (USL explorer) | Frame of [zetaris/usl/explorer.html](../zetaris/usl/explorer.html), generated from `docs/measurements/zetaris-usl-2026-10-27.jsonl` | Row counts 2 / 1,262 / 539, DQ results (12 and 245 invalid) from that log | Apache-2.0 |
 | `video/poster.png` | Page 1 of `deck/tiresias-deck.pdf`, rendered at 1920×1080 | None | Apache-2.0 |
+| `video/tiresias-demo.en.srt` | Generated from the video script and the shot timings of the final cut, 2026-10-28 (Claude Code); the text is the narration | The narration's figures: 3M $32.7B → $24.6B, gap $126M (1.6%), GE 3 steps vs 5 | Apache-2.0 |
