@@ -1,0 +1,1 @@
+UPDATE USL lightning.metastore.tiresias_usl.sec_evidence SET DESCRIPTION 'Tiresias evidence model for the 3M -> Solventum spin-off (input_examples/04): companies, their filing histories and the XBRL facts the investigation reads, one table each across both companies, with the relationships declared and checked.'

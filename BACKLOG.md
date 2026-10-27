@@ -50,7 +50,7 @@ Found in: #9  ·  Status: open  ·  Severity: later
 - Safe to leave because: for a large filer whose `recent` block no longer reaches the event, the hypothesiser finds no 8-K for the window and the run ends at `evidence-frontier`, never with an invented event; a candidate whose early filings fell out of `recent` fails the scout's "registrant by the disposal" rule and is refused, not guessed.
 - Urgent if: a judge's question is about an event several years back at a filer with many filings (for example insider Forms 3/4/5 push old 8-Ks out of `recent`).
 - Review at: after submission
-- Evidence: `zetaris/sql/21_filings_view.sql`, `zetaris/sql/37_submissions_profile.sql`; see the end states in `docs/measurements/live-any-company.md`.
+- Evidence: `zetaris/sql/21_filings_view.sql`, `zetaris/sql/37_submissions_profile.sql`; see the end states in `docs/measurements/live-any-company.md`. Measured by the USL's `fact.accn` rule on 27 Oct: 245 of 539 3M/Solventum facts (3M FY2009–FY2018) cite a filing outside `filings.recent` ([docs/zetaris-usl.md](docs/zetaris-usl.md#1c-the-usl-tiresias_uslsec_evidence)).
 
 ## B-11: Revenue is only recognised under three us-gaap concepts
 Found in: #9  ·  Status: open  ·  Severity: judge-visible
@@ -219,6 +219,22 @@ Found in: docs/sweep-correctness-audit  ·  Status: open  ·  Severity: judge-vi
 - Urgent if: a judge tries Danaher (Veralto), Becton Dickinson (Embecta) or RTX (Carrier + Otis): each counterparty's own figure would reconcile within 0.3% of the original, but the run ends at the evidence frontier.
 - Review at: after submission.
 - Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Correctness audit, frontier table); audit JSONL `would_reconcile: true` for DHR, RTX, BDX.
+
+## B-37: The agent does not cross-check its answer against the USL
+Found in: #56  ·  Status: open  ·  Severity: later
+- Out of scope because: the USL PR adds a model and its checks next to the agent, with no runtime change on feature-freeze day. A cross-check means a new adapter call after Loop B's reconciliation, a trace line and a note on the evidence.
+- Safe to leave because: the USL reproduces the agent's case 04 residual ($126M) independently in `zetaris/usl/41_reconcile_2023.sql`, and the agent's own evidence is unchanged and traced.
+- Urgent if: a judge or sponsor asks for the agent itself to use the USL in a run.
+- Review at: after submission
+- Evidence: [docs/zetaris-usl.md](docs/zetaris-usl.md#future-work); the USL covers 3M and Solventum only (`zetaris/usl/20_activate_company.sql`).
+
+## B-38: Loop B registers per-company views, not USL sources
+Found in: #56  ·  Status: open  ·  Severity: later
+- Out of scope because: growing the USL during a run means re-activating `company`, `filing` and `fact` with one more `UNION ALL` branch per new company (USL activation takes no incremental source on 2.4.3.1), plus moving every agent read onto the USL tables. It is the long-table redesign deferred after the Zetaris memory triage.
+- Safe to leave because: the per-company views work in live mode for any SEC registrant (coverage sweep, 26 Oct), and the USL documents the target model.
+- Urgent if: the number of registered companies makes the per-company objects a memory or latency problem again (B-24).
+- Review at: after submission
+- Evidence: [docs/zetaris-usl.md](docs/zetaris-usl.md#2c-how-to-make-the-usl-stronger) (the incremental-activation requirement); `zetaris/sql/20_concept_view.sql`.
 
 ## Closed
 
