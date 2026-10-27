@@ -498,8 +498,12 @@ def test_prompt_proceeds_automatically_after_five_seconds():
         "for (let i = 0; i < 4; i++) { tickAll(); seen.push(p.left); }\n"
         "const before = posts.length;\n"
         "tickAll();\n"
+        "const card = starCard(line);\n"
         "setTimeout(() => console.log(JSON.stringify({ seen, before, posts, state: p.state,\n"
-        "  timers: timers.size, ask: sphinxAsks(line), by: answeredBy(posts[0].body.note) })), 0);"
+        "  timers: timers.size, ask: sphinxAsks(line), by: answeredBy(posts[0].body.note),\n"
+        "  auto: outcomeText({ choice: 'frontier', by: 'auto' }, card),\n"
+        "  took: outcomeText({ choice: 'frontier', by: 'you' }, card),\n"
+        "  other: outcomeText({ choice: 'prune', by: 'you' }, card) })), 0);"
     )
     assert got["seen"] == [5, 4, 3, 2, 1] and got["before"] == 0  # no POST before 5 s
     assert got["posts"] == [
@@ -516,6 +520,16 @@ def test_prompt_proceeds_automatically_after_five_seconds():
     assert got["state"] == "answered" and got["timers"] == 0
     assert got["ask"] == "Should we look for the missing data?"
     assert got["by"] == "auto"
+    assert (
+        got["auto"]
+        == "The Sphinx recommended “Look for the missing data”. I didn't choose; that stood."
+    )
+    assert got["took"] == "I chose “Look for the missing data”, the Sphinx's recommendation."
+    assert got["other"] == "I chose “Drop this cause”."
+    truth = (WEB / "app.js").read_text()
+    assert "The Sphinx recommended" in truth and "I didn't choose; that stood." in truth
+    assert "I accepted the Sphinx's recommendation" in truth
+    assert "Sphinx's recommendation" in truth
 
 
 def test_prompt_proceed_posts_now_and_take_over_cancels_the_timer():
@@ -559,10 +573,10 @@ def test_take_over_holds_the_gate_and_nothing_ever_proceeds_on_its_own():
     assert got["state"] == "takeover" and got["timers"] == 0
     assert got["held"] and got["outcome"] is None
     assert got["budget"] == {"choice": None, "by": "budget"}
-    assert "nothing was applied on your behalf" in got["words"]
+    assert "nothing was applied on my behalf" in got["words"]
     js = (WEB / "story.js").read_text()
     star = js[js.index("function starItem") : js.index("function sphinxPrompt")]
-    assert "Paused · your call" in star and "!done && !held && c.deadline" in star
+    assert "Paused · my decision" in star and "!done && !held && c.deadline" in star
 
 
 def test_take_over_on_a_closed_gate_shows_what_applied():

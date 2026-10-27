@@ -23,40 +23,18 @@
   <rect x="946.96" y="477.36" width="36.08" height="8.2" rx="4.1" fill="#7EB6C9" opacity="0.9"/>
   <rect x="992.88" y="477.36" width="72.16" height="8.2" rx="4.1" fill="#EDE6D9" opacity="0.55"/>
 <g transform="translate(96 110) scale(0.859375)">
-  <rect x="28" y="14" width="14" height="100" rx="7" ry="7" fill="#D4A054"/>
   <defs>
-    <mask id="veil-logo" maskUnits="userSpaceOnUse">
-      <rect x="0" y="0" width="128" height="128" fill="white"/>
-      <rect x="50" y="51.0" width="72" height="14" fill="black"/>
+    <mask id="eye-cover" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="128" height="128" fill="black"/>
+      <ellipse cx="64" cy="58" rx="56" ry="36" fill="white"/>
+      <circle cx="64" cy="100" r="26" fill="black"/>
     </mask>
   </defs>
-  <circle cx="86" cy="58" r="36" fill="#D4A054" mask="url(#veil-logo)"/>
+  <rect x="0" y="0" width="128" height="128" fill="#EDE6D9" mask="url(#eye-cover)"/>
 </g>
   <text x="96" y="330" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="110" font-weight="700" fill="#D4A054" text-anchor="start" letter-spacing="-1">Tiresias</text>
   <text x="100" y="400" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="44" font-weight="600" fill="#F4EFE4" text-anchor="start">Ask why. Get the evidence.</text>
-<g transform="translate(100 450) scale(0.65625)">
-  <rect x="16" y="8" width="14" height="112" rx="7" ry="7" fill="#D4A054"/>
-  <polygon points="44,70 40,120 118,120 102,70" fill="#D4A054"/>
-  <defs>
-    <mask id="veil-tiresias-c0" maskUnits="userSpaceOnUse">
-      <rect x="0" y="0" width="128" height="128" fill="white"/>
-      <rect x="56" y="40.0" width="52" height="12" fill="black"/>
-    </mask>
-  </defs>
-  <circle cx="82" cy="46" r="26" fill="#D4A054" mask="url(#veil-tiresias-c0)"/>
-</g>
-<g transform="translate(238 450) scale(0.65625)">
-  <polygon points="36,44 50,6 64,44" fill="#7EB6C9"/>
-  <polygon points="64,44 78,6 92,44" fill="#7EB6C9"/>
-  <circle cx="64" cy="62" r="30" fill="#7EB6C9"/>
-  <polygon points="90,48 122,40 122,56 94,60" fill="#7EB6C9"/>
-</g>
-<g transform="translate(376 450) scale(0.65625)">
-  <rect x="18" y="16" width="12" height="100" rx="3" ry="3" fill="#9B968C"/>
-  <rect x="98" y="16" width="12" height="100" rx="3" ry="3" fill="#9B968C"/>
-  <rect x="18" y="16" width="92" height="12" rx="3" ry="3" fill="#9B968C"/>
-  <circle cx="64" cy="58" r="16" fill="#EDE6D9"/>
-  <rect x="48" y="76" width="32" height="40" rx="8" ry="8" fill="#EDE6D9"/>
-</g>
+  <text x="100" y="472" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="28" font-weight="400" fill="#9B968C" text-anchor="start">An evidence-backed “5 Whys” agent for</text>
+  <text x="100" y="512" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="28" font-weight="400" fill="#9B968C" text-anchor="start">financial analysts on SEC filings.</text>
   <text x="100" y="600" font-family="Inter, 'SF Pro Display', system-ui, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="500" fill="#9B968C" text-anchor="start" letter-spacing="1">Open Agent Hackathon 2026 · Reasoning Architecture</text>
 </svg>

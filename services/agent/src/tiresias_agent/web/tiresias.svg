@@ -1,13 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Tiresias">
   <title>Tiresias</title>
-  <rect x="16" y="8" width="14" height="112" rx="7" ry="7" fill="#D4A054"/>
-  <polygon points="44,70 40,120 118,120 102,70" fill="#D4A054"/>
   <defs>
-    <mask id="veil-tiresias" maskUnits="userSpaceOnUse">
-      <rect x="0" y="0" width="128" height="128" fill="white"/>
-      <rect x="56" y="40.0" width="52" height="12" fill="black"/>
+    <mask id="eye-cover" maskUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="128" height="128" fill="black"/>
+      <ellipse cx="64" cy="58" rx="56" ry="36" fill="white"/>
+      <circle cx="64" cy="100" r="26" fill="black"/>
     </mask>
   </defs>
-  <circle cx="82" cy="46" r="26" fill="#D4A054" mask="url(#veil-tiresias)"/>
+  <rect x="0" y="0" width="128" height="128" fill="#EDE6D9" mask="url(#eye-cover)"/>
 </svg>

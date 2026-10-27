@@ -113,10 +113,12 @@ def edge(x1, y1, x2, y2, color, width, dash: str | None = None, opacity=1.0) -> 
 # ---- the why-tree motif -----------------------------------------------------------------------
 # One root, three candidate causes; the middle one is accepted and drills one level deeper to the
 # evidence (a small table of rows). Pruned causes are stone and dashed and end in a cross. The
-# same motif is used on the cover, the social card and the empty state, at different scales.
+# cover and the social card use this motif. Labels default off, so only the cover names the parts.
 
 
-def why_tree(ox: float, oy: float, s: float, dim: float = 1.0, rows: bool = True) -> str:
+def why_tree(
+    ox: float, oy: float, s: float, dim: float = 1.0, rows: bool = True, labels: bool = False
+) -> str:
     """Why-tree drawn in a 600×520 box at (ox, oy), scaled by s."""
 
     def X(v):
@@ -180,6 +182,15 @@ def why_tree(ox: float, oy: float, s: float, dim: float = 1.0, rows: bool = True
             out.append(
                 f'  <rect x="{lx + 74 * s:g}" y="{ry:g}" width="{88 * s:g}" height="{10 * s:g}" rx="{5 * s:g}" fill="{PARCHMENT}" opacity="{0.55 * dim:g}"/>\n'
             )
+    if labels:
+        # ~22px on the cover (s=1.30). y is the alphabetic baseline.
+        label_size = 22 * s / 1.30
+        # Right of the solid bronze middle node, clear of the connector under it.
+        out.append(text(X(344), Y(236), "accepted", label_size, TEXT, 600))
+        # Once, in the crook of the left dashed branch, above its cross.
+        out.append(text(X(156), Y(182), "pruned", label_size, TEXT, 600))
+        # Right of the evidence table.
+        out.append(text(X(406), Y(426), "rows", label_size, TEXT, 600))
     return "".join(out)
 
 
@@ -190,7 +201,7 @@ def cast_row(x: float, y: float, size: float, gap: float, labels: bool, label_si
     """Tiresias, the Sphinx and You side by side, each with its role (as in the UI cast strip)."""
     cast = [
         (render_brand.tiresias_svg(), "Tiresias proposes", BRONZE),
-        (render_brand.sphinx_svg(), "The Sphinx tests", CELESTE),
+        (render_brand.sphinx_svg(), "The Sphinx tests", BRONZE),
         (render_brand.you_svg(), "You decide", PARCHMENT),
     ]
     out = []
@@ -215,7 +226,7 @@ def cast_row(x: float, y: float, size: float, gap: float, labels: bool, label_si
 def cover_svg() -> str:
     w, h = 1920, 1080
     body = []
-    body.append(why_tree(1110, 170, 1.30, dim=1.0))
+    body.append(why_tree(1110, 170, 1.30, dim=1.0, labels=True))
     body.append(place(render_brand.logo_svg(), 150, 150, 150))
     body.append(text(150, 430, "Tiresias", 150, BRONZE, 700, spacing=-2))
     body.append(text(156, 520, "Ask why. Get the evidence.", 58, TEXT, 600))
@@ -251,7 +262,8 @@ def social_svg() -> str:
     body.append(place(render_brand.logo_svg(), 96, 110, 110))
     body.append(text(96, 330, "Tiresias", 110, BRONZE, 700, spacing=-1))
     body.append(text(100, 400, "Ask why. Get the evidence.", 44, TEXT, 600))
-    body.append(cast_row(100, 450, 84, 54, False, 0))
+    body.append(text(100, 472, "An evidence-backed “5 Whys” agent for", 28, STONE))
+    body.append(text(100, 512, "financial analysts on SEC filings.", 28, STONE))
     body.append(
         text(
             100,
@@ -267,16 +279,13 @@ def social_svg() -> str:
 
 
 def empty_state_svg() -> str:
-    """For the Investigation panel before a run: the tree waits, the cast stands by. No text."""
+    """The question node alone: parchment ring, bronze core, before any cause. No text."""
     w, h = 640, 360
-    body = []
-    body.append(why_tree(170, 20, 0.62, dim=0.85))
-    body.append(place(render_brand.tiresias_svg(), 40, 40, 96, "e1"))
-    body.append(place(render_brand.sphinx_svg(), 504, 128, 96, "e2"))
-    body.append(place(render_brand.you_svg(), 60, 232, 96, "e3"))
-    return doc(
-        w, h, "Tiresias, the Sphinx and You beside an empty why-tree", "".join(body), bg=None
+    cx, cy, s = w / 2, h / 2, 2.8
+    body = ring(cx, cy, 34 * s, 22 * s, PARCHMENT) + (
+        f'  <circle cx="{cx:g}" cy="{cy:g}" r="{12 * s:g}" fill="{BRONZE}"/>\n'
     )
+    return doc(w, h, "An empty why-tree: the question, before any cause", body, bg=None)
 
 
 def why_tree_svg() -> str:
