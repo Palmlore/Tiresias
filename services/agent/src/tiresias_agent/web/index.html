@@ -6,7 +6,7 @@
   <title>Tiresias</title>
   <meta name="description" content="An evidence-backed 5 Whys root-cause agent for SEC filings.">
   <link rel="icon" href="logo.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="app.css?v=story-if">
 </head>
 <body>
   <header class="top">
@@ -20,15 +20,15 @@
       <span id="memory-badge" class="badge muted" hidden></span>
       <div class="view-switch" role="group" aria-label="View">
         <button type="button" data-view="story" aria-pressed="true">Story</button>
-        <button type="button" data-view="debug" aria-pressed="false">Debug view</button>
+        <button type="button" data-view="debug" aria-pressed="false">Truth</button>
       </div>
       <details class="cog">
         <summary aria-label="Run settings" title="Run settings">⚙</summary>
         <div class="cog-menu">
           <label class="field"><span>Decisions</span>
             <select id="hitl">
-              <option value="auto" selected>Automatic: Tiresias follows its recommendation</option>
-              <option value="interactive">Pause at each decision (5 s to take over)</option>
+              <option value="interactive" selected>Pause at each decision (5 s to take over)</option>
+              <option value="auto">Automatic: Tiresias follows its recommendation</option>
             </select></label>
           <label class="field"><span>Memory</span>
             <select id="memory">
@@ -55,36 +55,34 @@
   <!-- Story view (default): story.js -->
   <main id="story" class="story" aria-label="Investigation">
     <section class="s-ask" aria-label="Ask">
-      <p class="s-lead">Ask why a reported figure changed. Try one:</p>
-      <div id="s-examples" class="s-examples"></div>
-      <label class="s-search"><span class="sr">Company</span>
-        <input id="s-q" type="search" placeholder="Or search a company (ticker or name)…" autocomplete="off"></label>
-      <div id="s-companies" class="s-companies"></div>
-      <div id="s-suggestions" class="s-suggestions" aria-live="polite"></div>
+      <p class="s-lead">Pick a question. Drag sideways. One click starts the investigation.</p>
+      <div id="s-examples" class="s-carousel"></div>
     </section>
 
     <section id="s-empty" class="s-empty">
-      <img src="empty-investigation.svg" alt="" width="420">
-      <p class="note">Tiresias proposes causes, the Sphinx tests each one against the filings, and the why-tree keeps only what the rows support.</p>
+      <p class="s-expect">The conversation grows as Tiresias asks why and the Sphinx tests each answer. The bar below will fill from Understand to Answer.</p>
     </section>
 
-    <section id="s-run" hidden>
-      <p id="s-question" class="question"></p>
-      <ol id="s-steps" class="s-steps" aria-label="Progress"></ol>
+    <section id="s-run" class="s-board" hidden>
+      <ol id="s-steps" class="s-progress" aria-label="Progress"></ol>
+      <div id="s-now" class="s-now" hidden></div>
       <div id="s-result" class="s-result" hidden></div>
-      <div class="s-panes">
-        <div class="s-tree-pane" aria-label="Why-tree"><h3>Why-tree</h3><div id="s-tree"></div></div>
-        <details id="s-convo" class="s-convo" open>
-          <summary>Show how we got here</summary>
+      <div class="s-stage">
+        <section class="s-chat-pane" aria-label="Conversation">
+          <h3 class="s-stage-h">Conversation</h3>
           <ol id="s-turns" class="s-turns" aria-live="polite"></ol>
-        </details>
+        </section>
+        <aside class="s-tree-pane" aria-label="Why-tree">
+          <h3 class="s-stage-h">Why-tree</h3>
+          <div id="s-tree"></div>
+        </aside>
       </div>
     </section>
   </main>
 
-  <aside id="s-console" class="s-console" hidden aria-label="Console">
+  <aside id="s-console" class="s-console" hidden aria-label="Cellar">
     <div class="s-console-bar">
-      <button id="s-console-toggle" type="button" class="linkish" aria-expanded="false">Console</button>
+        <button id="s-console-toggle" type="button" class="linkish" aria-expanded="false">Cellar</button>
       <div class="tabs" role="group" aria-label="Console tabs">
         <button type="button" data-tab="trace">Trace</button>
         <button type="button" data-tab="exchange">Exchange</button>
@@ -97,7 +95,7 @@
     <div id="s-console-body" class="s-console-body"></div>
   </aside>
 
-  <!-- Debug view: the full page (app.js) -->
+  <!-- Truth view: the full page (app.js) -->
   <main class="layout" hidden>
     <!-- 1. Ask -->
     <section class="panel ask" aria-labelledby="ask-h">
@@ -187,7 +185,7 @@
     <a href="/docs">API</a>
   </footer>
 
-  <script src="app.js"></script>
-  <script src="story.js"></script>
+  <script src="app.js?v=story-if"></script>
+  <script src="story.js?v=story-if"></script>
 </body>
 </html>

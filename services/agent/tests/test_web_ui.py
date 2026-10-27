@@ -28,8 +28,8 @@ def test_ui_page_and_assets_are_served():
     page = client.get("/ui/")
     assert page.status_code == 200
     assert "text/html" in page.headers["content-type"]
-    assets = re.findall(r'(?:src|href)="([a-z-]+\.(?:js|css|svg))"', page.text)
-    assert {"app.js", "story.js", "empty-investigation.svg"} <= set(assets)
+    assets = re.findall(r'(?:src|href)="([a-z-]+\.(?:js|css|svg))(?:\?[^"]*)?"', page.text)
+    assert {"app.js", "story.js"} <= set(assets)
     # the progress bar's icons are named in story.js, not in the page
     assets += re.findall(r'icon: "([a-z-]+\.(?:svg|png))"', (WEB / "story.js").read_text())
     assert len([a for a in assets if a.startswith("phase-")]) == 5
@@ -420,7 +420,7 @@ def test_default_run_mode_is_auto_and_examples_are_the_input_examples():
         page.index('<select id="hitl">') : page.index("</select>", page.index('<select id="hitl">'))
     ]
     first = re.search(r'<option value="([a-z]+)"( selected)?', hitl)
-    assert first.group(1) == "auto" and first.group(2) == " selected"
+    assert first.group(1) == "interactive" and first.group(2) == " selected"
     assert "Run settings" not in page[page.index('<section class="panel ask"') :]
     node = shutil.which("node")
     if not node:
@@ -458,7 +458,7 @@ def test_story_hooks_read_the_same_run_as_the_debug_view():
     ):
         assert hook in js, hook
     page = (WEB / "index.html").read_text()
-    assert page.index('src="app.js"') < page.index('src="story.js"')
+    assert page.index('src="app.js') < page.index('src="story.js')
     assert '<main class="layout" hidden>' in page and 'data-view="debug"' in page
 
 

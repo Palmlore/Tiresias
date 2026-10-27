@@ -11,7 +11,7 @@ Images and the slide deck for the submission. Rows marked **[TBC]** depend on so
 | `brand/cover.png` | Project image: HackOS submission card, README header, video thumbnail | 1920×1080 PNG (16:9), ≤ 1 MB |
 | `brand/social.png` | Link preview (GitHub social preview) | 1280×640 PNG, ≤ 1 MB |
 | `brand/cover.svg`, `brand/social.svg` | Sources of the two PNGs above (`scripts/render_art.py --png` renders them with headless Chrome) | SVG |
-| `characters/{tiresias,sphinx,you}.svg` | The three characters as 16–32 px marks (headers, inline, Debug) | SVG (+ 512×512 PNG each), one colour family |
+| `characters/{tiresias,sphinx,you}.svg` | The three characters as 16–32 px marks (headers, inline, Truth view) | SVG (+ 512×512 PNG each), one colour family |
 | `characters/{tiresias,sphinx,you}-portrait.png` | Story-view avatars (circular, one product ring). Tiresias linen/ivory; Sphinx golden sandstone; You = cooler stone gate + spark | 512×512 PNG, transparent corners |
 | `illustrations/empty-investigation.svg` | The cast beside an empty why-tree, for the UI's Investigation panel before a run (no text) | SVG 640×360, transparent |
 | `illustrations/why-tree.svg` | The why-tree motif: one accepted cause drilled to its evidence rows, two pruned | SVG 600×520, transparent |
@@ -43,7 +43,7 @@ Keep the whole folder under about 30 MB; no Git LFS. The agent image never inclu
 ## Visual direction
 
 - **Characters, introduced gradually and never more than three:** **Tiresias**, the blind seer and the agent's voice (veiled eyes, a staff; calm, deliberate). **The Sphinx**, the critic who asks "Why?" and guards uncomfortable truths. **You**, the analyst at the gates who judges and decides. Simple, flat icons that read at 32 px; no gore, no mythological clutter.
-- **Story portraits (locked 2026-10-26):** round chat avatars, one shared bronze product ring (not ovals, not a second painted frame). **Tiresias** = linen/ivory robe, copper staff (`tiresias-portrait.png`). **Sphinx** = golden sandstone brick bust — stone with a gold hue, to contrast the linen (`sphinx-portrait.png`). **You** = cooler/darker stone gate + spark, no face (`you-portrait.png`). Oil-paint dark charcoal ground. Geometric SVGs stay the 16–32 px Debug marks. Do not regenerate these three without a new lock.
+- **Story portraits (locked 2026-10-26):** round chat avatars, one shared bronze product ring (not ovals, not a second painted frame). **Tiresias** = linen/ivory robe, copper staff (`tiresias-portrait.png`). **Sphinx** = golden sandstone brick bust — stone with a gold hue, to contrast the linen (`sphinx-portrait.png`). **You** = cooler/darker stone gate + spark, no face (`you-portrait.png`). Oil-paint dark charcoal ground. Geometric SVGs stay the 16–32 px Truth-view marks. Don't paint the Story portraits into these SVGs: they must stay distinct at 16 px. Do not regenerate these three without a new lock.
 - **Tone:** evidence over oracle. The tagline: *"Tiresias named the cause first, but had no evidence and was not believed. This Tiresias brings the evidence."*
 - **Palette:** a dark ink background, one warm accent (bronze or gold) for Tiresias, one cool accent for the Sphinx, and neutral text; WCAG AA contrast for any text. Tokens: [`brand/palette.json`](brand/palette.json). Use the same palette in the deck, diagrams and UI.
 - **Type:** one sans-serif family for text, one monospace for SQL and trace lines; deck body text ≥ 24 pt.
