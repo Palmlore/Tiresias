@@ -124,7 +124,8 @@ check_live() {
          && grep -q '"gev_facts_raw"' "$BODY_FILE"; then
         ok "showcase sources" "TIRESIAS_SEC ge/gehc/gev_facts_raw registered"
       else
-        missing "showcase sources" "not registered (HTTP $code); cd services/agent && uv run python -m tiresias_agent.adapters.zetaris bootstrap"
+        # Not an issue: a live run registers any company it needs behind the source gate.
+        note "showcase sources" "GE/GEHC/GEV not registered yet; a live run registers them on demand, or pre-register: cd services/agent && uv run python -m tiresias_agent.adapters.zetaris bootstrap"
       fi
       if [ "$code" = 200 ] && grep -q '"mmm_facts_raw"' "$BODY_FILE" && grep -q '"solv_facts_raw"' "$BODY_FILE"; then
         note "example 04 sources" "3M and Solventum registered"
