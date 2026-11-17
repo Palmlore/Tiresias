@@ -16,10 +16,12 @@ spec:
   template:
     metadata:
       annotations:
-        # At most one instance: runs and H-MEM lessons live in that instance's memory, and the
-        # UI follows a run (SSE, gates) on the instance that started it. No minScale (0): with no
-        # traffic the service scales to zero and bills nothing; an open run holds a request, so
-        # the instance stays up until the run ends. The cost is a cold start after a quiet spell.
+        # Max 1: runs and H-MEM lessons live in that instance's memory, and the UI follows a run
+        # (SSE, gates) on the instance that started it. Min 0, set explicitly rather than left to
+        # the default: with no traffic the service scales to zero and bills nothing (min 1 cost
+        # about US$1.06 a day idle); an open run holds a request, so the instance stays up until
+        # the run ends. The cost is a cold start after a quiet spell.
+        autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "1"
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/container-dependencies: '{"agent": ["cognition"]}'
