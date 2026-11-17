@@ -1,5 +1,5 @@
-# Cloud Run service for the hosted demo: one instance, the agent with cognition (H-MEM) as a
-# sidecar on localhost, as in compose.yaml. Sample mode only (PUBLIC_DEMO), no secrets.
+# Cloud Run service for the hosted demo: at most one instance, the agent with cognition (H-MEM)
+# as a sidecar on localhost, as in compose.yaml. Sample mode only (PUBLIC_DEMO), no secrets.
 # deploy.sh fills in AGENT_IMAGE, COGNITION_IMAGE and RUN_SERVICE_ACCOUNT.
 apiVersion: serving.knative.dev/v1
 kind: Service
@@ -16,9 +16,10 @@ spec:
   template:
     metadata:
       annotations:
-        # Exactly one instance: runs and H-MEM lessons live in that instance's memory, and the
-        # UI follows a run (SSE, gates) on the instance that started it.
-        autoscaling.knative.dev/minScale: "1"
+        # At most one instance: runs and H-MEM lessons live in that instance's memory, and the
+        # UI follows a run (SSE, gates) on the instance that started it. No minScale (0): with no
+        # traffic the service scales to zero and bills nothing; an open run holds a request, so
+        # the instance stays up until the run ends. The cost is a cold start after a quiet spell.
         autoscaling.knative.dev/maxScale: "1"
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/container-dependencies: '{"agent": ["cognition"]}'
