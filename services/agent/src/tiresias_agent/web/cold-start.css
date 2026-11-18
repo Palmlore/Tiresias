@@ -1,4 +1,4 @@
-/* cold-start.css (cold-start-loader v0.1.0). The host app sets the --cs-* colours on :root (any
+/* cold-start.css (cold-start-loader v0.1.1). The host app sets the --cs-* colours on :root (any
    :root rule wins: these defaults sit in :where(), specificity 0, so load order does not matter).
    The skeleton markup is the app's own, drawn from its first complete screen (see the README). */
 :where(:root) {

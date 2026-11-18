@@ -24,12 +24,13 @@ REPO = WEB.parents[4]
 CFG = "const cfg = ColdStart.config({});\n"
 
 
-def _cold(body: str) -> object:
-    # Runs cold-start.js in Node (no DOM: the module exports its pure parts).
+def _cold(body: str, before: str = "") -> object:
+    # Runs cold-start.js in Node (no DOM: the module exports its pure parts). `before` runs ahead
+    # of the require, e.g. a stub DOM the script then finds as a page would.
     node = shutil.which("node")
     if not node:
         pytest.skip("node not on PATH")
-    prelude = f"const ColdStart = require({json.dumps(str(WEB / 'cold-start.js'))});\n"
+    prelude = before + f"const ColdStart = require({json.dumps(str(WEB / 'cold-start.js'))});\n"
     out = subprocess.run(
         [node, "-e", prelude + body], capture_output=True, text=True, timeout=30, check=True
     )
@@ -140,7 +141,14 @@ def test_pages_build_points_the_copy_at_the_api_and_refuses_anything_but_an_orig
     shipped = {p.name for p in WEB.iterdir() if p.is_file()}
     assert shipped <= {p.name for p in out.iterdir()}
     assert (WEB / "config.js").read_text().count('apiBase: ""') == 1  # source untouched
-    for bad in ("http://plain.example", "https://x.example/path", 'https://x.example"+1+"', ""):
+    bad_urls = (
+        "http://plain.example",
+        "https://x.example/path",
+        'https://x.example"+1+"',
+        'https://x.example\n"+alert(1)+"',  # grep would pass the first line
+        "",
+    )
+    for bad in bad_urls:
         res = subprocess.run(
             [str(script), bad, str(tmp_path / "bad")],
             check=False,
@@ -149,8 +157,13 @@ def test_pages_build_points_the_copy_at_the_api_and_refuses_anything_but_an_orig
             cwd=REPO,
         )
         assert res.returncode == 2, bad
+        assert not (tmp_path / "bad").exists(), bad  # refused before writing anything
     again = subprocess.run([str(script), url, str(out)], check=False, capture_output=True, cwd=REPO)
     assert again.returncode == 2  # never writes into a non-empty directory
+    # a relative OUT_DIR is the caller's, wherever the script lives
+    (tmp_path / "cwd").mkdir()
+    subprocess.run([str(script), url, "rel"], check=True, capture_output=True, cwd=tmp_path / "cwd")
+    assert (tmp_path / "cwd" / "rel" / "config.js").exists() and not (REPO / "rel").exists()
 
 
 def test_pages_workflow_is_a_no_op_until_configured_and_stays_out_of_ci():
@@ -195,3 +208,90 @@ def test_cors_answers_the_static_front_and_no_one_else():
     assert got["ok"] == "https://tiresias.palmlore.com"
     assert got["other"] is None and got["cred"] is None
     assert got["pre"] == 200 and got["pre_origin"] == "https://tiresias.palmlore.com"
+
+
+# A stub DOM: just what start() touches. textContent counts its writes (the card is a live region).
+DOM = (
+    "const node = () => { const n = { _t: '', writes: 0, hidden: true, style: {}, dataset: {},\n"
+    "  focused: false, focus() { this.focused = true; } };\n"
+    "  Object.defineProperty(n, 'textContent', { get() { return this._t; },\n"
+    "    set(v) { this._t = v; this.writes += 1; } }); return n; };\n"
+    "const hooks = { title: node(), detail: node(), bar: node(), retry: node() };\n"
+    'const box = { dataset: {}, style: {}, querySelector: (s) => hooks[s.match(/data-cs="(\\w+)"/)[1]] };\n'
+    "let markup = true; const classes = new Set(); const on = {};\n"
+    "globalThis.document = { readyState: 'complete',\n"
+    "  documentElement: { classList: { add: (...c) => c.forEach((x) => classes.add(x)),\n"
+    "    remove: (...c) => c.forEach((x) => classes.delete(x)) } },\n"
+    "  getElementById: (id) => (markup && id === 'cold-start' ? box : null),\n"
+    "  addEventListener: (t, f) => { on[t] = f; } };\n"
+    "let healthy = false, calls = 0;\n"
+    "globalThis.fetch = async () => { calls += 1; return { ok: healthy, status: healthy ? 200 : 503,\n"
+    "  json: async () => ({}) }; };\n"
+    "globalThis.COLD_START_MANUAL = true;\n"
+    "const until = (f) => new Promise((r) => { const t = () => (f() ? r() : setTimeout(t, 5)); t(); });\n"
+    "const fast = { promiseSeconds: 0.1, giveUpSeconds: 0.4, retryDelaySeconds: 0.05, fadeMs: 1, fastPathMs: 0 };\n"
+)
+
+
+def test_the_page_loader_waits_once_at_a_time_and_stays_quiet():
+    got = _cold(
+        "const manual = typeof globalThis.ColdStart.start === 'function' && !('ready' in globalThis.ColdStart);\n"
+        "const cs = ColdStart.start(fast);\n"
+        "const atOnce = calls;\n"  # the health request leaves before the body is parsed
+        "let readies = 0; cs.ready.then(() => { readies += 1; });\n"
+        "(async () => {\n"
+        "  await until(() => !hooks.retry.hidden);\n"
+        "  const failed = { state: box.dataset.state, focused: hooks.retry.focused,\n"
+        "    title: hooks.title.writes, retry: hooks.retry.writes };\n"
+        "  healthy = true; const before = calls;\n"
+        "  const click = { target: { closest: () => hooks.retry } };\n"
+        "  on.click(click); on.click(click);\n"  # a double click on Try again
+        "  await cs.ready; await until(() => !classes.has('cs-waiting'));\n"
+        "  on.click(click);\n"  # after success: nothing to do
+        "  await new Promise((r) => setTimeout(r, 50));\n"
+        "  console.log(JSON.stringify({ manual, atOnce, failed, retried: calls - before, readies,\n"
+        "    state: box.dataset.state, classes: [...classes] }));\n"
+        "})();",
+        before=DOM,
+    )
+    assert got["manual"] is True  # COLD_START_MANUAL still exposes the API
+    assert got["atOnce"] == 1
+    # about 40 ticks ran before the failure; each text was written once per change, not per tick
+    assert got["failed"]["state"] == "failed" and got["failed"]["focused"] is True
+    assert got["failed"]["title"] <= 3 and got["failed"]["retry"] <= 1
+    assert got["retried"] == 1 and got["readies"] == 1
+    assert got["state"] == "ready" and got["classes"] == []
+    # and the Node process exited by itself: no tick or timer left running
+
+
+def test_without_its_markup_the_loader_hides_nothing_but_still_waits():
+    got = _cold(
+        "markup = false; healthy = true;\n"
+        "const cs = ColdStart.start(fast); const shown = !classes.has('cs-waiting');\n"
+        "cs.ready.then((r) => console.log(JSON.stringify({ shown, ok: r.ok })));",
+        before=DOM,
+    )
+    assert got == {"shown": True, "ok": True}
+
+
+def test_every_api_call_goes_through_the_base_and_gets_reads_send_no_content_type():
+    js = (WEB / "app.js").read_text()
+    story = (WEB / "story.js").read_text()
+    # no relative fetch or EventSource anywhere in the page's scripts
+    assert re.findall(r"\bfetch\([^,)]*", js) == ["fetch(API_BASE + path"]
+    assert re.findall(r"EventSource\(\S+", js) == ["EventSource(API_BASE"]
+    assert "fetch(" not in story and "EventSource(" not in story
+    # a GET with Content-Type is not a simple request: cross-origin, it would be preflighted
+    api = js[js.index("async function api") : js.index("// ---- formatting")]
+    got = _cold(
+        "const API_BASE = 'https://api.example'; const seen = [];\n"
+        "globalThis.fetch = async (url, o) => { seen.push([url, o.headers]);\n"
+        "  return { ok: true, json: async () => ({}) }; };\n"
+        + api
+        + "\n(async () => { await api('/health'); await api('/runs', { method: 'POST', body: '{}' });\n"
+        "  console.log(JSON.stringify(seen)); })();"
+    )
+    assert got == [
+        ["https://api.example/health", {}],
+        ["https://api.example/runs", {"Content-Type": "application/json"}],
+    ]

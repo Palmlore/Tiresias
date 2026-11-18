@@ -1,4 +1,4 @@
-// cold-start.js (cold-start-loader v0.1.0): the first screen of a web app whose API server
+// cold-start.js (cold-start-loader v0.1.1): the first screen of a web app whose API server
 // scales to zero. The page itself comes from an always-warm static host, paints a skeleton of
 // the app at once, and wakes the server with GET <apiBase><healthPath>. The first 2xx from that
 // endpoint is the only readiness signal: the loader then gives way and `ColdStart.ready`
@@ -87,26 +87,30 @@
 
   function start(userConfig) {
     const cfg = config(userConfig);
-    const html = root.document.documentElement;
+    const doc = root.document;
+    const html = doc.documentElement;
     html.classList.add("cs-waiting");
     let resolveReady;
     const ready = new Promise((r) => { resolveReady = r; });
     const env = {
       fetch: (u, o) => root.fetch(u, o),
       now: () => root.performance.now(),
-      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+      sleep: (ms) => new Promise((r) => root.setTimeout(r, ms)),
     };
+    let running = false, settled = false, round = 0;
 
     function ui() {
-      const box = root.document.getElementById("cold-start");
+      const box = doc.getElementById("cold-start");
       if (!box) return null;
       const q = (k) => box.querySelector(`[data-cs="${k}"]`);
       return { box, title: q("title"), detail: q("detail"), bar: q("bar"), retry: q("retry") };
     }
 
+    // Writes only what changed: the card is a live region, and a node rewritten with the same
+    // text can be announced again on every 100 ms tick.
     function show(u, state, elapsed) {
       if (!u) return;
-      u.box.dataset.state = state;
+      if (u.box.dataset.state !== state) u.box.dataset.state = state;
       const m = cfg.messages;
       const [t, d] = state === "ready" ? [m.ready, ""]
         : state === "failed" ? [m.failed, m.failedDetail]
@@ -114,46 +118,62 @@
       if (u.title && u.title.textContent !== fill(t, cfg)) u.title.textContent = fill(t, cfg);
       if (u.detail && u.detail.textContent !== fill(d, cfg)) u.detail.textContent = fill(d, cfg);
       if (u.bar) u.bar.style.width = state === "ready" ? "100%" : `${progress(elapsed, cfg)}%`;
-      if (u.retry) { u.retry.hidden = state !== "failed"; u.retry.textContent = m.retry; }
+      if (u.retry) {
+        if (u.retry.hidden !== (state !== "failed")) u.retry.hidden = state !== "failed";
+        if (u.retry.textContent !== m.retry) u.retry.textContent = m.retry;
+      }
     }
 
+    // One wait at a time: a second click on Try again, or a call after success, does nothing.
     function attempt() {
-      html.classList.add("cs-waiting");
+      if (running || settled) return;
+      running = true;
+      const mine = ++round; // a tick left over from an earlier, failed wait stops itself
       const t0 = env.now();
-      let done = false;
       const tick = () => {
-        if (done) return;
+        if (!running || mine !== round) return;
         const s = (env.now() - t0) / 1000;
         show(ui(), phase(s, cfg) === "failed" ? "slow" : phase(s, cfg), s); // "failed" only on the result
         root.setTimeout(tick, 100);
       };
       tick();
       waitForHealth(cfg, env).then((r) => {
-        done = true;
+        running = false;
         const u = ui();
         if (!r.ok) {
           show(u, "failed", r.seconds);
           if (u && u.retry) u.retry.focus();
           return;
         }
+        settled = true;
         show(u, "ready", r.seconds);
         const leave = () => html.classList.remove("cs-waiting", "cs-leaving");
-        if (r.seconds * 1000 <= cfg.fastPathMs) leave();
-        else { html.classList.add("cs-leaving"); root.setTimeout(leave, cfg.fadeMs); }
+        if (!u || r.seconds * 1000 <= cfg.fastPathMs) leave();
+        else {
+          u.box.style.transitionDuration = `${cfg.fadeMs}ms`;
+          html.classList.add("cs-leaving");
+          root.setTimeout(leave, cfg.fadeMs);
+        }
         resolveReady(r);
       });
     }
 
-    root.document.addEventListener("click", (e) => {
+    doc.addEventListener("click", (e) => {
       const b = e.target && e.target.closest && e.target.closest('#cold-start [data-cs="retry"]');
       if (b) attempt();
     });
-    if (root.document.readyState === "loading") root.document.addEventListener("DOMContentLoaded", attempt);
-    else attempt();
+    // Without the loader's markup there is nothing to show while waiting, so the page's own
+    // regions stay visible rather than hidden behind an empty screen; `ready` still waits.
+    const checkMarkup = () => { if (!ui()) html.classList.remove("cs-waiting"); };
+    if (doc.readyState === "loading") doc.addEventListener("DOMContentLoaded", checkMarkup);
+    else checkMarkup();
+    attempt(); // the health request leaves now, while the body is still being parsed
     return { ready, config: cfg, apiBase: cfg.apiBase.replace(/\/$/, "") };
   }
 
   const api = { DEFAULTS, config, phase, progress, waitForHealth, start };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
-  if (root.document && !root.COLD_START_MANUAL) Object.assign(root, { ColdStart: { ...api, ...start(root.COLD_START) } });
+  // In a page: window.ColdStart, started from window.COLD_START, or, with COLD_START_MANUAL set,
+  // the bare API so the page can call ColdStart.start(config) itself.
+  if (root.document) root.ColdStart = root.COLD_START_MANUAL ? { ...api } : { ...api, ...start(root.COLD_START) };
 })(typeof window !== "undefined" ? window : globalThis);

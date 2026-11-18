@@ -39,9 +39,12 @@ function el(tag, attrs = {}, ...children) {
 }
 
 async function api(path, options = {}) {
+  // Content-Type only on a request with a body: on a GET it would make every cross-origin read
+  // (the GitHub Pages front) wait for a CORS preflight first.
+  const json = options.body !== undefined ? { "Content-Type": "application/json" } : {};
   const res = await fetch(API_BASE + path, {
     ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+    headers: { ...json, ...(options.headers || {}) },
   });
   let body = null;
   try { body = await res.json(); } catch { /* not JSON */ }
