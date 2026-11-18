@@ -18,6 +18,10 @@
   color-scheme: dark;
 }
 
+/* the cold-start screen (cold-start.css) in the brand */
+:root { --cs-surface: var(--ink-2); --cs-block: var(--ink-3); --cs-line: var(--line); --cs-accent: var(--bronze);
+  --cs-text: var(--text); --cs-muted: var(--stone); --cs-ok: var(--ok); --cs-bad: var(--bad); --cs-sheen: rgba(237, 230, 217, .07); }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--ink); color: var(--text); }
 body { font: 15px/1.5 var(--sans); min-height: 100vh; display: flex; flex-direction: column; }

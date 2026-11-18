@@ -24,6 +24,9 @@ spec:
         # cost is a cold start after a quiet spell.
         autoscaling.knative.dev/minScale: "0"
         autoscaling.knative.dev/maxScale: "1"
+        # Extra CPU while the instance starts (billed only then): shortens the agent's Python start,
+        # the larger part of a cold start (about 7 s end to end before this, 17-18 Nov 2026).
+        run.googleapis.com/startup-cpu-boost: "true"
         run.googleapis.com/execution-environment: gen2
         run.googleapis.com/container-dependencies: '{"agent": ["cognition"]}'
     spec:
@@ -42,12 +45,15 @@ spec:
             - {name: GATE_TIMEOUT_SECONDS, value: "30"}   # backstop behind the UI's 5 s prompt
             - {name: COGNITION_URL, value: "http://localhost:8100"}
             - {name: MAX_CONCURRENT_RUNS, value: "4"}
+            # The static front (GitHub Pages: scripts/build_pages.sh) calls this API from another
+            # origin. Exact origins, no credentials: the demo has no login and is sample mode only.
+            - {name: CORS_ALLOW_ORIGINS, value: "https://tiresias.palmlore.com,https://palmlore.github.io"}
           resources:
             limits: {cpu: "1", memory: 1Gi}
           startupProbe:
             httpGet: {path: /health, port: 8000}
-            periodSeconds: 2
-            failureThreshold: 30
+            periodSeconds: 1   # each probe period adds up to its length to a cold start
+            failureThreshold: 60
         - name: cognition
           image: COGNITION_IMAGE
           env:
@@ -56,5 +62,5 @@ spec:
             limits: {cpu: "1", memory: 512Mi}
           startupProbe:
             tcpSocket: {port: 8100}
-            periodSeconds: 2
-            failureThreshold: 30
+            periodSeconds: 1   # each probe period adds up to its length to a cold start
+            failureThreshold: 60

@@ -19,6 +19,8 @@ const NOISY = new Set(["memory_client", "Memory", "heartbeat"]);
 
 const $ = (id) => document.getElementById(id);
 const state = { health: null, entity: null, run: null };
+// "" = the agent that served this page; the GitHub Pages copy sets the Cloud Run URL (config.js).
+const API_BASE = (window.ColdStart && window.ColdStart.apiBase) || "";
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -37,7 +39,7 @@ function el(tag, attrs = {}, ...children) {
 }
 
 async function api(path, options = {}) {
-  const res = await fetch(path, {
+  const res = await fetch(API_BASE + path, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options.headers || {}) },
   });
@@ -303,7 +305,7 @@ async function startRun(request) {
   $("run-meta").textContent = `run ${run.id}` +
     (wait ? ` · expected ${wait.min_seconds}–${wait.max_seconds} s` : "") +
     (started.depth ? ` · depth ${started.depth.effective}` : "");
-  const src = new EventSource(`/runs/${encodeURIComponent(run.id)}/events`);
+  const src = new EventSource(API_BASE + `/runs/${encodeURIComponent(run.id)}/events`);
   run.source = src;
   src.addEventListener("trace", (msg) => {
     if (state.run !== run) return;
@@ -736,5 +738,8 @@ $("download").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 });
 
-loadHealth();
-loadEntities();
+// The API's interactive docs live on the agent, wherever this page came from.
+for (const a of document.querySelectorAll('a[href="/docs"]')) a.href = API_BASE + "/docs";
+// Start once GET /health has answered (cold-start.js); a server that is already up answers at once.
+const boot = () => { loadHealth(); loadEntities(); };
+if (window.ColdStart) window.ColdStart.ready.then(boot); else boot();

@@ -459,7 +459,7 @@ def test_story_hooks_read_the_same_run_as_the_debug_view():
         assert hook in js, hook
     page = (WEB / "index.html").read_text()
     assert page.index('src="app.js') < page.index('src="story.js')
-    assert '<main class="layout" hidden>' in page and 'data-view="debug"' in page
+    assert re.search(r'<main class="layout" hidden[ >]', page) and 'data-view="debug"' in page
 
 
 # ---- prompt gates: the Sphinx asks on the user's behalf, proceeds after 5 s unless taken over ----

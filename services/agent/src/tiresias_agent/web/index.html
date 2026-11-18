@@ -7,6 +7,10 @@
   <meta name="description" content="An evidence-backed 5 Whys root-cause agent for SEC filings.">
   <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="app.css?v=story-me">
+  <link rel="stylesheet" href="cold-start.css?v=1">
+  <!-- in the head, as classic scripts: cold-start.js marks the page cs-waiting and sends GET /health at once -->
+  <script src="config.js?v=1"></script>
+  <script src="cold-start.js?v=1"></script>
 </head>
 <body>
   <header class="top">
@@ -52,8 +56,30 @@
     </div>
   </header>
 
+  <!-- Cold start (cold-start.js): shown until GET /health answers. The skeleton uses the Story
+       view's own classes, so the first screen keeps its geometry when the app replaces it. -->
+  <div id="cold-start" class="story" role="status" aria-live="polite">
+    <div class="s-ask" aria-hidden="true">
+      <span class="cs-sk cs-line s-lead" style="width: min(420px, 70%)"></span>
+      <div class="s-carousel">
+        <div class="q-card"><div class="q-head"><span class="cs-sk cs-line" style="width: 120px"></span></div>
+          <div class="q-tiles"><span class="cs-sk" style="height: 72px"></span><span class="cs-sk" style="height: 72px"></span><span class="cs-sk" style="height: 72px"></span></div></div>
+        <div class="q-card"><div class="q-head"><span class="cs-sk cs-line" style="width: 120px"></span></div>
+          <div class="q-tiles"><span class="cs-sk" style="height: 72px"></span><span class="cs-sk" style="height: 72px"></span><span class="cs-sk" style="height: 72px"></span></div></div>
+      </div>
+    </div>
+    <div class="cs-card">
+      <div class="cs-row">
+        <span class="cs-spin" aria-hidden="true"></span>
+        <div><p class="cs-title" data-cs="title">Starting the demo server…</p><p class="cs-detail" data-cs="detail"></p></div>
+      </div>
+      <div class="cs-bar" aria-hidden="true"><i data-cs="bar"></i></div>
+      <button type="button" class="cs-retry" data-cs="retry" hidden>Try again</button>
+    </div>
+  </div>
+
   <!-- Story view (default): story.js -->
-  <main id="story" class="story" aria-label="Investigation">
+  <main id="story" class="story" aria-label="Investigation" data-cold-start-hide>
     <section class="s-ask" aria-label="Ask">
       <p class="s-lead">Pick a question. Drag sideways. One click starts the investigation.</p>
       <div id="s-examples" class="s-carousel"></div>
@@ -96,7 +122,7 @@
   </aside>
 
   <!-- Truth view: the full page (app.js) -->
-  <main class="layout" hidden>
+  <main class="layout" hidden data-cold-start-hide>
     <!-- 1. Ask -->
     <section class="panel ask" aria-labelledby="ask-h">
       <h2 id="ask-h"><img src="you.svg" alt="" class="who-icon"> Ask</h2>
