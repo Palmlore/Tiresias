@@ -79,6 +79,22 @@ def test_a_held_cold_request_counts_as_one_attempt():
     assert got["body"] == {"service": "agent"} and got["calls"] == ["/health"]
 
 
+def test_a_request_held_past_any_per_request_timeout_is_not_aborted_or_retried():
+    # Real timers and a fetch that honours the abort signal: the request is cut only at the give-up
+    # deadline, so a platform holding it for longer than a retry would take still counts as one attempt.
+    got = _cold(
+        "const cfg = ColdStart.config({ giveUpSeconds: 3, requestTimeoutSeconds: 0.3 });\n"
+        "let n = 0;\n"
+        "const env = { now: () => performance.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)),\n"
+        "  fetch: (u, o) => { n += 1; return new Promise((res, rej) => {\n"
+        "    const t = setTimeout(() => res({ ok: true, status: 200, json: async () => ({}) }), 1000);\n"
+        "    o.signal.addEventListener('abort', () => { clearTimeout(t); rej(Object.assign(new Error('a'), { name: 'AbortError' })); });\n"
+        "  }); } };\n"
+        "ColdStart.waitForHealth(cfg, env).then((r) => console.log(JSON.stringify({ ok: r.ok, n })));"
+    )
+    assert got == {"ok": True, "n": 1}
+
+
 def test_fast_failures_are_retried_until_the_first_2xx():
     got = _cold(
         "const cfg = ColdStart.config({ apiBase: 'https://api.example/' });\n"

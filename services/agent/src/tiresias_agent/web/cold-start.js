@@ -13,7 +13,6 @@
     healthPath: "/health",
     promiseSeconds: 8,          // the wait the page promises; past it the page says "longer than usual"
     giveUpSeconds: 30,          // past it the page says the server did not start and offers a retry
-    requestTimeoutSeconds: 12,  // one /health attempt; a cold platform holds the request while it starts
     retryDelaySeconds: 1,       // between attempts that failed fast (connection refused, 5xx, 429)
     fastPathMs: 300,            // a server that answers within this hides the loader without a fade
     fadeMs: 250,
@@ -61,7 +60,8 @@
     while (left() > 0) {
       attempts += 1;
       const ctrl = typeof AbortController === "function" ? new AbortController() : null;
-      const timer = ctrl ? setTimeout(() => ctrl.abort(), Math.min(cfg.requestTimeoutSeconds, left()) * 1000) : null;
+      // A held request is one attempt: it is cut only at the give-up deadline, never earlier.
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), left() * 1000) : null;
       try {
         const res = await env.fetch(url, { cache: "no-store", signal: ctrl ? ctrl.signal : undefined });
         if (res.ok) {
