@@ -65,7 +65,11 @@ class Frame:
     @property
     def period_label(self) -> str:
         start, end = date.fromisoformat(self.period_start), date.fromisoformat(self.period_end)
-        return f"FY{end.year}" if 350 <= (end - start).days <= 380 else f"{start}..{end}"
+        if not 350 <= (end - start).days <= 380:
+            return f"{start}..{end}"
+        # A 52/53-week year that ends in the first days of January belongs to the year before
+        # (JNJ's year to 2022-01-02 is its fiscal 2021).
+        return f"FY{end.year - 1 if end.month == 1 and end.day <= 7 else end.year}"
 
     def window(self) -> tuple[str, str]:
         """(after, until]: when an event must happen to cause this effect (§2.2, earlier in

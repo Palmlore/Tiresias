@@ -180,14 +180,6 @@ Found in: coverage sweep (feat/coverage-sweep)  ·  Status: open  ·  Severity: 
 - Review at: after submission (scout ranking: require the parent to be named in the candidate's Form 10, down-rank brand-only matches).
 - Evidence: docs/measurements/coverage-sweep-2026-10-26.md (RTX, IP rows).
 
-## B-32: The period label follows the end date, so a 52/53-week year is labelled one year late
-Found in: fix/b30-unmeasured-acceptance (B-30 investigation)  ·  Status: open  ·  Severity: judge-visible
-- Out of scope because: the B-30 fix changes the analyst's measurement text and the reporter's citation only; relabelling periods touches the framer, the suggester and every question text.
-- Safe to leave because: the dates and values are right and every question names both filings; only the "FY" label is off. JNJ's year to 2022-01-02 is called "FY2022" (JNJ calls it fiscal 2021).
-- Urgent if: a demo or judge question lands on a 52/53-week filer (JNJ, many retailers) and the label is compared with the company's own "fiscal year".
-- Review at: after submission (use the XBRL `fy` of the baseline fact, or show the period dates).
-- Evidence: docs/measurements/coverage-sweep-2026-10-26.md (Post-fix rerun, JNJ); `Frame.period_label`.
-
 ## B-33: A disposal measured on the parent's own fact still says "keep the residual open until … reconciled"
 Found in: fix/b30-unmeasured-acceptance  ·  Status: open  ·  Severity: judge-visible
 - Out of scope because: the action template for a Loop A disposal is shared with the unmeasured case; rewording it changes committed example outputs, which needs a separate, reviewed change.
@@ -249,3 +241,4 @@ Found in: #56  ·  Status: open  ·  Severity: later
 - **B-22** (found in the verifier audit #20, closed in #25): AGENTS.md rule 4 and the parallel-PR rule disagreed on who updates the status docs: rule 4 now says the same commit for a change that lands alone, the coordinator right after the merge for parallel PRs.
 - **B-23** (found in the verifier audit #20, closed in #25): Cursor read `planned` in metadata.json and `optional` elsewhere: README and sponsor-technology.md now say `planned` and why (the schema has no "optional"). Later `working` (#59).
 - **B-30** (found in #46, closed in fix/b30-unmeasured-acceptance): the JNJ/MRK share was measured after all, on each parent's own `DisposalGroupIncludingDiscontinuedOperationRevenue` fact (the first write-up said asserted); the real defect was JNJ's action citing the oldest of two 8-K 2.01 filings (the Abiomed acquisition, not the Kenvue separation). The measurement now names the fact it rests on, and several matching filings are all named; `tests/test_b30_disposal.py`, [coverage-sweep post-fix rerun](docs/measurements/coverage-sweep-2026-10-26.md#post-fix-rerun-b-30).
+- **B-32** (found in fix/b30-unmeasured-acceptance, closed in dl/b32): The period label follows the end date: a 52/53-week year ending 1-7 January is labelled for the year before; `tests/test_period_label.py`.
