@@ -27,6 +27,25 @@ Deploy or update (idempotent: enables the APIs, creates the repository and servi
 
 Logs: Cloud Logging.
 
+## Static front (GitHub Pages): built, not switched on
+
+A cold start makes the first request wait about 7 s, and when that request is the page itself the visitor sees a blank tab (measured 18 Nov 2026: `GET /` answered after 7.58 s, nothing before). The fix is to serve the page from an always-warm host and let it wake the API:
+
+| What | How |
+|---|---|
+| Page | The web UI's files, built by [scripts/build_pages.sh](../../scripts/build_pages.sh) `API_URL OUT_DIR` (a copy of `web/` with `config.js` pointed at the API) and published by [.github/workflows/pages.yml](../../.github/workflows/pages.yml) on a push to `main` that touches the UI |
+| First screen | `cold-start.js` paints the header and a skeleton of the Story view at once, sends `GET /health`, and gives way to the app on the first 2xx. Past 8 s it says it is taking longer than usual; past 30 s it says the server did not start and offers Try again. The agent serves the same page at `/ui/`, where the server is already up and the loader clears at once. |
+| API | this Cloud Run service, called cross-origin: `CORS_ALLOW_ORIGINS` in [service.yaml](service.yaml) lists exactly `https://tiresias.palmlore.com` and `https://palmlore.github.io`; no credentials (the demo has no login) |
+| Start-up | `startup-cpu-boost` and startup probes every 1 s (was 2 s), to keep the cold start inside the page's 8 s promise. Expected, not yet measured: measure with a cold `GET /health` after the next deploy. |
+
+**Switching it on** (each step is a change outside this repo):
+
+1. Deploy this service (`./deploy/gcp/deploy.sh`) so CORS and the start-up settings are live, then time a cold `GET /health`.
+2. In the repository settings: Pages, source **GitHub Actions**; Variables, `DEMO_API_URL` = the service's `run.app` URL (an https origin, no path). Run the `pages` workflow and test the page at `https://palmlore.github.io/Tiresias/`.
+3. Move the domain: delete the Cloud Run domain mapping for `tiresias.palmlore.com`, point its CNAME at `palmlore.github.io.`, and set it as the Pages custom domain (HTTPS on). The API stays on its `run.app` URL.
+
+Until step 2 the workflow is a no-op (`if: vars.DEMO_API_URL != ''`).
+
 ## Exposure
 
 The service is reachable directly on its `run.app` URL. What a visitor can and cannot do:

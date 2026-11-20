@@ -1,0 +1,42 @@
+# Static front for the hosted demo: publishes the web UI to GitHub Pages (scripts/build_pages.sh),
+# pointed at the Cloud Run API, so a visitor sees the cold-start screen at once while the API
+# scales up from zero. A no-op until the repository variable DEMO_API_URL is set and Pages is
+# enabled with source "GitHub Actions" (deploy/gcp/README.md, Static front). Not part of CI.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/agent/src/tiresias_agent/web/**"
+      - "scripts/build_pages.sh"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: vars.DEMO_API_URL != ''
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the static front
+        env:
+          DEMO_API_URL: ${{ vars.DEMO_API_URL }}
+        run: scripts/build_pages.sh "$DEMO_API_URL" _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

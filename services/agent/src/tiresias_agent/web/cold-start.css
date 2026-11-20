@@ -1,0 +1,53 @@
+/* cold-start.css (cold-start-loader v0.1.1). The host app sets the --cs-* colours on :root (any
+   :root rule wins: these defaults sit in :where(), specificity 0, so load order does not matter).
+   The skeleton markup is the app's own, drawn from its first complete screen (see the README). */
+:where(:root) {
+  --cs-surface: #1a1f29;
+  --cs-block: #242a36;
+  --cs-line: #313847;
+  --cs-accent: #d4a054;
+  --cs-text: #f4efe4;
+  --cs-muted: #9b968c;
+  --cs-ok: #8cc79a;
+  --cs-bad: #e58a7c;
+  --cs-sheen: rgba(255, 255, 255, .07);
+}
+
+/* the loader shows only while <html> has cs-waiting; the app's own regions hide meanwhile */
+#cold-start { display: none; }
+html.cs-waiting #cold-start { display: block; }
+html.cs-waiting [data-cold-start-hide] { display: none !important; }
+html.cs-leaving #cold-start { opacity: 0; transition: opacity .25s ease; }
+
+/* skeleton blocks: give each the size of the real element it stands in for */
+.cs-sk { display: block; border-radius: 4px; background: var(--cs-block); position: relative; overflow: hidden; }
+.cs-sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--cs-sheen), transparent); animation: cs-shimmer 1.4s infinite; }
+@keyframes cs-shimmer { to { transform: translateX(100%); } }
+.cs-line { height: 12px; }
+
+/* the status card */
+.cs-card { margin: 8px auto 0; width: min(440px, 100%); display: grid; gap: 10px; padding: 16px 18px;
+  border: 1px solid var(--cs-line); border-radius: 10px; background: var(--cs-surface); }
+.cs-row { display: flex; gap: 12px; align-items: flex-start; }
+.cs-spin { flex: none; width: 20px; height: 20px; margin-top: 2px; border-radius: 50%;
+  border: 2px solid var(--cs-line); border-top-color: var(--cs-accent); animation: cs-spin .9s linear infinite; }
+@keyframes cs-spin { to { transform: rotate(360deg); } }
+.cs-title { font-size: .98rem; margin: 0; color: var(--cs-text); }
+.cs-detail { margin: 2px 0 0; color: var(--cs-muted); font-size: 13.5px; }
+.cs-bar { height: 4px; border-radius: 2px; background: var(--cs-block); overflow: hidden; }
+.cs-bar > i { display: block; height: 100%; width: 0; background: var(--cs-accent); border-radius: 2px; transition: width .2s linear; }
+.cs-retry { justify-self: start; font: inherit; font-size: 13px; padding: 6px 14px; border-radius: 6px; cursor: pointer;
+  background: var(--cs-accent); color: var(--cs-surface); border: 0; font-weight: 600; }
+.cs-retry:focus-visible { outline: 2px solid var(--cs-text); outline-offset: 2px; }
+
+#cold-start[data-state="slow"] .cs-bar > i { width: 30% !important; animation: cs-slide 1.3s ease-in-out infinite; }
+@keyframes cs-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+#cold-start[data-state="ready"] .cs-spin { animation: none; border-color: var(--cs-ok); background: var(--cs-ok); }
+#cold-start[data-state="failed"] .cs-spin { animation: none; border-color: var(--cs-bad); }
+#cold-start[data-state="failed"] .cs-bar, #cold-start[data-state="failed"] .cs-sk::after { display: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cs-sk::after, .cs-spin, #cold-start[data-state="slow"] .cs-bar > i { animation: none; }
+  .cs-bar > i, html.cs-leaving #cold-start { transition: none; }
+}
